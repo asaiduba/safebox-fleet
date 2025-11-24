@@ -1,0 +1,24 @@
+services:
+  # Main App (Backend + Frontend)
+  - type: web
+    name: safebox
+    env: docker
+    region: oregon
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+
+  # Simulator
+  - type: worker
+    name: safebox-simulator
+    env: docker
+    region: oregon
+    plan: free
+    dockerfilePath: ./simulator/Dockerfile
+    envVars:
+      - key: MQTT_BROKER
+        value: wss://safebox.onrender.com

@@ -1,0 +1,153 @@
+.notifications-panel {
+    position: absolute;
+    top: 60px;
+    right: 20px;
+    width: 350px;
+    max-height: 500px;
+    background: rgba(30, 41, 59, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.notifications-header {
+    padding: 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.notifications-header h3 {
+    margin: 0;
+    color: #fff;
+    font-size: 1.1rem;
+}
+
+.header-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.mark-all-btn {
+    background: none;
+    border: none;
+    color: #3b82f6;
+    font-size: 0.8rem;
+    cursor: pointer;
+    padding: 0;
+}
+
+.mark-all-btn:hover {
+    text-decoration: underline;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.5rem;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.close-btn:hover {
+    color: #fff;
+}
+
+.notifications-list {
+    overflow-y: auto;
+    max-height: 440px;
+}
+
+.no-notifications {
+    padding: 20px;
+    text-align: center;
+    color: #94a3b8;
+}
+
+.notification-item {
+    padding: 12px 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.notification-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.notification-item.unread {
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.notification-item.unread:hover {
+    background: rgba(59, 130, 246, 0.15);
+}
+
+.notif-icon {
+    font-size: 1.2rem;
+    margin-top: 2px;
+}
+
+.notif-content {
+    flex: 1;
+}
+
+.notif-message {
+    margin: 0 0 4px 0;
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.notif-time {
+    display: block;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.unread-dot {
+    width: 8px;
+    height: 8px;
+    background: #3b82f6;
+    border-radius: 50%;
+    margin-top: 8px;
+}
+
+/* Scrollbar styling */
+.notifications-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.notifications-list::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.notifications-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}

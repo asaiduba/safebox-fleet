@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="/assets/favicon-4f554edd.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SafeBox Fleet - Secure Vehicle Tracking</title>
+    <style>
+        /* Instant loading optimization */
+        body {
+            margin: 0;
+            background: #0f172a;
+        }
+
+        #root {
+            display: none;
+        }
+
+        #root.loaded {
+            display: block;
+        }
+    </style>
+  <script type="module" crossorigin src="/assets/index-fdfa9c09.js"></script>
+  <link rel="stylesheet" href="/assets/index-21b8f136.css">
+</head>
+
+<body>
+    <div id="root"></div>
+    
+    <script>
+        // Show content instantly when loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('root').classList.add('loaded');
+        });
+    </script>
+</body>
+
+</html>

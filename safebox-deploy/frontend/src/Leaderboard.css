@@ -1,0 +1,323 @@
+/* Leaderboard.css */
+.leaderboard-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: white;
+    z-index: 2000;
+    padding: 2rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.leaderboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 1rem;
+}
+
+.leaderboard-title h1 {
+    margin: 0;
+    font-size: 2rem;
+    background: linear-gradient(to right, #fff, #94a3b8);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.leaderboard-title .subtitle {
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.leaderboard-table-container {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    overflow-x: auto;
+}
+
+.leaderboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: #e2e8f0;
+}
+
+.leaderboard-table th,
+.leaderboard-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.leaderboard-table th {
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.05em;
+}
+
+.leaderboard-table tr:last-child td {
+    border-bottom: none;
+}
+
+.leaderboard-table tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.rank-1 {
+    background: linear-gradient(135deg, #fbbf24, #d97706);
+    color: white;
+    box-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
+}
+
+.rank-2 {
+    background: linear-gradient(135deg, #94a3b8, #64748b);
+    color: white;
+}
+
+.rank-3 {
+    background: linear-gradient(135deg, #b45309, #78350f);
+    color: white;
+}
+
+.score-bar-container {
+    width: 100px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+
+.score-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+.score-high {
+    background: #10b981;
+}
+
+.score-med {
+    background: #f59e0b;
+}
+
+.score-low {
+    background: #ef4444;
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 0.5rem;
+}
+
+/* Leaderboard.css */
+.leaderboard-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: white;
+    z-index: 2000;
+    padding: 2rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.leaderboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 1rem;
+}
+
+.leaderboard-title h1 {
+    margin: 0;
+    font-size: 2rem;
+    background: linear-gradient(to right, #fff, #94a3b8);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.leaderboard-title .subtitle {
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.leaderboard-table-container {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    overflow-x: auto;
+}
+
+.leaderboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: #e2e8f0;
+}
+
+.leaderboard-table th,
+.leaderboard-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.leaderboard-table th {
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.05em;
+}
+
+.leaderboard-table tr:last-child td {
+    border-bottom: none;
+}
+
+.leaderboard-table tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.rank-1 {
+    background: linear-gradient(135deg, #fbbf24, #d97706);
+    color: white;
+    box-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
+}
+
+.rank-2 {
+    background: linear-gradient(135deg, #94a3b8, #64748b);
+    color: white;
+}
+
+.rank-3 {
+    background: linear-gradient(135deg, #b45309, #78350f);
+    color: white;
+}
+
+.score-bar-container {
+    width: 100px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+
+.score-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+.score-high {
+    background: #10b981;
+}
+
+.score-med {
+    background: #f59e0b;
+}
+
+.score-low {
+    background: #ef4444;
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 0.5rem;
+}
+
+.status-online {
+    background: #10b981;
+    box-shadow: 0 0 5px #10b981;
+}
+
+.status-offline {
+    background: #64748b;
+}
+
+/* Loader Animation */
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    width: 100vw;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #94a3b8;
+    gap: 1rem;
+}
+
+.loader {
+    width: 48px;
+    height: 48px;
+    border: 5px solid #1e293b;
+    border-bottom-color: #10b981;
+    /* Green */
+    border-radius: 50%;
+    display: inline-block;
+    box-sizing: border-box;
+    animation: rotation 1s linear infinite;
+}
+
+@keyframes rotation {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}

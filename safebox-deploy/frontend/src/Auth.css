@@ -1,0 +1,114 @@
+.auth-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    width: 100vw;
+    position: relative;
+    overflow: hidden;
+    pointer-events: none;
+    /* Allow clicks to pass through to canvas */
+}
+
+.auth-logo {
+    pointer-events: auto;
+    cursor: pointer;
+    z-index: 100;
+}
+
+.auth-card {
+    background: rgba(15, 23, 42, 0.6);
+    /* Darker glass for better contrast */
+    backdrop-filter: blur(12px);
+    padding: 2.5rem;
+    border-radius: 16px;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+    width: 90%;
+    max-width: 400px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    z-index: 10;
+    pointer-events: auto;
+    /* Re-enable clicks for the form */
+    margin: auto;
+}
+
+.auth-card h2 {
+    text-align: center;
+    margin-bottom: 1.5rem;
+    color: #fff;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(15, 23, 42, 0.5);
+    color: white;
+    font-size: 1rem;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.auth-btn {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--accent-color);
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.auth-btn:hover {
+    background: #2563eb;
+}
+
+.toggle-text {
+    text-align: center;
+    margin-top: 1.5rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.toggle-text span {
+    color: var(--accent-color);
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.toggle-text span:hover {
+    text-decoration: underline;
+}
+
+.error-msg {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger-color);
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
