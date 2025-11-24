@@ -11,11 +11,11 @@ COPY frontend/package*.json ./frontend/
 
 # Install backend dependencies
 WORKDIR /app/backend
-RUN npm ci --only=production
+RUN npm install --only=production
 
 # Install frontend dependencies and build
 WORKDIR /app/frontend
-RUN npm ci
+RUN npm install
 COPY frontend/ .
 RUN npm run build
 
