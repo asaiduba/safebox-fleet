@@ -12,7 +12,7 @@ RUN npm install --only=production
 
 # Install frontend dependencies and build
 WORKDIR /app/frontend
-RUN npm install
+RUN npm install --legacy-peer-deps
 RUN npm run build
 
 # Copy built frontend to backend's public directory
