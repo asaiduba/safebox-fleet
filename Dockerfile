@@ -2,12 +2,9 @@ FROM node:20
 
 WORKDIR /app
 
-
-
-
-# Copy package files for both backend and frontend dependencies
-COPY backend/package*.json ./backend/
-COPY frontend/package*.json ./frontend/
+# Copy all source code first
+COPY backend/ ./backend/
+COPY frontend/ ./frontend/
 
 # Install backend dependencies
 WORKDIR /app/backend
@@ -16,14 +13,10 @@ RUN npm install --only=production
 # Install frontend dependencies and build
 WORKDIR /app/frontend
 RUN npm install
-COPY frontend/ .
 RUN npm run build
 
-# Go back to root and copy backend code
-WORKDIR /app
-COPY backend/ ./backend/
-
 # Copy built frontend to backend's public directory
+WORKDIR /app
 RUN mkdir -p ./backend/public && cp -r ./frontend/dist/* ./backend/public/
 
 ENV NODE_ENV=production
