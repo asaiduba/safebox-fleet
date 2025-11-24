@@ -12,8 +12,8 @@ services:
       - key: PORT
         value: 3000
 
-  # Simulator
-  - type: worker
+  # Simulator (as web service for free tier)
+  - type: web
     name: safebox-simulator
     env: docker
     region: oregon
