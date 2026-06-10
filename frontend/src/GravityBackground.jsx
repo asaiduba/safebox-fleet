@@ -1,161 +1,102 @@
-import React, { useEffect, useRef } from 'react';
-import Matter from 'matter-js';
+import React from 'react';
 
 const GravityBackground = () => {
-    const sceneRef = useRef(null);
-    const engineRef = useRef(null);
-
-    useEffect(() => {
-        // Module aliases
-        const Engine = Matter.Engine,
-            Render = Matter.Render,
-            Runner = Matter.Runner,
-            Bodies = Matter.Bodies,
-            Composite = Matter.Composite,
-            Mouse = Matter.Mouse,
-            MouseConstraint = Matter.MouseConstraint,
-            Events = Matter.Events;
-
-        // Create engine
-        const engine = Engine.create();
-        engine.world.gravity.y = 0; // Zero gravity for floating effect
-        engineRef.current = engine;
-
-        // Create renderer
-        const render = Render.create({
-            element: sceneRef.current,
-            engine: engine,
-            options: {
-                width: window.innerWidth,
-                height: window.innerHeight,
-                wireframes: false,
-                background: 'transparent',
-                pixelRatio: window.devicePixelRatio
-            }
-        });
-
-        // Create bodies (balls)
-        const balls = [];
-        const color = '#60a5fa'; // Light Blue
-
-        for (let i = 0; i < 400; i++) { // 400 balls
-            const radius = 3;
-            const x = Math.random() * window.innerWidth;
-            const y = Math.random() * window.innerHeight;
-
-            const ball = Bodies.circle(x, y, radius, {
-                restitution: 0.9,
-                friction: 0,
-                frictionAir: 0.05, // High friction for quick slowdown (recovery)
-                render: {
-                    fillStyle: color,
-                    opacity: 0.8
-                }
-            });
-
-            // Give them a random initial push (Slow motion)
-            Matter.Body.setVelocity(ball, {
-                x: (Math.random() - 0.5) * 0.5,
-                y: (Math.random() - 0.5) * 0.5
-            });
-
-            balls.push(ball);
-        }
-
-        // Add walls to keep balls inside
-        const wallOptions = {
-            isStatic: true,
-            render: { visible: false },
-            restitution: 0.9
-        };
-        const walls = [
-            Bodies.rectangle(window.innerWidth / 2, -50, window.innerWidth, 100, wallOptions), // Top
-            Bodies.rectangle(window.innerWidth / 2, window.innerHeight + 50, window.innerWidth, 100, wallOptions), // Bottom
-            Bodies.rectangle(window.innerWidth + 50, window.innerHeight / 2, 100, window.innerHeight, wallOptions), // Right
-            Bodies.rectangle(-50, window.innerHeight / 2, 100, window.innerHeight, wallOptions) // Left
-        ];
-
-        Composite.add(engine.world, [...balls, ...walls]);
-
-        // Add mouse control
-        const mouse = Mouse.create(render.canvas);
-        const mouseConstraint = MouseConstraint.create(engine, {
-            mouse: mouse,
-            constraint: {
-                stiffness: 0.2,
-                render: {
-                    visible: false
-                }
-            }
-        });
-
-        Composite.add(engine.world, mouseConstraint);
-
-        // Keep the mouse in sync with rendering
-        render.mouse = mouse;
-
-        // Add "Anti-Gravity" hover effect
-        Events.on(engine, 'beforeUpdate', function () {
-            const mousePosition = mouse.position;
-
-            balls.forEach(ball => {
-                // Keep them moving gently (Slow motion state)
-                if (ball.speed < 0.2) {
-                    Matter.Body.applyForce(ball, ball.position, {
-                        x: (Math.random() - 0.5) * 0.00001,
-                        y: (Math.random() - 0.5) * 0.00001
-                    });
-                }
-
-                // Repel from mouse (Fast repulsion)
-                const dx = ball.position.x - mousePosition.x;
-                const dy = ball.position.y - mousePosition.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-
-                if (distance < 120) {
-                    const forceMagnitude = 0.0002 * (120 - distance); // Stronger force
-                    Matter.Body.applyForce(ball, ball.position, {
-                        x: (dx / distance) * forceMagnitude,
-                        y: (dy / distance) * forceMagnitude
-                    });
-                }
-            });
-        });
-
-        // Run the engine
-        Render.run(render);
-        const runner = Runner.create();
-        Runner.run(runner, engine);
-
-        // Handle resize
-        const handleResize = () => {
-            render.canvas.width = window.innerWidth;
-            render.canvas.height = window.innerHeight;
-        };
-
-        window.addEventListener('resize', handleResize);
-
-        return () => {
-            Render.stop(render);
-            Runner.stop(runner);
-            window.removeEventListener('resize', handleResize);
-            if (render.canvas) render.canvas.remove();
-        };
-    }, []);
-
     return (
-        <div
-            ref={sceneRef}
-            style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
+        <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: -1,
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #020617 100%)',
+            overflow: 'hidden'
+        }}>
+            {/* Ambient Glowing Orbs (CSS animated, GPU accelerated) */}
+            <div style={{
+                position: 'absolute',
+                top: '20%',
+                left: '20%',
+                width: '350px',
+                height: '350px',
+                background: 'radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, rgba(0,0,0,0) 70%)',
+                borderRadius: '50%',
+                filter: 'blur(40px)',
+                animation: 'floatOrb 15s ease-in-out infinite alternate'
+            }} />
+            <div style={{
+                position: 'absolute',
+                bottom: '15%',
+                right: '15%',
+                width: '450px',
+                height: '450px',
+                background: 'radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(0,0,0,0) 70%)',
+                borderRadius: '50%',
+                filter: 'blur(50px)',
+                animation: 'floatOrb2 20s ease-in-out infinite alternate'
+            }} />
+            <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '70%',
+                width: '250px',
+                height: '250px',
+                background: 'radial-gradient(circle, rgba(236, 72, 153, 0.08) 0%, rgba(0,0,0,0) 70%)',
+                borderRadius: '50%',
+                filter: 'blur(30px)',
+                animation: 'floatOrb 25s ease-in-out infinite alternate'
+            }} />
+
+            {/* Subtle animated stars */}
+            <div className="stars-container" style={{
+                position: 'absolute',
                 width: '100%',
                 height: '100%',
-                zIndex: -1,
-                background: '#0f172a' // Dark background
-            }}
-        />
+                opacity: 0.4
+            }}>
+                {Array.from({ length: 30 }).map((_, i) => {
+                    const size = Math.random() * 2 + 1.5;
+                    const top = Math.random() * 100;
+                    const left = Math.random() * 100;
+                    const duration = Math.random() * 8 + 4;
+                    const delay = Math.random() * 5;
+                    return (
+                        <div
+                            key={i}
+                            style={{
+                                position: 'absolute',
+                                width: `${size}px`,
+                                height: `${size}px`,
+                                background: '#60a5fa',
+                                borderRadius: '50%',
+                                top: `${top}%`,
+                                left: `${left}%`,
+                                filter: 'drop-shadow(0 0 4px #60a5fa)',
+                                animation: `blinkStar ${duration}s ease-in-out infinite alternate`,
+                                animationDelay: `${delay}s`
+                            }}
+                        />
+                    );
+                })}
+            </div>
+
+            {/* Embed CSS animations inside style tags */}
+            <style>{`
+                @keyframes floatOrb {
+                    0% { transform: translate(0, 0) scale(1); }
+                    100% { transform: translate(60px, -40px) scale(1.1); }
+                }
+                @keyframes floatOrb2 {
+                    0% { transform: translate(0, 0) scale(1); }
+                    100% { transform: translate(-80px, 50px) scale(1.15); }
+                }
+                @keyframes blinkStar {
+                    0% { opacity: 0.2; transform: scale(0.8); }
+                    50% { opacity: 0.8; transform: scale(1.2); }
+                    100% { opacity: 0.3; transform: scale(0.9); }
+                }
+            `}</style>
+        </div>
     );
 };
 

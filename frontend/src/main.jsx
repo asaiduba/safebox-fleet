@@ -28,11 +28,21 @@ axios.interceptors.request.use(
   }
 );
 
-// Add Axios Response Interceptor to handle 401 Unauthorized responses
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
+      // Do not reload for public auth endpoints so inline error messages can be displayed
+      const url = error.config && error.config.url;
+      if (url && (
+        url.endsWith('/api/login') || 
+        url.endsWith('/api/register') || 
+        url.endsWith('/api/verify-email') ||
+        url.endsWith('/api/forgot-password') ||
+        url.endsWith('/api/reset-password')
+      )) {
+        return Promise.reject(error);
+      }
       localStorage.removeItem('user');
       window.location.reload();
     }

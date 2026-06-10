@@ -62,7 +62,42 @@ const AnalyticsDashboard = ({ onBack, onOpenReports }) => {
         }
     }, [selectedVehicleId, fetchHistory]);
 
-    if (!stats) return <div className="loading">Loading Analytics...</div>;
+    if (!stats) return (
+        <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(15, 23, 42, 0.85)',
+            backdropFilter: 'blur(12px)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 9999,
+            color: 'white',
+            fontFamily: 'system-ui, sans-serif'
+        }}>
+            <div style={{
+                width: '50px',
+                height: '50px',
+                border: '3px solid rgba(255, 255, 255, 0.1)',
+                borderTop: '3px solid #3b82f6',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite',
+                marginBottom: '1.25rem'
+            }} />
+            <h2 style={{ fontSize: '1.2rem', fontWeight: '600', letterSpacing: '0.02em', margin: 0 }}>Loading Analytics Dashboard...</h2>
+            <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginTop: '0.4rem', margin: 0 }}>Querying fleet performance history</p>
+            <style>{`
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `}</style>
+        </div>
+    );
 
     return (
         <div className="analytics-container">
