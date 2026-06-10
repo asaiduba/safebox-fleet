@@ -406,6 +406,23 @@ function initDb() {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_vehicle_time ON vehicle_alerts(vehicle_id, timestamp DESC)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_type ON vehicle_alerts(type)`);
 
+    // Seed default admin user if not exists (MUST run before vehicles referencing owner_id = 1)
+    try {
+        const adminExists = db.prepare("SELECT 1 FROM users WHERE role = 'admin'").get();
+        if (!adminExists) {
+            const bcrypt = require('bcrypt');
+            const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
+            const hashedAdminPassword = bcrypt.hashSync(adminPassword, 12);
+            db.prepare(`
+                INSERT INTO users (username, password, role, email, phone, is_verified, plan_id, subscription_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run('admin', hashedAdminPassword, 'admin', 'admin@safebox.com', '+234800000000', 1, 'ENTERPRISE', 'ACTIVE');
+            console.log(`🛡️ Seeded default Super Admin user: admin / ${adminPassword === 'admin' ? 'admin (default)' : 'configured secure password'}`);
+        }
+    } catch (e) {
+        console.error("Failed to seed admin user:", e.message);
+    }
+
     // Auto-register SAFEBOX_003 to SAFEBOX_007 for the TCP telematics simulator
     try {
         const insertStmt = db.prepare("INSERT OR IGNORE INTO vehicles (id, name, owner_id, is_locked, ble_beacon_id, ble_beacon_rssi_threshold) VALUES (?, ?, ?, ?, ?, ?)");
@@ -445,23 +462,6 @@ function initDb() {
         console.error("Failed to seed authorized devices:", e.message);
     }
 
-    // Seed default admin user if not exists
-    try {
-        const adminExists = db.prepare("SELECT 1 FROM users WHERE role = 'admin'").get();
-        if (!adminExists) {
-            const bcrypt = require('bcrypt');
-            const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
-            const hashedAdminPassword = bcrypt.hashSync(adminPassword, 12);
-            db.prepare(`
-                INSERT INTO users (username, password, role, email, phone, is_verified, plan_id, subscription_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `).run('admin', hashedAdminPassword, 'admin', 'admin@safebox.com', '+234800000000', 1, 'ENTERPRISE', 'ACTIVE');
-            console.log(`🛡️ Seeded default Super Admin user: admin / ${adminPassword === 'admin' ? 'admin (default)' : 'configured secure password'}`);
-        }
-    } catch (e) {
-        console.error("Failed to seed admin user:", e.message);
-    }
-
     // Auto-seed mock companies (users with role='company') and payments for Super Admin analytics
     try {
         const companyCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'company'").get().count;
@@ -493,6 +493,12 @@ function initDb() {
             const compB = db.prepare("SELECT id FROM users WHERE username = 'comp_express'").get();
             
             if (compA) {
+                // Seed mock subscription first to prevent foreign key violation
+                db.prepare(`
+                    INSERT OR IGNORE INTO subscriptions (id, user_id, plan_id, status)
+                    VALUES (?, ?, ?, ?)
+                `).run('sub_a', compA.id, 'PREMIUM', 'ACTIVE');
+
                 // Seed some monthly payments for Apex Logistics (Premium: ₦15,000 / month)
                 const insertPayment = db.prepare(`
                     INSERT INTO payments (id, user_id, subscription_id, amount, timestamp, status, reference)
@@ -508,6 +514,12 @@ function initDb() {
             }
             
             if (compB) {
+                // Seed mock subscription first to prevent foreign key violation
+                db.prepare(`
+                    INSERT OR IGNORE INTO subscriptions (id, user_id, plan_id, status)
+                    VALUES (?, ?, ?, ?)
+                `).run('sub_b', compB.id, 'BASIC', 'ACTIVE');
+
                 // Seed payment for Swift Express (Basic: ₦5,000 / month)
                 const insertPayment = db.prepare(`
                     INSERT INTO payments (id, user_id, subscription_id, amount, timestamp, status, reference)
