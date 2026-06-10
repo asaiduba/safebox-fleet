@@ -18,6 +18,7 @@ require('dotenv').config();
 initDb();
 
 const app = express();
+app.set('trust proxy', 1); // trust first proxy for accurate rate limiting behind Railway's reverse proxy
 const server = http.createServer(app);
 
 // --- SECURITY: CORS origin restriction ---
