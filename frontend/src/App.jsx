@@ -1,6 +1,7 @@
+const API_BASE = import.meta.env.VITE_API_URL || '';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import io from 'socket.io-client';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, Polyline, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import axios from 'axios';
@@ -8,6 +9,15 @@ import './App.css';
 import Auth from './Auth';
 import LandingPage from './LandingPage';
 import AnalyticsDashboard from './AnalyticsDashboard';
+import SettingsPanel from './SettingsPanel';
+import ReportsPanel from './ReportsPanel';
+import HistoryDrawer from './HistoryDrawer';
+import AddVehicleModal from './AddVehicleModal';
+import Leaderboard from './Leaderboard';
+import NotificationsPanel from './NotificationsPanel';
+import SupportDashboard from './SupportDashboard';
+import AdminDashboard from './AdminDashboard';
+
 
 // Fix Leaflet default icon issue
 delete L.Icon.Default.prototype._getIconUrl;
@@ -17,7 +27,7 @@ L.Icon.Default.mergeOptions({
     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-const socket = io('');
+let socket = null;
 
 const defaultCenter = {
     lat: -1.9441,
@@ -87,15 +97,68 @@ function App() {
 
     const [vehicles, setVehicles] = useState([]);
     const [selectedVehicleId, setSelectedVehicleId] = useState(null);
-    const [newVehicleId, setNewVehicleId] = useState('');
-    const [newVehicleName, setNewVehicleName] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeFilter, setActiveFilter] = useState('all');
+    const [showAddVehicle, setShowAddVehicle] = useState(false);
     const [showAuth, setShowAuth] = useState(false);
     const [showLanding, setShowLanding] = useState(!user);
+    const [isSupportRoute, setIsSupportRoute] = useState(window.location.pathname === '/support');
+    const [isAdminRoute, setIsAdminRoute] = useState(window.location.pathname === '/admin');
+
+    useEffect(() => {
+        const handlePopState = () => {
+            setIsSupportRoute(window.location.pathname === '/support');
+            setIsAdminRoute(window.location.pathname === '/admin');
+        };
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, []);
+
+    // Secure Super Admin path access
+    useEffect(() => {
+        if (isAdminRoute) {
+            if (!user || user.role !== 'admin') {
+                // Not authorized: redirect to root and show auth gate
+                window.history.pushState({}, '', '/');
+                setIsAdminRoute(false);
+                setShowLanding(true);
+                setShowAuth(true);
+            }
+        }
+    }, [isAdminRoute, user]);
+
     const [showAnalytics, setShowAnalytics] = useState(false);
+    const [showReports, setShowReports] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
+    const [showHistory, setShowHistory] = useState(false);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const [notifications, setNotifications] = useState(() => {
+        const savedUser = localStorage.getItem('user');
+        if (savedUser) {
+            try {
+                const u = JSON.parse(savedUser);
+                const saved = localStorage.getItem(`notifications_${u.id}`);
+                return saved ? JSON.parse(saved) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+        return [];
+    });
+    const [tracePath, setTracePath] = useState([]);
+    const [playIndex, setPlayIndex] = useState(-1);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [playbackSpeed, setPlaybackSpeed] = useState(1);
+    const [playbackPath, setPlaybackPath] = useState([]);
+    const playIntervalRef = useRef(null);
     const [geofences, setGeofences] = useState([]);
     const [geofenceMode, setGeofenceMode] = useState(false);
     const [newGeofenceRadius, setNewGeofenceRadius] = useState(500); // Default 500m
+    const [geofenceType, setGeofenceType] = useState('circle'); // 'circle' or 'polygon'
+    const [polygonPoints, setPolygonPoints] = useState([]);
     const [alerts, setAlerts] = useState([]);
+    const [sandboxData, setSandboxData] = useState(null);
+    const [pendingOverrides, setPendingOverrides] = useState([]);
     const mapRef = useRef(null);
 
     // Derive selected vehicle from vehicles array
@@ -104,26 +167,345 @@ function App() {
     // Leaflet doesn't need API loading
 
     // Helper to check if device is online (seen in last 5 minutes)
+    // Helper to check if device is online (seen in last 60 seconds)
     const isOnline = (lastUpdate) => {
         if (!lastUpdate) return false;
         const diff = new Date() - new Date(lastUpdate);
-        return diff < 300000; // 5 minutes
+        return diff < 60000; // 1 minute
     };
+
+    // Helper to fetch, logout, login, resolve override, and delete vehicles
+    const fetchGeofences = useCallback(async (vehicleId) => {
+        try {
+            const res = await axios.get(`${API_BASE}/api/geofences?vehicleId=${vehicleId}`);
+            setGeofences(res.data);
+        } catch (err) {
+            console.error("Failed to fetch geofences", err);
+        }
+    }, []);
+
+    const fetchVehicles = useCallback(async () => {
+        try {
+            const res = await axios.get(`${API_BASE}/api/vehicles?userId=${user.id}&role=${user.role}`);
+            setVehicles(res.data.map(v => ({
+                ...v,
+                lat: v.lat || -1.9441,
+                lng: v.lng || 30.0619,
+                locked: v.is_locked === 1,
+                cloudLocked: v.cloud_locked === 1,
+                battery: v.battery_level || 100,
+                fuel: v.fuel_level || 100,
+                subscription_status: v.subscription_status || 'ACTIVE',
+                grace_period_expires: v.grace_period_expires || null,
+                next_billing_date: v.next_billing_date || null,
+                lastUpdate: v.last_seen ? new Date(v.last_seen) : null
+            })));
+        } catch (err) {
+            console.error("Failed to fetch vehicles", err);
+        }
+    }, [user]);
+
+    const fetchPendingOverrides = useCallback(async () => {
+        if (!user || user.role !== 'company') return;
+        try {
+            const res = await axios.get(`${API_BASE}/api/override/pending`);
+            setPendingOverrides(res.data);
+        } catch (err) {
+            console.error("Failed to fetch pending overrides", err);
+        }
+    }, [user]);
+
+    const handleResolveOverride = useCallback(async (requestId, status) => {
+        try {
+            await axios.post(`${API_BASE}/api/override/resolve`, { requestId, status });
+            setPendingOverrides(prev => prev.filter(r => r.id !== requestId));
+            fetchVehicles();
+        } catch (err) {
+            alert(err.response?.data?.error || 'Failed to resolve override request');
+        }
+    }, [fetchVehicles]);
+
+    const handleDeleteVehicle = useCallback(async (vehicleId) => {
+        if (!confirm('Are you sure you want to remove this vehicle?')) return;
+        try {
+            await axios.delete(`${API_BASE}/api/vehicles/${vehicleId}`);
+            fetchVehicles();
+            if (selectedVehicleId === vehicleId) setSelectedVehicleId(null);
+        } catch (err) {
+            console.error('Failed to delete vehicle', err);
+            alert('Failed to delete vehicle');
+        }
+    }, [fetchVehicles, selectedVehicleId]);
+
+    const handleLogin = useCallback((userData) => {
+        localStorage.setItem('user', JSON.stringify(userData));
+        setUser(userData);
+        const saved = localStorage.getItem(`notifications_${userData.id}`);
+        setNotifications(saved ? JSON.parse(saved) : []);
+        setShowLanding(false);
+        if (userData.role === 'admin') {
+            window.history.pushState({}, '', '/admin');
+            setIsAdminRoute(true);
+        }
+    }, []);
+
+    const handleImpersonate = useCallback((tenant) => {
+        const adminSession = {
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            token: user.token
+        };
+        localStorage.setItem('admin_session', JSON.stringify(adminSession));
+
+        const impersonatedUser = {
+            id: tenant.id,
+            username: tenant.username,
+            role: 'company',
+            company_name: tenant.company_name,
+            token: user.token,
+            impersonating: true
+        };
+        localStorage.setItem('user', JSON.stringify(impersonatedUser));
+        setUser(impersonatedUser);
+        
+        window.history.pushState({}, '', '/');
+        setIsAdminRoute(false);
+        setShowLanding(false);
+        setShowAnalytics(false);
+        setShowReports(false);
+        setShowSettings(false);
+        setSelectedVehicleId(null);
+        setNotifications([]);
+    }, [user]);
+
+    const handleStopImpersonation = useCallback(() => {
+        const adminSessionStr = localStorage.getItem('admin_session');
+        if (adminSessionStr) {
+            const adminSession = JSON.parse(adminSessionStr);
+            localStorage.setItem('user', JSON.stringify(adminSession));
+            localStorage.removeItem('admin_session');
+            setUser(adminSession);
+            
+            window.history.pushState({}, '', '/admin');
+            setIsAdminRoute(true);
+            setShowLanding(false);
+        }
+    }, []);
+
+    const handleLogout = useCallback(() => {
+        localStorage.removeItem('user');
+        localStorage.removeItem('admin_session');
+        setUser(null);
+        setVehicles([]);
+        setNotifications([]);
+        setShowLanding(true);
+        setShowAnalytics(false);
+        window.history.pushState({}, '', '/');
+        setIsAdminRoute(false);
+    }, []);
+
+    const handleVehicleSelect = useCallback((vehicle) => {
+        setSelectedVehicleId(vehicle.id);
+    }, []);
+
+    const sendCommand = useCallback((deviceId, command) => {
+        if (socket) {
+            socket.emit('send-command', { deviceId, command });
+        }
+        setVehicles(prev => prev.map(v =>
+            v.id === deviceId ? {
+                ...v,
+                cloudLocked: command === 'LOCK',
+                locked: command === 'LOCK' ? true : v.locked
+            } : v
+        ));
+    }, []);
+
+    const handleDeleteGeofence = useCallback(async (id) => {
+        const previousGeofences = [...geofences];
+        setGeofences(prev => prev.filter(g => g.id !== id));
+        try {
+            await axios.delete(`${API_BASE}/api/geofences/${id}`);
+        } catch (err) {
+            console.error('Failed to delete geofence', err);
+            alert('Failed to delete geofence');
+            setGeofences(previousGeofences);
+        }
+    }, [geofences]);
+
+    // Force re-render every 5 seconds to update online/offline status
+    const [, setTick] = useState(0);
+    useEffect(() => {
+        const timer = setInterval(() => setTick(t => t + 1), 5000);
+        return () => clearInterval(timer);
+    }, []);
+
+    // Persist notifications list to localStorage (namespaced by user.id)
+    const lastSavedUserRef = useRef(user?.id);
+    useEffect(() => {
+        if (user) {
+            if (lastSavedUserRef.current === user.id) {
+                localStorage.setItem(`notifications_${user.id}`, JSON.stringify(notifications));
+            } else {
+                lastSavedUserRef.current = user.id;
+            }
+        } else {
+            lastSavedUserRef.current = null;
+        }
+    }, [notifications, user]);
+
+    // Advanced state-driven playback timer loop
+    useEffect(() => {
+        if (!isPlaying || playIndex === -1 || playbackPath.length === 0) {
+            if (playIntervalRef.current) clearInterval(playIntervalRef.current);
+            return;
+        }
+
+        // Base step interval: 800ms
+        // Speeds: 1x = 800ms, 2x = 400ms, 4x = 200ms, 8x = 100ms
+        const baseInterval = 800;
+        const intervalTime = Math.max(50, baseInterval / playbackSpeed);
+
+        playIntervalRef.current = setInterval(() => {
+            setPlayIndex(prev => {
+                if (prev >= playbackPath.length - 1) {
+                    setIsPlaying(false);
+                    clearInterval(playIntervalRef.current);
+                    return prev;
+                }
+                const nextIdx = prev + 1;
+                const nextPoint = playbackPath[nextIdx];
+                if (nextPoint && mapRef.current) {
+                    mapRef.current.setView([nextPoint.lat, nextPoint.lng]);
+                }
+                return nextIdx;
+            });
+        }, intervalTime);
+
+        return () => {
+            if (playIntervalRef.current) clearInterval(playIntervalRef.current);
+        };
+    }, [isPlaying, playbackSpeed, playbackPath, playIndex]);
+
+    // Animate route playback playhead (Starts playback)
+    const handlePlayStart = (path) => {
+        if (!path || path.length < 2) return;
+        setPlaybackPath(path);
+        setPlayIndex(0);
+        setIsPlaying(true);
+        setPlaybackSpeed(1); // Reset to 1x
+        if (mapRef.current && path[0]) {
+            mapRef.current.setView([path[0].lat, path[0].lng]);
+        }
+    };
+
+    // Notification Handlers
+    const handleMarkRead = (id) => {
+        setNotifications(prev =>
+            prev.map(n => n.id === id ? { ...n, is_read: true } : n)
+        );
+    };
+
+    const handleMarkAllRead = () => {
+        setNotifications(prev =>
+            prev.map(n => ({ ...n, is_read: true }))
+        );
+    };
+
+    // Clean up playback timers on unmount, vehicle toggle, or history drawer close
+    useEffect(() => {
+        return () => {
+            if (playIntervalRef.current) clearInterval(playIntervalRef.current);
+        };
+    }, [selectedVehicleId, showHistory]);
 
     // Pan to selected vehicle (Leaflet)
     useEffect(() => {
         if (selectedVehicle && mapRef.current) {
             mapRef.current.setView([selectedVehicle.lat, selectedVehicle.lng], 16);
         }
-    }, [selectedVehicleId]);
+    }, [selectedVehicleId, selectedVehicle]);
+
+    // Paystack Sandbox & Production Checkout Callback Handler
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        // Paystack redirects back with 'reference' parameter. Mock checkout uses 'ref'.
+        const reference = params.get('reference') || params.get('ref');
+
+        if (reference) {
+            if (!user) {
+                console.log('Payment reference detected, but user session is not initialized. Postponing verification...');
+                return;
+            }
+
+            const isMock = reference.startsWith('ref_mock_') || params.get('mock_checkout') === 'true';
+
+            if (isMock) {
+                // Sandbox Mode
+                const userId = params.get('userId');
+                const vehiclesList = params.get('vehicles');
+                const cycle = params.get('cycle') || 'monthly';
+                
+                Promise.resolve().then(() => {
+                    setSandboxData({
+                        reference,
+                        userId,
+                        vehicles: vehiclesList,
+                        cycle
+                    });
+                });
+            } else {
+                // Real Production/Test Paystack Mode (Server-to-Server Handoff Verification)
+                axios.get(`${API_BASE}/api/payments/verify/${reference}`)
+                    .then(() => {
+                        alert('💳 Paystack Checkout Verified! Your fleet subscription has been successfully activated.');
+                        fetchVehicles();
+                        window.history.replaceState({}, document.title, "/"); // Clean URL parameters
+                    })
+                    .catch(err => {
+                        console.error('Real Paystack verification failed:', err);
+                        alert('Failed to verify payment transaction with Paystack.');
+                    });
+            }
+        }
+    }, [user, fetchVehicles]);
 
     useEffect(() => {
-        if (!user) return;
+        if (!user) {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+            return;
+        }
 
-        fetchVehicles();
+        if (socket) {
+            socket.disconnect();
+        }
+
+        socket = io(API_BASE, {
+            auth: { token: user.token }
+        });
+
+        socket.connect();
+
+        Promise.resolve().then(() => {
+            fetchVehicles();
+            if (user.role === 'company') {
+                fetchPendingOverrides();
+            }
+        });
 
         socket.on('connect', () => {
             console.log('Connected to backend');
+        });
+
+        socket.on('connect_error', (err) => {
+            console.error('Socket connection error:', err.message);
+            if (err.message.includes('Authentication error')) {
+                handleLogout();
+            }
         });
 
         socket.on('device-data', (data) => {
@@ -131,9 +513,14 @@ function App() {
                 const index = prev.findIndex(v => v.id === data.payload.deviceId);
                 if (index > -1) {
                     const newVehicles = [...prev];
+                    // Preserve cloudLocked from the existing state — it is web-only and
+                    // must NOT be overwritten by device telemetry. The device reports its
+                    // physical lock state in `locked`, but `cloudLocked` is only
+                    // changed when the user presses LOCK/UNLOCK on the dashboard.
+                    const { cloudLocked: _ignore, ...telemetry } = data.payload;
                     newVehicles[index] = {
                         ...newVehicles[index],
-                        ...data.payload,
+                        ...telemetry,
                         lastUpdate: new Date()
                     };
                     return newVehicles;
@@ -149,146 +536,111 @@ function App() {
             }, 5000);
         });
 
+        socket.on('notification', (data) => {
+            setNotifications(prev => [data, ...prev]);
+        });
+
+        socket.on('device-tampering', (data) => {
+            const newNotif = {
+                id: Date.now() + Math.random(),
+                type: 'TAMPERING',
+                message: data.message || `Critical: Device tampering detected!`,
+                timestamp: data.timestamp || Date.now(),
+                is_read: false
+            };
+            setAlerts(prev => [...prev, { vehicleId: data.vehicleId, message: newNotif.message, timestamp: newNotif.timestamp }]);
+            setTimeout(() => {
+                setAlerts(prev => prev.filter(a => a.message !== newNotif.message));
+            }, 5000);
+        });
+
+        socket.on('device-alert', (data) => {
+            setAlerts(prev => [...prev, { vehicleId: data.vehicleId, message: data.message, timestamp: data.timestamp }]);
+            setTimeout(() => {
+                setAlerts(prev => prev.filter(a => a.message !== data.message));
+            }, 5000);
+        });
+
+        socket.on('billing-updated', (data) => {
+            console.log('Billing status updated:', data);
+            fetchVehicles(); // Refetch vehicles to apply active/suspended billing status
+        });
+
+        socket.on('override-request', (data) => {
+            setPendingOverrides(prev => {
+                if (prev.some(r => r.id === data.id)) return prev;
+                return [...prev, data];
+            });
+        });
+
+        socket.on('override-resolved', (data) => {
+            setPendingOverrides(prev => prev.filter(r => r.id !== data.requestId));
+            fetchVehicles();
+        });
+
         return () => {
-            socket.off('device-data');
-            socket.off('geofence-alert');
+            if (socket) {
+                socket.off('connect');
+                socket.off('connect_error');
+                socket.off('device-data');
+                socket.off('geofence-alert');
+                socket.off('notification');
+                socket.off('device-tampering');
+                socket.off('device-alert');
+                socket.off('billing-updated');
+                socket.off('override-request');
+                socket.off('override-resolved');
+                socket.disconnect();
+                socket = null;
+            }
         };
-    }, [user]);
+    }, [user, fetchVehicles, fetchPendingOverrides, handleLogout]);
 
     useEffect(() => {
         if (selectedVehicleId) {
-            fetchGeofences(selectedVehicleId);
+            Promise.resolve().then(() => {
+                fetchGeofences(selectedVehicleId);
+            });
         } else {
-            setGeofences([]);
-            setGeofenceMode(false);
-        }
-    }, [selectedVehicleId]);
-
-    const fetchGeofences = async (vehicleId) => {
-        try {
-            const res = await axios.get(`http://localhost:3000/api/geofences?vehicleId=${vehicleId}`);
-            setGeofences(res.data);
-        } catch (err) {
-            console.error("Failed to fetch geofences");
-        }
-    };
-
-    const fetchVehicles = async () => {
-        try {
-            const res = await axios.get(`http://localhost:3000/api/vehicles?userId=${user.id}&role=${user.role}`);
-            setVehicles(res.data.map(v => ({
-                ...v,
-                lat: v.lat || -1.9441,
-                lng: v.lng || 30.0619,
-                speed: v.speed || 0,
-                locked: v.is_locked === 1,
-                battery: v.battery_level || 100,
-                fuel: v.fuel_level || 100,
-                lastUpdate: v.last_seen ? new Date(v.last_seen) : null
-            })));
-        } catch (err) {
-            console.error("Failed to fetch vehicles", err);
-        }
-    };
-
-    const handleDeleteVehicle = async (vehicleId) => {
-        if (!confirm('Are you sure you want to remove this vehicle?')) return;
-        try {
-            await axios.delete(`http://localhost:3000/api/vehicles/${vehicleId}`);
-            fetchVehicles();
-            if (selectedVehicleId === vehicleId) setSelectedVehicleId(null);
-        } catch (err) {
-            alert('Failed to delete vehicle');
-        }
-    };
-
-    const toggleLock = (vehicleId, currentStatus) => {
-        const command = currentStatus ? 'UNLOCK' : 'LOCK';
-        socket.emit('send-command', { deviceId: vehicleId, command });
-
-        setVehicles(prev => prev.map(v =>
-            v.id === vehicleId ? { ...v, locked: !currentStatus } : v
-        ));
-    };
-
-    const handleLogin = (userData) => {
-        localStorage.setItem('user', JSON.stringify(userData));
-        setUser(userData);
-        setShowLanding(false);
-    };
-
-    const handleLogout = () => {
-        localStorage.removeItem('user');
-        setUser(null);
-        setVehicles([]);
-        setShowLanding(true);
-        setShowAnalytics(false);
-    };
-
-    const handleAddVehicle = async (e) => {
-        e.preventDefault();
-        try {
-            await axios.post('http://localhost:3000/api/vehicles', {
-                id: newVehicleId,
-                name: newVehicleName || `Vehicle ${newVehicleId}`,
-                ownerId: user.id
+            Promise.resolve().then(() => {
+                setGeofences([]);
+                setGeofenceMode(false);
             });
-            setNewVehicleId('');
-            setNewVehicleName('');
-            fetchVehicles();
-        } catch (err) {
-            alert(err.response?.data?.error || 'Failed to add vehicle');
         }
-    };
+    }, [selectedVehicleId, fetchGeofences]);
 
-    const handleVehicleSelect = (vehicle) => {
-        setSelectedVehicleId(vehicle.id);
-    };
-
-    const sendCommand = (deviceId, command) => {
-        socket.emit('send-command', { deviceId, command });
-        setVehicles(prev => prev.map(v =>
-            v.id === deviceId ? { ...v, locked: command === 'LOCK' } : v
-        ));
-    };
-
-    const handleGeofenceUpdate = useCallback(async (id, newLat, newLng, newRadius) => {
-        // Optimistic update
-        setGeofences(prev => prev.map(g =>
-            g.id === id ? { ...g, lat: newLat, lng: newLng, radius: newRadius } : g
-        ));
-
-        try {
-            await axios.put(`/api/geofences/${id}`, {
-                lat: newLat,
-                lng: newLng,
-                radius: newRadius
-            });
-        } catch (err) {
-            console.error("Failed to update geofence", err);
-            // Revert on failure (optional, but good practice)
-            fetchGeofences(selectedVehicleId);
-        }
-    }, [selectedVehicleId]);
-
-    const handleDeleteGeofence = async (id) => {
-        // Optimistic update
-        const previousGeofences = [...geofences];
-        setGeofences(prev => prev.filter(g => g.id !== id));
-
-        try {
-            await axios.delete(`http://localhost:3000/api/geofences/${id}`);
-        } catch (err) {
-            alert('Failed to delete geofence');
-            setGeofences(previousGeofences); // Revert
-        }
-    };
-
-    const onMapLoad = useCallback(map => {
-        mapRef.current = map;
-    }, []);
+    // Deleted duplicate helpers to avoid TDZ and unused functions
 
 
+
+    if (isAdminRoute && user && user.role === 'admin') {
+        return (
+            <ErrorBoundary>
+                <AdminDashboard
+                    user={user}
+                    onLogout={handleLogout}
+                    onBackToClient={() => {
+                        window.history.pushState({}, '', '/');
+                        setIsAdminRoute(false);
+                    }}
+                    onImpersonate={handleImpersonate}
+                />
+            </ErrorBoundary>
+        );
+    }
+
+    if (isSupportRoute) {
+        return (
+            <ErrorBoundary>
+                <SupportDashboard
+                    onBack={() => {
+                        window.history.pushState({}, '', '/');
+                        setIsSupportRoute(false);
+                    }}
+                />
+            </ErrorBoundary>
+        );
+    }
 
     return (
         <ErrorBoundary>
@@ -317,12 +669,152 @@ function App() {
 
             {/* Analytics Dashboard Overlay */}
             {user && showAnalytics && (
-                <AnalyticsDashboard onBack={() => setShowAnalytics(false)} />
+                <AnalyticsDashboard
+                    onBack={() => setShowAnalytics(false)}
+                    onOpenReports={() => setShowReports(true)}
+                />
+            )}
+
+            {/* Settings Overlay */}
+            {user && showSettings && (
+                <SettingsPanel
+                    user={user}
+                    onBack={() => setShowSettings(false)}
+                    onProfileUpdate={(updatedUser) => {
+                        setUser(updatedUser);
+                        localStorage.setItem('user', JSON.stringify(updatedUser));
+                    }}
+                />
+            )}
+
+            {/* Reports Overlay */}
+            {user && showReports && (
+                <ReportsPanel
+                    vehicles={vehicles}
+                    onClose={() => setShowReports(false)}
+                />
+            )}
+
+
+
+            {/* History Overlay */}
+            {user && showHistory && selectedVehicle && (
+                <HistoryDrawer
+                    vehicle={selectedVehicle}
+                    onClose={() => {
+                        setShowHistory(false);
+                        setTracePath([]);
+                        setPlayIndex(-1);
+                    }}
+                    onTraceUpdate={(path) => setTracePath(path)}
+                    onPlayStart={handlePlayStart}
+                />
+            )}
+
+            {/* Add Vehicle Overlay Card Modal */}
+            {user && showAddVehicle && (
+                <AddVehicleModal
+                    user={user}
+                    onClose={() => setShowAddVehicle(false)}
+                    onVehicleAdded={fetchVehicles}
+                />
+            )}
+
+            {/* Sandbox Checkout Simulator Modal Overlay */}
+            {sandboxData && (
+                <div className="sandbox-modal-overlay">
+                    <div className="sandbox-modal-container">
+                        <div className="sandbox-modal-header">
+                            <h2>💳 SafeBox Payment Gateway (Sandbox)</h2>
+                            <span className="sandbox-badge">SIMULATOR</span>
+                        </div>
+                        <div className="sandbox-modal-body">
+                            <p className="sandbox-desc">
+                                You have been redirected to the SafeBox test sandbox environment. Please review your transaction details below:
+                            </p>
+                            
+                            <div className="sandbox-details-card">
+                                <div className="detail-row">
+                                    <span className="detail-label">Reference ID</span>
+                                    <span className="detail-value text-mono">{sandboxData.reference}</span>
+                                </div>
+                                <div className="detail-row">
+                                    <span className="detail-label">Billing Cycle</span>
+                                    <span className="detail-value text-capitalize">{sandboxData.cycle}</span>
+                                </div>
+                                <div className="detail-row">
+                                    <span className="detail-label">Vehicles to Renew</span>
+                                    <span className="detail-value">{sandboxData.vehicles}</span>
+                                </div>
+                                <div className="detail-row">
+                                    <span className="detail-label">Total Amount</span>
+                                    <span className="detail-value highlight-currency">
+                                        ₦{(sandboxData.vehicles.split(',').length * (sandboxData.cycle === 'annual' ? 30000 : 3000)).toLocaleString()}/period
+                                    </span>
+                                </div>
+                            </div>
+
+                            <p className="sandbox-warning">
+                                ⚠️ This is a simulated checkout screen. No real money is processed. Select one of the outcomes below to verify your system's billing flow.
+                            </p>
+                        </div>
+                        
+                        <div className="sandbox-modal-actions">
+                            <button 
+                                className="sandbox-btn-success"
+                                onClick={async () => {
+                                    try {
+                                        await axios.get(`${API_BASE}/api/payments/verify/${sandboxData.reference}?userId=${sandboxData.userId}&vehicles=${sandboxData.vehicles}&cycle=${sandboxData.cycle}`);
+                                        alert('💳 Secure Sandbox Checkout Complete! Your fleet subscription has been activated.');
+                                        fetchVehicles();
+                                        setSandboxData(null);
+                                        window.history.replaceState({}, document.title, "/"); // Clean URL parameters
+                                    } catch (err) {
+                                        console.error('Mock verification failed:', err);
+                                        alert('Failed to verify payment reference');
+                                    }
+                                }}
+                            >
+                                Simulate Successful Payment
+                            </button>
+                            <button 
+                                className="sandbox-btn-failed"
+                                onClick={() => {
+                                    alert('❌ Sandbox Checkout: Payment simulation failed or was declined. Subscription not activated.');
+                                    setSandboxData(null);
+                                    window.history.replaceState({}, document.title, "/"); // Clean URL parameters
+                                }}
+                            >
+                                Simulate Failed Payment
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* Main Dashboard */}
             {user && !showLanding && !showAnalytics && (
-                <div className="app-container">
+                <div className={`app-container ${user.impersonating ? 'impersonating-active' : ''}`}>
+                    {user.impersonating && (
+                        <div className="impersonation-warning-banner">
+                            <div className="banner-text">
+                                <span className="banner-icon">🕵️</span>
+                                <span>Impersonating <strong>{user.company_name || user.username}</strong> (ID: {user.id})</span>
+                            </div>
+                            <button className="banner-stop-btn" onClick={handleStopImpersonation}>
+                                Return to Super Admin Console
+                            </button>
+                        </div>
+                    )}
+                    {vehicles.filter(v => v.subscription_status === 'GRACE_PERIOD').length > 0 && (
+                        <div
+                            className="grace-period-banner"
+                            onClick={() => setShowSettings(true)}
+                        >
+                            ⚠️ ACTION REQUIRED: Automated monthly billing failed for {vehicles.filter(v => v.subscription_status === 'GRACE_PERIOD').length} of your vehicles. They are in a 5-day Grace Period. Click here to open the Billing Manager.
+                        </div>
+                    )}
+
                     {/* Alerts Container */}
                     <div className="alerts-container">
                         {alerts.map((alert, idx) => (
@@ -331,6 +823,46 @@ function App() {
                             </div>
                         ))}
                     </div>
+
+                    {/* Override Requests Queue */}
+                    {pendingOverrides.length > 0 && (
+                        <div className="override-requests-queue">
+                            <div className="queue-header">
+                                <h3>🔑 Start Overrides Pending ({pendingOverrides.length})</h3>
+                            </div>
+                            <div className="queue-list">
+                                {pendingOverrides.map(req => (
+                                    <div key={req.id} className="override-request-card">
+                                        <div className="request-meta">
+                                            <div className="req-vehicle">🚗 <strong>{req.vehicle_name}</strong> ({req.vehicle_id})</div>
+                                            <div className="req-driver">👤 Driver: {req.driver_name}</div>
+                                            <div className="req-time">🕒 Requested: {new Date(req.requested_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                                        </div>
+                                        <div className="override-actions">
+                                            <button 
+                                                className="btn-approve-once"
+                                                onClick={() => handleResolveOverride(req.id, 'APPROVED_ONCE')}
+                                            >
+                                                Approve Once
+                                            </button>
+                                            <button 
+                                                className="btn-approve-midnight"
+                                                onClick={() => handleResolveOverride(req.id, 'APPROVED_MIDNIGHT')}
+                                            >
+                                                Until Midnight
+                                            </button>
+                                            <button 
+                                                className="btn-deny"
+                                                onClick={() => handleResolveOverride(req.id, 'DENIED')}
+                                            >
+                                                Deny
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Header */}
                     <header className="app-header">
@@ -360,56 +892,189 @@ function App() {
                                     Analytics 📊
                                 </button>
                             )}
+
+                            <button
+                                className="notifications-bell-btn"
+                                onClick={() => setShowNotifications(!showNotifications)}
+                                style={{
+                                    marginRight: '1rem',
+                                    background: 'linear-gradient(135deg, #1e293b, #0f172a)',
+                                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    padding: '0.5rem',
+                                    borderRadius: '0.5rem',
+                                    color: 'white',
+                                    cursor: 'pointer',
+                                    position: 'relative',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '38px',
+                                    height: '38px'
+                                }}
+                                title="Notifications"
+                            >
+                                <span style={{ fontSize: '1.2rem' }}>🔔</span>
+                                {notifications.filter(n => !n.is_read).length > 0 && (
+                                    <span 
+                                        style={{
+                                            position: 'absolute',
+                                            top: '-4px',
+                                            right: '-4px',
+                                            background: '#ef4444',
+                                            color: 'white',
+                                            borderRadius: '50%',
+                                            padding: '0.1rem 0.35rem',
+                                            fontSize: '0.65rem',
+                                            fontWeight: 'bold',
+                                            border: '2px solid #0f172a',
+                                            boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)'
+                                        }}
+                                    >
+                                        {notifications.filter(n => !n.is_read).length}
+                                    </span>
+                                )}
+                             </button>
+                            <button
+                                className="settings-btn"
+                                onClick={() => setShowSettings(true)}
+                                style={{
+                                    marginRight: '1rem',
+                                    background: 'linear-gradient(135deg, #4b5563, #374151)',
+                                    border: 'none',
+                                    padding: '0.5rem 1rem',
+                                    borderRadius: '0.5rem',
+                                    color: 'white',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem'
+                                }}
+                            >
+                                Settings ⚙️
+                            </button>
                             <span>{user.username} ({user.role})</span>
                             <button onClick={handleLogout} className="logout-btn">Logout</button>
                         </div>
                     </header>
 
+                    {showNotifications && (
+                        <NotificationsPanel
+                            notifications={notifications}
+                            onClose={() => setShowNotifications(false)}
+                            onMarkRead={handleMarkRead}
+                            onMarkAllRead={handleMarkAllRead}
+                        />
+                    )}
+
                     {/* Sidebar - Vehicle List */}
                     <div className="sidebar">
-                        <h3>Your Fleet</h3>
-                        <div className="vehicle-list">
-                            {vehicles.map(v => (
-                                <div
-                                    key={v.id}
-                                    className={`vehicle-card ${selectedVehicleId === v.id ? 'selected' : ''}`}
-                                    onClick={() => handleVehicleSelect(v)}
+                        <div className="sidebar-header-row">
+                            <h3>Your Fleet</h3>
+                            <button
+                                className="add-vehicle-trigger-btn"
+                                onClick={() => setShowAddVehicle(true)}
+                            >
+                                ➕ REGISTER
+                            </button>
+                        </div>
+
+                        {/* Search Bar */}
+                        <div className="sidebar-search">
+                            <input
+                                type="text"
+                                placeholder="🔍 Search name, plate, ID..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+
+                        {/* Filter Pills */}
+                        <div className="sidebar-filters">
+                            {['all', 'online', 'offline', 'alert', 'locked', 'moving'].map(filter => (
+                                <button
+                                    key={filter}
+                                    className={`filter-pill ${activeFilter === filter ? 'active' : ''}`}
+                                    onClick={() => setActiveFilter(filter)}
                                 >
-                                    <div className="vehicle-info">
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                            <span className="vehicle-name">{v.name}</span>
-                                            <span title={v.locked ? "Locked" : "Unlocked"}>
-                                                {v.locked ? '🔒' : '🔓'}
-                                            </span>
-                                        </div>
-                                        <span className={`status-badge ${isOnline(v.lastUpdate) ? 'online' : 'offline'}`}>
-                                            {isOnline(v.lastUpdate) ? 'ONLINE' : 'OFFLINE'}
-                                        </span>
-                                    </div>
-                                    <div className="vehicle-details-mini">
-                                        <span>🔋 {v.battery}%</span>
-                                        <span>⛽ {v.fuel || '--'}%</span>
-                                    </div>
-                                </div>
+                                    {filter.toUpperCase()}
+                                </button>
                             ))}
                         </div>
 
-                        {/* Add Vehicle Form */}
-                        <div className="add-vehicle-form">
-                            <h4>Add Vehicle</h4>
-                            <input
-                                type="text"
-                                placeholder="Device ID (e.g. MOTO_001)"
-                                value={newVehicleId}
-                                onChange={(e) => setNewVehicleId(e.target.value)}
-                            />
-                            <input
-                                type="text"
-                                placeholder="Name (Optional)"
-                                value={newVehicleName}
-                                onChange={(e) => setNewVehicleName(e.target.value)}
-                            />
-                            <button onClick={handleAddVehicle}>Add Vehicle</button>
+                        {/* Vehicle List */}
+                        <div className="vehicle-list">
+                            {vehicles.filter(v => {
+                                const matchesSearch =
+                                    v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                    v.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                    (v.plate_number && v.plate_number.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                                    (v.driver_name && v.driver_name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+                                if (!matchesSearch) return false;
+
+                                const online = isOnline(v.lastUpdate);
+                                if (activeFilter === 'online') return online;
+                                if (activeFilter === 'offline') return !online;
+                                if (activeFilter === 'alert') return (v.battery < 20 || v.fuel < 15);
+                                if (activeFilter === 'locked') return v.cloudLocked;
+                                if (activeFilter === 'moving') return (!v.locked && v.speed > 0 && online);
+
+                                return true;
+                            }).map(v => {
+                                const online = isOnline(v.lastUpdate);
+                                const isAlert = v.battery < 20 || v.fuel < 15;
+                                const isArmed = v.cloudLocked || v.locked;
+
+                                let statusClass = 'offline';
+                                let statusText = 'OFFLINE';
+                                if (isAlert) {
+                                    statusClass = 'alert';
+                                    statusText = 'ALERT';
+                                } else if (isArmed) {
+                                    statusClass = 'armed';
+                                    statusText = 'ARMED';
+                                } else if (online) {
+                                    statusClass = 'online';
+                                    statusText = 'ONLINE';
+                                }
+
+                                return (
+                                    <div
+                                        key={v.id}
+                                        className={`vehicle-card ${selectedVehicleId === v.id ? 'selected' : ''}`}
+                                        onClick={() => handleVehicleSelect(v)}
+                                    >
+                                        <div className="vehicle-info">
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                    <span className="vehicle-name">{v.name}</span>
+                                                    <span title={v.cloudLocked ? "Web Locked" : "Web Unlocked"}>
+                                                        {v.cloudLocked ? '🌐🔒' : '🌐🔓'}
+                                                    </span>
+                                                    <span title={v.locked ? "Engine Cut" : "Engine Running"}>
+                                                        {v.locked ? '🚫' : '⚡'}
+                                                    </span>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.1rem' }}>
+                                                    {v.plate_number && <span className="plate-badge">{v.plate_number}</span>}
+                                                    {v.driver_name && <span className="driver-badge">👤 {v.driver_name}</span>}
+                                                </div>
+                                            </div>
+
+                                            <span className={`status-badge ${statusClass}`}>
+                                                {statusText}
+                                            </span>
+                                        </div>
+
+                                        <div className="vehicle-details-mini">
+                                            <span>🔋 {v.battery}%</span>
+                                            <span>⛽ {v.fuel || '--'}%</span>
+                                            {v.speed > 0 && online && <span style={{ color: '#22c55e' }}>⚡ {v.speed} km/h</span>}
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
 
@@ -425,134 +1090,455 @@ function App() {
                                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                             />
+
+                            {/* Route Trace Drawing */}
+                            {tracePath.length > 0 && (
+                                <Polyline
+                                    positions={tracePath.map(p => [p.lat, p.lng])}
+                                    pathOptions={{
+                                        color: '#8b5cf6', // Premium Purple
+                                        weight: 5,
+                                        opacity: 0.8,
+                                        lineCap: 'round',
+                                        lineJoin: 'round'
+                                    }}
+                                />
+                            )}
+
+                            {/* Start and End Pins */}
+                            {tracePath.length > 0 && (
+                                <>
+                                    <Marker
+                                        position={[tracePath[0].lat, tracePath[0].lng]}
+                                        icon={new L.DivIcon({
+                                            html: '<div style="font-size: 1.6rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5))">🏁</div>',
+                                            iconSize: [25, 25],
+                                            iconAnchor: [12, 25],
+                                            className: ''
+                                        })}
+                                    >
+                                        <Popup>
+                                            <strong>🏁 Trip Start</strong><br />
+                                            Time: {new Date(tracePath[0].timestamp).toLocaleTimeString()}
+                                        </Popup>
+                                    </Marker>
+                                    <Marker
+                                        position={[tracePath[tracePath.length - 1].lat, tracePath[tracePath.length - 1].lng]}
+                                        icon={new L.DivIcon({
+                                            html: '<div style="font-size: 1.6rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5))">🛑</div>',
+                                            iconSize: [25, 25],
+                                            iconAnchor: [12, 25],
+                                            className: ''
+                                        })}
+                                    >
+                                        <Popup>
+                                            <strong>🛑 Trip End</strong><br />
+                                            Time: {new Date(tracePath[tracePath.length - 1].timestamp).toLocaleTimeString()}
+                                        </Popup>
+                                    </Marker>
+                                </>
+                            )}
+
+                            {/* Animated Trip Playhead Marker */}
+                            {playIndex !== -1 && playbackPath[playIndex] && (
+                                <Marker
+                                    position={[playbackPath[playIndex].lat, playbackPath[playIndex].lng]}
+                                    icon={new L.DivIcon({
+                                        html: '<div class="playback-marker">🚗</div>',
+                                        iconSize: [30, 30],
+                                        iconAnchor: [15, 15],
+                                        className: ''
+                                    })}
+                                >
+                                    <Popup>
+                                        <strong>Active Playback</strong><br />
+                                        Speed: {playbackPath[playIndex].speed} km/h<br />
+                                        Battery: {playbackPath[playIndex].battery}%<br />
+                                        Fuel: {playbackPath[playIndex].fuel || '--'}%<br />
+                                        Time: {new Date(playbackPath[playIndex].timestamp).toLocaleTimeString()}
+                                    </Popup>
+                                </Marker>
+                            )}
+
                             <MapClickHandler onClick={(e) => {
                                 if (geofenceMode && selectedVehicleId) {
-                                    setGeofenceMode(false);
                                     const lat = e.latlng.lat;
                                     const lng = e.latlng.lng;
-                                    const radius = (newGeofenceRadius && !isNaN(newGeofenceRadius) && newGeofenceRadius > 0) ? newGeofenceRadius : 500;
-                                    axios.post('/api/geofences', {
-                                        vehicleId: selectedVehicleId,
-                                        lat,
-                                        lng,
-                                        radius
-                                    }).then(() => {
-                                        fetchGeofences(selectedVehicleId);
-                                    }).catch(() => {
-                                        alert('Failed to create geofence');
-                                        setGeofenceMode(true);
-                                    });
+
+                                    if (geofenceType === 'polygon') {
+                                        // Polygon mode: collect points
+                                        setPolygonPoints(prev => [...prev, { lat, lng }]);
+                                    } else {
+                                        // Circle mode: place immediately
+                                        setGeofenceMode(false);
+                                        const radius = (newGeofenceRadius && !isNaN(newGeofenceRadius) && newGeofenceRadius > 0) ? newGeofenceRadius : 500;
+                                        axios.post(`${API_BASE}/api/geofences`, {
+                                            vehicleId: selectedVehicleId,
+                                            lat,
+                                            lng,
+                                            radius,
+                                            type: 'circle'
+                                        }).then(() => {
+                                            fetchGeofences(selectedVehicleId);
+                                        }).catch(() => {
+                                            alert('Failed to create geofence');
+                                            setGeofenceMode(true);
+                                        });
+                                    }
                                 }
                             }} />
 
-                            {geofences.map(geo => (
-                                <Circle
-                                    key={geo.id}
-                                    center={[geo.lat, geo.lng]}
-                                    radius={geo.radius}
-                                    pathOptions={{
-                                        fillColor: '#22c55e',
-                                        fillOpacity: 0.2,
-                                        color: '#22c55e',
-                                        weight: 2
-                                    }}
-                                />
-                            ))}
+                            {/* Render saved geofences (circles and polygons) */}
+                            {geofences.map(geo => {
+                                if (geo.type === 'polygon' && geo.coordinates) {
+                                    try {
+                                        const coords = typeof geo.coordinates === 'string' ? JSON.parse(geo.coordinates) : geo.coordinates;
+                                        return (
+                                            <Polygon
+                                                key={geo.id}
+                                                positions={coords.map(c => [c.lat, c.lng])}
+                                                pathOptions={{
+                                                    fillColor: '#3b82f6',
+                                                    fillOpacity: 0.15,
+                                                    color: '#3b82f6',
+                                                    weight: 2,
+                                                    dashArray: '6 4'
+                                                }}
+                                            />
+                                        );
+                                    } catch { return null; }
+                                }
+                                return (
+                                    <Circle
+                                        key={geo.id}
+                                        center={[geo.lat, geo.lng]}
+                                        radius={geo.radius}
+                                        pathOptions={{
+                                            fillColor: '#22c55e',
+                                            fillOpacity: 0.2,
+                                            color: '#22c55e',
+                                            weight: 2
+                                        }}
+                                    />
+                                );
+                            })}
 
-                            {vehicles.map(v => (
-                                <Marker
-                                    key={v.id}
-                                    position={[v.lat, v.lng]}
-                                    eventHandlers={{
-                                        click: () => handleVehicleSelect(v)
-                                    }}
-                                >
-                                    {selectedVehicle && selectedVehicle.id === v.id && (
-                                        <Popup open onClose={() => setSelectedVehicleId(null)}>
-                                            <div className="info-window">
-                                                <h3>{selectedVehicle.name}</h3>
-                                                <p>Status: {selectedVehicle.locked ? 'LOCKED 🔒' : 'UNLOCKED 🔓'}</p>
-                                                <p>Speed: {selectedVehicle.speed} km/h</p>
-                                                <p>Battery: {selectedVehicle.battery}%</p>
-                                                <p>Fuel: {selectedVehicle.fuel || '--'}%</p>
-                                                <div className="controls">
-                                                    <button
-                                                        className="lock-btn"
-                                                        onClick={() => sendCommand(selectedVehicle.id, 'LOCK')}
-                                                        disabled={selectedVehicle.locked}
-                                                    >
-                                                        LOCK
-                                                    </button>
-                                                    <button
-                                                        className="unlock-btn"
-                                                        onClick={() => sendCommand(selectedVehicle.id, 'UNLOCK')}
-                                                        disabled={!selectedVehicle.locked}
-                                                    >
-                                                        UNLOCK
-                                                    </button>
-                                                </div>
-                                                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                                    <button
-                                                        className="track-btn"
-                                                        onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${selectedVehicle.lat},${selectedVehicle.lng}`, '_blank')}
-                                                        style={{ flex: 1, backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold' }}
-                                                    >
-                                                        TRACK 📍
-                                                    </button>
-                                                    <button
-                                                        className="delete-btn"
-                                                        onClick={() => handleDeleteVehicle(selectedVehicle.id)}
-                                                        style={{ flex: 1, backgroundColor: '#ff4444', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold' }}
-                                                    >
-                                                        REMOVE 🗑️
-                                                    </button>
-                                                </div>
+                            {/* Render in-progress polygon drawing */}
+                            {geofenceMode && geofenceType === 'polygon' && polygonPoints.length > 0 && (
+                                <>
+                                    <Polyline
+                                        positions={polygonPoints.map(p => [p.lat, p.lng])}
+                                        pathOptions={{ color: '#f59e0b', weight: 2, dashArray: '5 5' }}
+                                    />
+                                    {polygonPoints.map((pt, idx) => (
+                                        <Circle
+                                            key={`poly-pt-${idx}`}
+                                            center={[pt.lat, pt.lng]}
+                                            radius={15}
+                                            pathOptions={{ fillColor: '#f59e0b', fillOpacity: 0.8, color: '#f59e0b', weight: 1 }}
+                                        />
+                                    ))}
+                                </>
+                            )}
 
-                                                <div style={{ marginTop: '0.5rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.5rem' }}>
-                                                    <h4>Safe Zones</h4>
-                                                    {geofences.length === 0 ? (
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                                            {geofenceMode && (
-                                                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                                                    <input
-                                                                        type="number"
-                                                                        value={newGeofenceRadius}
-                                                                        onChange={(e) => setNewGeofenceRadius(Number(e.target.value))}
-                                                                        placeholder="Radius (m)"
-                                                                        style={{ width: '80px', padding: '0.3rem', borderRadius: '0.25rem', border: '1px solid #ccc' }}
-                                                                    />
-                                                                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>meters</span>
-                                                                </div>
-                                                            )}
+                            {vehicles.map(v => {
+                                const online = isOnline(v.lastUpdate);
+                                const isAlert = v.battery < 20 || v.fuel < 15;
+                                const isArmed = v.cloudLocked || v.locked;
+                                const isSelected = selectedVehicleId === v.id;
+
+                                let markerClass = 'offline';
+                                if (isAlert) markerClass = 'alert';
+                                else if (isArmed) markerClass = 'armed';
+                                else if (online) markerClass = 'online';
+
+                                const customIcon = new L.DivIcon({
+                                    className: 'custom-vehicle-marker-wrapper',
+                                    html: `
+                                        <div class="vehicle-marker-glowing ${markerClass} ${isSelected ? 'selected' : ''}">
+                                            <div class="marker-dot"></div>
+                                            <div class="marker-pulse"></div>
+                                        </div>
+                                    `,
+                                    iconSize: [24, 24],
+                                    iconAnchor: [12, 12]
+                                });
+
+                                return (
+                                    <Marker
+                                        key={v.id}
+                                        position={[v.lat, v.lng]}
+                                        icon={customIcon}
+                                        eventHandlers={{
+                                            click: () => handleVehicleSelect(v)
+                                        }}
+                                    >
+                                        {selectedVehicle && selectedVehicle.id === v.id && (
+                                            <Popup open onClose={() => setSelectedVehicleId(null)}>
+                                                <div className="info-window" style={{ position: 'relative' }}>
+                                                    {selectedVehicle.subscription_status === 'SUSPENDED' || selectedVehicle.subscription_status === 'EXPIRED' ? (
+                                                        <div className="suspended-popup-overlay">
+                                                            <span className="lock-icon">🔒</span>
+                                                            <span className="suspension-title">SUSPENDED</span>
+                                                            <span className="suspension-desc">Reactivate this vehicle's subscription to enable remote control commands and GPS tracking.</span>
                                                             <button
-                                                                onClick={() => setGeofenceMode(!geofenceMode)}
-                                                                style={{ width: '100%', padding: '0.4rem', background: geofenceMode ? '#64748b' : '#8b5cf6', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }}
+                                                                className="reactivate-btn"
+                                                                onClick={() => {
+                                                                    setSelectedVehicleId(null);
+                                                                    setShowSettings(true);
+                                                                }}
                                                             >
-                                                                {geofenceMode ? 'Cancel Selection' : 'Add Safe Zone (Click Map)'}
+                                                                Open Billing Manager
                                                             </button>
                                                         </div>
-                                                    ) : (
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                                            {geofences.map(g => (
-                                                                <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem' }}>
-                                                                    <span>Zone ({g.radius || 500}m)</span>
-                                                                    <button
-                                                                        onClick={() => handleDeleteGeofence(g.id)}
-                                                                        style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.1rem 0.3rem', borderRadius: '0.2rem', cursor: 'pointer' }}
-                                                                    >
-                                                                        ×
-                                                                    </button>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
+                                                    ) : null}
+                                                    <h3>{selectedVehicle.name}</h3>
+                                                    <p>
+                                                        Security: {selectedVehicle.cloudLocked ?
+                                                            <span style={{ color: '#ff4444' }}>WEB LOCKED 🔒</span> :
+                                                            <span style={{ color: '#22c55e' }}>WEB UNLOCKED (WAITING FOR RF) 🔓</span>}
+                                                    </p>
+                                                    <p>
+                                                        Engine: {selectedVehicle.locked ?
+                                                            <span style={{ color: '#ff4444' }}>CUT 🚫</span> :
+                                                            <span style={{ color: '#22c55e' }}>RUNNING ⚡</span>}
+                                                    </p>
+                                                    <p>Speed: {selectedVehicle.speed} km/h</p>
+                                                    <p>Battery: {selectedVehicle.battery}%</p>
+                                                    <p>Fuel: {selectedVehicle.fuel || '--'}%</p>
+                                                    <div className="controls">
+                                                        <button
+                                                            className="lock-btn"
+                                                            onClick={() => sendCommand(selectedVehicle.id, 'LOCK')}
+                                                            style={{ opacity: selectedVehicle.cloudLocked ? 0.5 : 1 }}
+                                                            title={selectedVehicle.cloudLocked ? 'Already Web Locked' : 'Lock via Web'}
+                                                        >
+                                                            LOCK (WEB)
+                                                        </button>
+                                                        <button
+                                                            className="unlock-btn"
+                                                            onClick={() => sendCommand(selectedVehicle.id, 'UNLOCK')}
+                                                            style={{ opacity: !selectedVehicle.cloudLocked ? 0.5 : 1 }}
+                                                            title={!selectedVehicle.cloudLocked ? 'Already Web Unlocked (waiting for RF)' : 'Grant Web Permission'}
+                                                        >
+                                                            UNLOCK (WEB)
+                                                        </button>
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem' }}>
+                                                        <button
+                                                            className="track-btn"
+                                                            onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${selectedVehicle.lat},${selectedVehicle.lng}`, '_blank')}
+                                                            style={{ flex: 1, backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
+                                                        >
+                                                            TRACK 📍
+                                                        </button>
+                                                        <button
+                                                            className="history-btn"
+                                                            onClick={() => setShowHistory(true)}
+                                                            style={{ flex: 1, backgroundColor: '#8b5cf6', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
+                                                        >
+                                                            HISTORY 🕒
+                                                        </button>
+                                                        <button
+                                                            className="delete-btn"
+                                                            onClick={() => handleDeleteVehicle(selectedVehicle.id)}
+                                                            style={{ flex: 1, backgroundColor: '#ff4444', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
+                                                        >
+                                                            REMOVE 🗑️
+                                                        </button>
+                                                    </div>
+
+                                                    <div style={{ marginTop: '0.5rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.5rem' }}>
+                                                        <h4>Safe Zones</h4>
+                                                        {geofences.length === 0 ? (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                                {/* Type Toggle */}
+                                                                {geofenceMode && (
+                                                                    <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.25rem' }}>
+                                                                        <button
+                                                                            onClick={() => { setGeofenceType('circle'); setPolygonPoints([]); }}
+                                                                            style={{
+                                                                                flex: 1, padding: '0.3rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.75rem',
+                                                                                background: geofenceType === 'circle' ? '#8b5cf6' : '#e2e8f0',
+                                                                                color: geofenceType === 'circle' ? 'white' : '#475569',
+                                                                                border: 'none'
+                                                                            }}
+                                                                        >⭕ Circle</button>
+                                                                        <button
+                                                                            onClick={() => { setGeofenceType('polygon'); setPolygonPoints([]); }}
+                                                                            style={{
+                                                                                flex: 1, padding: '0.3rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.75rem',
+                                                                                background: geofenceType === 'polygon' ? '#3b82f6' : '#e2e8f0',
+                                                                                color: geofenceType === 'polygon' ? 'white' : '#475569',
+                                                                                border: 'none'
+                                                                            }}
+                                                                        >🔷 Polygon</button>
+                                                                    </div>
+                                                                )}
+                                                                {geofenceMode && geofenceType === 'circle' && (
+                                                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                                                        <input
+                                                                            type="number"
+                                                                            value={newGeofenceRadius}
+                                                                            onChange={(e) => setNewGeofenceRadius(Number(e.target.value))}
+                                                                            placeholder="Radius (m)"
+                                                                            style={{ width: '80px', padding: '0.3rem', borderRadius: '0.25rem', border: '1px solid #ccc' }}
+                                                                        />
+                                                                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>meters</span>
+                                                                    </div>
+                                                                )}
+                                                                {geofenceMode && geofenceType === 'polygon' && (
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                                                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                                                            Click map to add vertices ({polygonPoints.length} points)
+                                                                        </span>
+                                                                        {polygonPoints.length >= 3 && (
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setGeofenceMode(false);
+                                                                                    axios.post(`${API_BASE}/api/geofences`, {
+                                                                                        vehicleId: selectedVehicleId,
+                                                                                        type: 'polygon',
+                                                                                        coordinates: polygonPoints
+                                                                                    }).then(() => {
+                                                                                        fetchGeofences(selectedVehicleId);
+                                                                                        setPolygonPoints([]);
+                                                                                    }).catch(() => {
+                                                                                        alert('Failed to create polygon geofence');
+                                                                                        setGeofenceMode(true);
+                                                                                    });
+                                                                                }}
+                                                                                style={{ width: '100%', padding: '0.4rem', background: '#22c55e', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold' }}
+                                                                            >
+                                                                                ✓ Complete Polygon ({polygonPoints.length} pts)
+                                                                            </button>
+                                                                        )}
+                                                                        {polygonPoints.length > 0 && (
+                                                                            <button
+                                                                                onClick={() => setPolygonPoints(prev => prev.slice(0, -1))}
+                                                                                style={{ width: '100%', padding: '0.3rem', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.8rem' }}
+                                                                            >
+                                                                                ↩ Undo Last Point
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => { setGeofenceMode(!geofenceMode); setPolygonPoints([]); }}
+                                                                    style={{ width: '100%', padding: '0.4rem', background: geofenceMode ? '#64748b' : '#8b5cf6', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }}
+                                                                >
+                                                                    {geofenceMode ? 'Cancel Selection' : 'Add Safe Zone (Click Map)'}
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                                                {geofences.map(g => (
+                                                                    <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem' }}>
+                                                                        <span>
+                                                                            {g.type === 'polygon' ? '🔷 Polygon' : `⭕ Circle (${g.radius || 500}m)`}
+                                                                        </span>
+                                                                        <button
+                                                                            onClick={() => handleDeleteGeofence(g.id)}
+                                                                            style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.1rem 0.3rem', borderRadius: '0.2rem', cursor: 'pointer' }}
+                                                                        >
+                                                                            ×
+                                                                        </button>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </Popup>
-                                    )}
-                                </Marker>
-                            ))}
+                                            </Popup>
+                                        )}
+                                    </Marker>
+                                );
+                            })}
                         </MapContainer>
+
+                        {/* PLAYBACK TIMELINE DRAWER PANEL */}
+                        {playIndex !== -1 && playbackPath.length > 0 && (
+                            <div className="playback-timeline-panel">
+                                <div className="timeline-hud-row">
+                                    <div className="hud-metric">
+                                        <span className="hud-label">RECORDED AT</span>
+                                        <span className="hud-value">
+                                            {new Date(playbackPath[playIndex].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                        </span>
+                                    </div>
+                                    <div className="hud-metric">
+                                        <span className="hud-label">SPEED</span>
+                                        <span className="hud-value neon-blue">{playbackPath[playIndex].speed} <span className="hud-unit">km/h</span></span>
+                                    </div>
+                                    <div className="hud-metric">
+                                        <span className="hud-label">BATTERY</span>
+                                        <span className={`hud-value ${playbackPath[playIndex].battery < 20 ? 'neon-red' : 'neon-green'}`}>
+                                            🔋 {playbackPath[playIndex].battery}%
+                                        </span>
+                                    </div>
+                                    <div className="hud-metric">
+                                        <span className="hud-label">FUEL</span>
+                                        <span className="hud-value neon-orange">⛽ {playbackPath[playIndex].fuel}%</span>
+                                    </div>
+                                </div>
+
+                                <div className="timeline-scrubber-row">
+                                    <button 
+                                        className="timeline-play-pause-btn"
+                                        onClick={() => setIsPlaying(!isPlaying)}
+                                    >
+                                        {isPlaying ? '⏸' : '▶'}
+                                    </button>
+
+                                    <div className="scrubber-slider-container">
+                                        <input 
+                                            type="range"
+                                            min="0"
+                                            max={playbackPath.length - 1}
+                                            value={playIndex}
+                                            onChange={(e) => {
+                                                const idx = parseInt(e.target.value);
+                                                setPlayIndex(idx);
+                                                const pt = playbackPath[idx];
+                                                if (pt && mapRef.current) {
+                                                    mapRef.current.setView([pt.lat, pt.lng]);
+                                                }
+                                            }}
+                                            className="timeline-range-slider"
+                                        />
+                                        <div className="timeline-progress-labels">
+                                            <span>Start</span>
+                                            <span>Point {playIndex + 1} of {playbackPath.length}</span>
+                                            <span>End</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="timeline-speed-controls">
+                                        {[1, 2, 4, 8].map(spd => (
+                                            <button
+                                                key={spd}
+                                                className={`speed-pill-btn ${playbackSpeed === spd ? 'active' : ''}`}
+                                                onClick={() => setPlaybackSpeed(spd)}
+                                            >
+                                                {spd}x
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <button 
+                                        className="timeline-close-btn"
+                                        onClick={() => {
+                                            setPlayIndex(-1);
+                                            setIsPlaying(false);
+                                            setPlaybackPath([]);
+                                        }}
+                                        title="Exit Playback"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

@@ -1,0 +1,24 @@
+# Environment variables (NEVER commit these)
+.env
+.env.local
+.env.production
+.env.*
+
+# SQLite database (contains real user data)
+database.sqlite
+*.sqlite
+*.sqlite3
+
+# Node modules
+node_modules/
+
+# Generated PDF reports
+public/reports/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

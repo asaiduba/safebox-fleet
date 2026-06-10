@@ -1,0 +1,9 @@
+../Core/Src/esp_bridge.c:35:6:ESP_RxByteCallback	16	static
+../Core/Src/esp_bridge.c:41:13:prv_KickTx	8	static
+../Core/Src/esp_bridge.c:53:13:prv_TxEnqueue	24	static
+../Core/Src/esp_bridge.c:66:12:prv_ReadByte	16	static
+../Core/Src/esp_bridge.c:77:6:HAL_UART_TxCpltCallback	16	static
+../Core/Src/esp_bridge.c:97:6:ESP_Init	16	static
+../Core/Src/esp_bridge.c:104:6:ESP_PublishMQTT	16	static
+../Core/Src/esp_bridge.c:112:6:ESP_Process	16	static
+../Core/Src/esp_bridge.c:144:28:ESP_OnCommandReceived	16	static

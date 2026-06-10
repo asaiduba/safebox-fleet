@@ -1,0 +1,1530 @@
+/* Settings Overlay & Premium Glassmorphic Container */
+.settings-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.settings-container {
+    width: 95%;
+    max-width: 880px;
+    height: 85vh;
+    background: rgba(30, 41, 59, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 1.25rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: #f8fafc;
+    animation: scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Header */
+.settings-header {
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.settings-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    background: linear-gradient(135deg, #60a5fa, #3b82f6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.settings-header .close-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.25rem;
+    cursor: pointer;
+    transition: color 0.2s, transform 0.2s;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.settings-header .close-btn:hover {
+    color: #f1f5f9;
+    background: rgba(255, 255, 255, 0.05);
+    transform: rotate(90deg);
+}
+
+/* Form Layout */
+.settings-form {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+/* Scrollbar Customization */
+.settings-form::-webkit-scrollbar {
+    width: 8px;
+}
+.settings-form::-webkit-scrollbar-track {
+    background: transparent;
+}
+.settings-form::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+.settings-form::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Sections */
+.form-section {
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+}
+
+.form-section h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #93c5fd;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 0.5rem;
+}
+
+.section-subtitle {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    margin: -0.25rem 0 1.25rem 0;
+}
+
+.admin-section {
+    border: 1px dashed rgba(59, 130, 246, 0.3);
+    background: rgba(59, 130, 246, 0.03);
+}
+
+/* Inputs & Form Groups */
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.form-group-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.form-group label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #cbd5e1;
+}
+
+.settings-form input[type="text"],
+.settings-form input[type="email"],
+.settings-form input[type="tel"],
+.settings-form input[type="password"] {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    color: #f8fafc;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.settings-form input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+
+.disabled-input {
+    background: rgba(15, 23, 42, 0.2) !important;
+    border-color: rgba(255, 255, 255, 0.04) !important;
+    color: #64748b !important;
+    cursor: not-allowed;
+}
+
+.help-text {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: -0.25rem;
+}
+
+/* Custom Toggle Switches */
+.toggle-group {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.toggle-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+}
+
+.toggle-item:last-child {
+    border-bottom: none;
+}
+
+.toggle-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.toggle-title {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #f8fafc;
+}
+
+.toggle-desc {
+    font-size: 0.8rem;
+    color: #64748b;
+}
+
+/* Switch Styling */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #475569;
+    transition: 0.3s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+}
+
+input:checked + .slider {
+    background-color: #22c55e;
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px #22c55e;
+}
+
+input:checked + .slider:before {
+    transform: translateX(20px);
+}
+
+.slider.round {
+    border-radius: 24px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
+/* Sliders (Admin Ranges) */
+.slider-group {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.slider-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.slider-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.slider-title {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #e2e8f9;
+}
+
+.slider-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.1);
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.25rem;
+}
+
+/* Range input styling */
+.styled-range {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: #334155;
+    outline: none;
+}
+
+.styled-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #3b82f6;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+    transition: transform 0.1s;
+}
+
+.styled-range::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    background: #60a5fa;
+}
+
+/* Status Alerts */
+.status-alert {
+    margin: 1rem 2rem 0 2rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.status-alert.success {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #4ade80;
+}
+
+.status-alert.error {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+}
+
+/* Footer Control Buttons */
+.settings-footer {
+    padding: 1.5rem 2rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+}
+
+.settings-footer button {
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+    border: none;
+}
+
+.settings-footer button:active {
+    transform: scale(0.98);
+}
+
+.cancel-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e2e8f0;
+}
+
+.cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.save-btn {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.save-btn:hover {
+    background: linear-gradient(135deg, #60a5fa, #3b82f6);
+}
+
+.save-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes scaleUp {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+/* --- Fleet Billing Manager --- */
+.billing-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.billing-no-vehicles {
+    text-align: center;
+    color: #64748b;
+    font-size: 0.9rem;
+    padding: 1.5rem 0;
+}
+
+.billing-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.select-all-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.35rem 0.75rem;
+    border-radius: 0.35rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.select-all-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.selected-count-label {
+    font-size: 0.8rem;
+    color: #94a3b8;
+}
+
+.selected-count-label strong {
+    color: #3b82f6;
+}
+
+/* Checkbox Grid */
+.billing-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    max-height: 250px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.billing-grid::-webkit-scrollbar {
+    width: 6px;
+}
+.billing-grid::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+}
+
+.billing-card-item {
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.billing-card-item:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.billing-card-item.selected {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.35);
+}
+
+.billing-card-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.billing-card-left input[type="checkbox"] {
+    cursor: pointer;
+    accent-color: #3b82f6;
+    width: 16px;
+    height: 16px;
+}
+
+.billing-card-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.b-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #f8fafc;
+}
+
+.b-plate {
+    font-family: 'Courier New', monospace;
+    font-size: 0.7rem;
+    color: #94a3b8;
+    letter-spacing: 0.05em;
+}
+
+.billing-card-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.25rem;
+}
+
+.billing-badge {
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 0.15rem 0.45rem;
+    border-radius: 1rem;
+    text-transform: uppercase;
+}
+
+.billing-badge.active {
+    background: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
+}
+
+.billing-badge.grace_period {
+    background: rgba(249, 115, 22, 0.12);
+    color: #fdba74;
+}
+
+.billing-badge.suspended, .billing-badge.expired {
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+}
+
+.billing-days {
+    font-size: 0.7rem;
+    color: #64748b;
+}
+
+/* Dynamic Renewal Summary */
+.billing-checkout-summary {
+    background: rgba(59, 130, 246, 0.04);
+    border: 1px solid rgba(59, 130, 246, 0.15);
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.summary-details {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+    color: #cbd5e1;
+}
+
+.summary-details.total {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 0.75rem;
+    font-size: 1rem;
+    color: #f8fafc;
+}
+
+.summary-details.total strong {
+    color: #60a5fa;
+    font-size: 1.15rem;
+}
+
+.checkout-pay-btn {
+    width: 100%;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: white;
+    border: none;
+    padding: 0.85rem;
+    border-radius: 0.5rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(34, 197, 94, 0.25);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.checkout-pay-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4);
+    filter: brightness(1.1);
+}
+
+.checkout-pay-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* Billing Ledger History Table */
+.billing-history-section {
+    margin-top: 1.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    padding-top: 1.5rem;
+}
+
+.billing-history-section h4 {
+    margin: 0 0 0.75rem 0;
+    font-size: 1rem;
+    color: #cbd5e1;
+}
+
+.history-table-wrapper {
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 0.5rem;
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    text-align: left;
+}
+
+.history-table th {
+    background: rgba(15, 23, 42, 0.6);
+    color: #94a3b8;
+    padding: 0.6rem 0.75rem;
+    font-weight: 600;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.history-table td {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    color: #e2e8f0;
+}
+
+.history-table tr:last-child td {
+    border-bottom: none;
+}
+
+.h-ref {
+    font-family: monospace;
+    color: #60a5fa;
+}
+
+.history-status.success {
+    color: #4ade80;
+    background: rgba(34, 197, 94, 0.1);
+    padding: 0.15rem 0.45rem;
+    border-radius: 1rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+/* Billing Cycle Selector Custom Design System */
+.billing-cycle-selector {
+    display: flex;
+    gap: 0.75rem;
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 0.75rem;
+    padding: 0.35rem;
+    margin-bottom: 0.5rem;
+}
+
+.cycle-pill {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.6rem 1rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.cycle-pill:hover {
+    color: #f1f5f9;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.cycle-pill.active {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 600px) {
+    .billing-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Password Change OTP Verification Modal styles */
+.otp-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 3000;
+    animation: fadeIn 0.25s ease-out;
+}
+
+.otp-modal-container {
+    width: 90%;
+    max-width: 440px;
+    background: rgba(30, 41, 59, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 1.25rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    padding: 1.75rem;
+    color: #f8fafc;
+    animation: scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.otp-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.25rem;
+}
+
+.otp-modal-header h4 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #93c5fd;
+}
+
+.otp-modal-close {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.1rem;
+    cursor: pointer;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.2s;
+}
+
+.otp-modal-close:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: white;
+}
+
+.otp-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.otp-modal-desc {
+    font-size: 0.9rem;
+    color: #94a3b8;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.modal-alert {
+    margin: 0 !important;
+}
+
+.otp-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.otp-code-input {
+    font-family: monospace;
+    letter-spacing: 0.5em;
+    font-size: 1.8rem !important;
+    text-align: center;
+    padding: 0.75rem !important;
+    color: #60a5fa !important;
+    background: rgba(15, 23, 42, 0.8) !important;
+    border: 1px dashed rgba(59, 130, 246, 0.5) !important;
+}
+
+.otp-code-input:focus {
+    border-style: solid !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25) !important;
+}
+
+.otp-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+}
+
+.otp-cancel-btn {
+    padding: 0.65rem 1.25rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.08);
+    color: #e2e8f0;
+    border: none;
+    transition: background 0.2s;
+}
+
+.otp-cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.otp-confirm-btn {
+    padding: 0.65rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    border: none;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    transition: all 0.2s;
+}
+
+.otp-confirm-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #60a5fa, #3b82f6);
+}
+
+.otp-confirm-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.25s ease-out;
+}
+
+/* Sidebar Tabs Layout styling */
+.settings-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.settings-sidebar {
+    width: 220px;
+    background: rgba(15, 23, 42, 0.4);
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem 0.75rem;
+    gap: 0.5rem;
+}
+
+.sidebar-tab {
+    background: transparent;
+    border: 1px solid transparent;
+    color: #94a3b8;
+    text-align: left;
+    padding: 0.85rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+}
+
+.sidebar-tab:hover {
+    color: #e2e8f0;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.sidebar-tab.active {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.25);
+    color: #60a5fa;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.05);
+}
+
+.settings-content-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    background: rgba(30, 41, 59, 0.6);
+}
+
+/* Styled Select Option elements */
+.styled-select {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    color: #f8fafc;
+    font-size: 0.9rem;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    width: 100%;
+}
+
+.styled-select:focus {
+    border-color: #3b82f6;
+}
+
+.styled-select option {
+    background: #1e293b;
+    color: #f8fafc;
+}
+
+/* Textarea styling */
+.styled-textarea {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    color: #f8fafc;
+    font-size: 0.9rem;
+    outline: none;
+    resize: none;
+    transition: border-color 0.2s;
+    font-family: inherit;
+}
+
+.styled-textarea:focus {
+    border-color: #3b82f6;
+}
+
+/* Maintenance Form Specifics */
+.reminder-creation-form {
+    background: rgba(15, 23, 42, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.reminder-creation-form h4 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1rem;
+    color: #e2e8f0;
+}
+
+.reminder-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.cancel-reminder-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #cbd5e1;
+    padding: 0.5rem 1rem;
+    border-radius: 0.35rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.cancel-reminder-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.save-reminder-btn {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    border: none;
+    padding: 0.5rem 1.25rem;
+    border-radius: 0.35rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
+    transition: background 0.2s;
+}
+
+.save-reminder-btn:hover {
+    background: linear-gradient(135deg, #60a5fa, #3b82f6);
+}
+
+.no-reminders-msg {
+    text-align: center;
+    color: #64748b;
+    font-size: 0.85rem;
+    padding: 2rem 0;
+    background: rgba(15, 23, 42, 0.15);
+    border-radius: 0.5rem;
+    border: 1px dashed rgba(255, 255, 255, 0.04);
+}
+
+.reminders-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 350px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.reminders-list::-webkit-scrollbar {
+    width: 6px;
+}
+.reminders-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+}
+
+.reminder-card {
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    transition: border-color 0.2s;
+}
+
+.reminder-card.completed {
+    border-color: rgba(34, 197, 94, 0.2);
+    background: rgba(34, 197, 94, 0.02);
+}
+
+.reminder-card.completed .reminder-card-title strong {
+    text-decoration: line-through;
+    color: #64748b;
+}
+
+.reminder-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.reminder-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.reminder-type-tag {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.1);
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.25rem;
+}
+
+.reminder-custom-name {
+    font-size: 0.95rem;
+    color: #f8fafc;
+}
+
+.reminder-status-badge {
+    font-size: 0.7rem;
+    font-weight: 800;
+    padding: 0.15rem 0.45rem;
+    border-radius: 1rem;
+    text-transform: uppercase;
+}
+
+.reminder-status-badge.pending {
+    background: rgba(249, 115, 22, 0.12);
+    color: #fdba74;
+}
+
+.reminder-status-badge.completed {
+    background: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
+}
+
+.reminder-card-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: #94a3b8;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+}
+
+.reminder-detail-item {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.reminder-detail-item strong {
+    color: #cbd5e1;
+}
+
+.reminder-card-notes {
+    grid-column: 1 / -1;
+    font-size: 0.8rem;
+    color: #94a3b8;
+    background: rgba(15, 23, 42, 0.2);
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.35rem;
+    border-left: 2px solid #475569;
+}
+
+.reminder-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.toggle-status-btn {
+    background: transparent;
+    border: none;
+    color: #60a5fa;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.2s;
+    padding: 0;
+}
+
+.toggle-status-btn:hover {
+    color: #93c5fd;
+    text-decoration: underline;
+}
+
+.reminder-card-right-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.edit-reminder-btn, .delete-reminder-btn {
+    background: transparent;
+    border: none;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.edit-reminder-btn {
+    color: #e2e8f0;
+}
+
+.delete-reminder-btn {
+    color: #f87171;
+}
+
+.edit-reminder-btn:hover, .delete-reminder-btn:hover {
+    opacity: 0.8;
+}
+
+/* Support Tab styling */
+.support-code-container {
+    background: rgba(15, 23, 42, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 0.75rem;
+    padding: 2rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.support-code-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1.5rem 2.5rem;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    background: rgba(30, 41, 59, 0.6);
+    border-radius: 1rem;
+    box-shadow: 0 0 25px rgba(59, 130, 246, 0.15);
+}
+
+.code-label {
+    font-size: 0.75rem;
+    letter-spacing: 0.15em;
+    color: #94a3b8;
+    font-weight: 700;
+}
+
+.code-value-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.code-value {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: #3b82f6;
+    letter-spacing: 0.05em;
+    font-family: monospace;
+    text-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+}
+
+.copy-code-btn {
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #60a5fa;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.4rem 0.8rem;
+    border-radius: 0.35rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.copy-code-btn:hover {
+    background: rgba(59, 130, 246, 0.25);
+    color: white;
+}
+
+.code-timer {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: #cbd5e1;
+}
+
+.timer-countdown {
+    color: #f87171;
+    font-family: monospace;
+    font-size: 0.95rem;
+}
+
+.support-code-generate-placeholder {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+}
+
+.support-code-generate-placeholder p {
+    color: #94a3b8;
+    font-size: 0.9rem;
+    margin: 0;
+    max-width: 320px;
+    line-height: 1.5;
+}
+
+.generate-code-btn {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+    transition: all 0.2s;
+}
+
+.generate-code-btn:hover {
+    background: linear-gradient(135deg, #60a5fa, #3b82f6);
+    transform: translateY(-1px);
+}
+
+.support-instructions {
+    background: rgba(15, 23, 42, 0.15);
+    border: 1px dashed rgba(255, 255, 255, 0.05);
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+}
+
+.support-instructions h4 {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.9rem;
+    color: #cbd5e1;
+}
+
+.support-instructions ul {
+    margin: 0;
+    padding-left: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.support-instructions li {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    line-height: 1.4;
+}
+
+@media (max-width: 768px) {
+    .settings-layout {
+        flex-direction: column;
+    }
+    .settings-sidebar {
+        width: 100%;
+        flex-direction: row;
+        overflow-x: auto;
+        padding: 0.75rem 1rem;
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .sidebar-tab {
+        white-space: nowrap;
+    }
+}
+
+/* Curfew Scheduler Styling */
+.curfew-section {
+    border: 1px dashed rgba(245, 158, 11, 0.3) !important; /* warning orange dash border for security curfew */
+    background: rgba(245, 158, 11, 0.03) !important;
+}
+
+.styled-time-input {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.5rem;
+    color: #f8fafc;
+    padding: 0.65rem 0.85rem;
+    font-size: 0.9rem;
+    outline: none;
+    transition: all 0.2s;
+}
+
+.styled-time-input:focus {
+    border-color: #f59e0b;
+    background: rgba(15, 23, 42, 0.85);
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25);
+}
+
+.styled-time-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.curfew-vehicles-checklist {
+    background: rgba(15, 23, 42, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 0.75rem;
+    padding: 1rem;
+}
+
+.curfew-vehicles-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    max-height: 200px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.curfew-vehicles-grid::-webkit-scrollbar {
+    width: 6px;
+}
+.curfew-vehicles-grid::-webkit-scrollbar-track {
+    background: transparent;
+}
+.curfew-vehicles-grid::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+
+.curfew-vehicle-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
+}
+
+.curfew-vehicle-card:hover {
+    background: rgba(30, 41, 59, 0.85);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+}
+
+.curfew-vehicle-card.selected {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.curfew-vehicle-card .card-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.curfew-vehicle-card .card-left input[type="checkbox"] {
+    accent-color: #f59e0b;
+    width: 1rem;
+    height: 1rem;
+    cursor: pointer;
+}
+
+.curfew-vehicle-card .card-meta {
+    display: flex;
+    flex-direction: column;
+}
+
+.curfew-vehicle-card .v-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #cbd5e1;
+}
+
+.curfew-vehicle-card .v-id {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.curfew-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+}
+
+.curfew-badge.active {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.curfew-badge.inactive {
+    background: rgba(255, 255, 255, 0.05);
+    color: #94a3b8;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.apply-curfew-btn {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.65rem 1.25rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(217, 119, 6, 0.2);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.apply-curfew-btn:hover {
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 15px rgba(217, 119, 6, 0.35);
+}
+
+.apply-curfew-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+@media (max-width: 600px) {
+    .curfew-vehicles-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Day selector pill buttons */
+.day-pill-btn:hover:not(:disabled) {
+    border-color: #3b82f6 !important;
+    background: rgba(59, 130, 246, 0.1) !important;
+    color: #60a5fa !important;
+    transform: translateY(-1px);
+}
+
+.day-pill-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.curfew-vehicle-card.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+

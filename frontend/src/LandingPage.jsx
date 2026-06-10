@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './LandingPage.css';
 
 export default function LandingPage({ onGetStarted, user, onBackToDashboard }) {
+    const [fleetSize, setFleetSize] = useState(5);
+    const [cycle, setCycle] = useState('monthly');
+
     const handleLogin = () => {
         // Clear the hash from the URL for a clean login state
         window.history.replaceState(null, '', window.location.pathname);
@@ -62,67 +65,128 @@ export default function LandingPage({ onGetStarted, user, onBackToDashboard }) {
 
             {/* Features Section */}
             <section id="features" className="features-section">
-                <h2 className="section-title">Why Choose SafeBox?</h2>
+                <h2 className="section-title">Industrial IoT Capabilities</h2>
+                <p className="section-subtitle-center">Enterprise-grade fleet intelligence to monitor, protect, and optimize your assets.</p>
                 <div className="features-grid">
                     <div className="feature-card">
-                        <div className="icon">📍</div>
-                        <h3>Real-Time Tracking</h3>
-                        <p>Live GPS updates with 99.9% uptime and precision accuracy.</p>
+                        <div className="icon">🛰️</div>
+                        <h3>Real-Time GPS Telemetry</h3>
+                        <p>Dual-satellite positioning tracking with sub-meter accuracy, streamed instantly over secure MQTT brokers.</p>
                     </div>
                     <div className="feature-card">
                         <div className="icon">🔒</div>
-                        <h3>Remote Locking</h3>
-                        <p>Instantly lock or unlock your vehicle engine from anywhere.</p>
+                        <h3>Advanced Remote Cutoff</h3>
+                        <p>Remotely disable or enable vehicle engines instantly from your dashboard, complete with anti-tampering notifications.</p>
                     </div>
                     <div className="feature-card">
-                        <div className="icon">📊</div>
-                        <h3>Smart Analytics</h3>
-                        <p>Comprehensive reports on fuel, speed, and driver behavior.</p>
+                        <div className="icon">📈</div>
+                        <h3>Fleet Analytics & Health</h3>
+                        <p>Track battery health, fuel levels, and telemetry logs over time, stored in atomic SQLite database ledgers.</p>
                     </div>
                     <div className="feature-card">
-                        <div className="icon">⚡</div>
-                        <h3>Instant Alerts</h3>
-                        <p>Get notified immediately for theft attempts or geofence breaches.</p>
+                        <div className="icon">🏆</div>
+                        <h3>Driver Behavior Safety</h3>
+                        <p>Improve driver safety scoring by monitoring speed violations, harsh braking, and cornering thresholds with leaderboard tracking.</p>
                     </div>
                 </div>
             </section>
 
             {/* Pricing Section */}
             <section id="pricing" className="pricing-section">
-                <h2 className="section-title">Simple Pricing</h2>
+                <h2 className="section-title">Transparent & Scalable Plans</h2>
+                <p className="section-subtitle-center">No hidden fees. Pick a plan that fits your logistics operation.</p>
                 <div className="pricing-grid">
                     <div className="pricing-card">
-                        <h3>Starter</h3>
-                        <div className="price">$9<span>/mo</span></div>
+                        <h3>Monthly Tracker</h3>
+                        <div className="price">₦3,000<span>/mo per vehicle</span></div>
                         <ul>
-                            <li>1 Vehicle</li>
-                            <li>Real-time Tracking</li>
-                            <li>Basic Alerts</li>
+                            <li>1 Vehicle Tracking</li>
+                            <li>Real-Time GPS Telemetry</li>
+                            <li>Remote Engine Lock/Unlock</li>
+                            <li>Instant Webhook Alerts</li>
+                            <li>Cancel Anytime</li>
                         </ul>
-                        <button className="pricing-btn">Choose Starter</button>
+                        <button className="pricing-btn" onClick={handleLogin}>Get Started</button>
                     </div>
                     <div className="pricing-card popular">
                         <div className="badge">MOST POPULAR</div>
-                        <h3>Business</h3>
-                        <div className="price">$29<span>/mo</span></div>
+                        <h3>Annual Fleet Bundle</h3>
+                        <div className="price">₦30,000<span>/yr per vehicle</span></div>
+                        <div className="savings-label">Save 16% annually! 🎁</div>
                         <ul>
-                            <li>Up to 10 Vehicles</li>
-                            <li>Remote Locking</li>
-                            <li>30-Day History</li>
-                            <li>Priority Support</li>
+                            <li>Unlimited Fleet Scale</li>
+                            <li>Real-Time GPS Telemetry</li>
+                            <li>Remote Engine Lock/Unlock</li>
+                            <li>90-Day History & Analytics</li>
+                            <li>Driver Behavior Leaderboard</li>
+                            <li>Priority Support Line</li>
                         </ul>
-                        <button className="pricing-btn primary">Choose Business</button>
+                        <button className="pricing-btn primary" onClick={handleLogin}>Get Started</button>
                     </div>
                     <div className="pricing-card">
-                        <h3>Enterprise</h3>
+                        <h3>Enterprise IoT Suite</h3>
                         <div className="price">Custom</div>
                         <ul>
-                            <li>Unlimited Vehicles</li>
-                            <li>API Access</li>
-                            <li>Custom Reports</li>
-                            <li>Dedicated Manager</li>
+                            <li>Unlimited Fleet Capacity</li>
+                            <li>Direct Developer API Access</li>
+                            <li>Automated SQLite Billing Ledger</li>
+                            <li>Custom Telemetry Webhooks</li>
+                            <li>Dedicated Account Manager</li>
                         </ul>
-                        <button className="pricing-btn">Contact Sales</button>
+                        <a href="mailto:support@safebox.com" className="pricing-link-btn">Contact Sales</a>
+                    </div>
+                </div>
+
+                {/* Interactive Fleet Calculator Section */}
+                <div className="calculator-container glass-panel animate-fade-in">
+                    <h3>🧮 Live Fleet Cost Estimator</h3>
+                    <p className="calculator-subtitle">Estimate your monthly or annual subscription investment based on fleet size.</p>
+                    
+                    <div className="calc-row">
+                        <div className="calc-control-group">
+                            <div className="slider-label-row">
+                                <span>Fleet Size: <strong>{fleetSize}</strong> {fleetSize === 1 ? 'vehicle' : 'vehicles'}</span>
+                            </div>
+                            <input 
+                                type="range" 
+                                min="1" 
+                                max="100" 
+                                value={fleetSize} 
+                                onChange={(e) => setFleetSize(Number(e.target.value))} 
+                                className="calc-range-slider"
+                            />
+                        </div>
+                        
+                        <div className="calc-cycle-group">
+                            <span>Billing Cycle:</span>
+                            <div className="calc-cycle-selector">
+                                <button 
+                                    type="button" 
+                                    className={`calc-cycle-pill ${cycle === 'monthly' ? 'active' : ''}`}
+                                    onClick={() => setCycle('monthly')}
+                                >
+                                    Monthly
+                                </button>
+                                <button 
+                                    type="button" 
+                                    className={`calc-cycle-pill ${cycle === 'annual' ? 'active' : ''}`}
+                                    onClick={() => setCycle('annual')}
+                                >
+                                    Annual
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="calc-results">
+                        <div className="calc-result-item">
+                            <span className="label">Rate per Vehicle:</span>
+                            <span className="value">₦{(cycle === 'annual' ? 30000 : 3000).toLocaleString()}/{cycle === 'annual' ? 'yr' : 'mo'}</span>
+                        </div>
+                        <div className="calc-result-item total">
+                            <span className="label">Estimated Total Cost:</span>
+                            <span className="value highlight">₦{(fleetSize * (cycle === 'annual' ? 30000 : 3000)).toLocaleString()}/{cycle === 'annual' ? 'yr' : 'mo'}</span>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -147,10 +211,10 @@ export default function LandingPage({ onGetStarted, user, onBackToDashboard }) {
                         <p>Securing your journey, one mile at a time.</p>
                     </div>
                     <div className="footer-col">
-                        <h4>Contact</h4>
-                        <p>Email: support@safebox.com</p>
-                        <p>Phone: +1 (555) 123-4567</p>
-                        <p>Address: 123 Tech Park, Innovation City</p>
+                        <h4>Contact Us</h4>
+                        <p>Email: <a href="mailto:support@safebox.com" style={{ display: 'inline', color: '#60a5fa' }}>support@safebox.com</a></p>
+                        <p>Phone: <a href="tel:+2347032101663" style={{ display: 'inline', color: '#60a5fa' }}>+234 703 210 1663</a></p>
+                        <p>Address: PEZ Carnegie Mellon University Africa, Kigali Innovation City</p>
                     </div>
                     <div className="footer-col">
                         <h4>Links</h4>

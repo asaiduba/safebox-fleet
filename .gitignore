@@ -1,0 +1,32 @@
+# Build and dependency directories
+node_modules/
+dist/
+build/
+.env
+.env.*
+
+# Ignore all PDFs in the project
+*.pdf
+
+# Ignore Docs folder completely to keep GitHub clean and professional
+Docs/
+
+# Temporary/Backup files
+*.backup
+*.bak
+*.tmp
+*.lock
+database.sqlite
+database.sqlite.backup
+
+# Logs
+*.log
+simulator_log.txt
+output.log
+
+# IDE and tooling directories
+.claude/
+.gemini/
+.vscode/
+.idea/
+scratch/

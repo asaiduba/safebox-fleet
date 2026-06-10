@@ -1,3 +1,4 @@
+const API_BASE = import.meta.env.VITE_API_URL || '';
 import React, { useState } from 'react';
 import axios from 'axios';
 import './Auth.css';
@@ -10,12 +11,18 @@ const Auth = ({ onLogin, onBack }) => {
     const [formData, setFormData] = useState({
         username: '',
         password: '',
+        confirmPassword: '',
         role: 'individual',
         companyName: '',
         email: '',
         phone: ''
     });
     const [error, setError] = useState('');
+    
+    // Email Verification State
+    const [verifyingEmail, setVerifyingEmail] = useState('');
+    const [verificationCode, setVerificationCode] = useState('');
+    const [resendCooldown, setResendCooldown] = useState(0);
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -24,15 +31,67 @@ const Auth = ({ onLogin, onBack }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
+
+        if (!isLogin && formData.password !== formData.confirmPassword) {
+            setError('Passwords do not match.');
+            return;
+        }
+
         setLoading(true);
+
+        if (verifyingEmail) {
+            // Handle code verification submission
+            try {
+                const res = await axios.post(`${API_BASE}/api/verify-email`, {
+                    email: verifyingEmail,
+                    code: verificationCode
+                });
+                onLogin(res.data);
+            } catch (err) {
+                setError(err.response?.data?.error || 'Verification failed. Please check the code and try again.');
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
+
         const endpoint = isLogin ? '/api/login' : '/api/register';
         try {
-            const res = await axios.post(`http://localhost:3000${endpoint}`, formData);
-            onLogin(res.data);
+            const res = await axios.post(`${API_BASE}${endpoint}`, formData);
+            if (res.data.needsVerification) {
+                setVerifyingEmail(res.data.email);
+            } else {
+                onLogin(res.data);
+            }
         } catch (err) {
-            setError(err.response?.data?.error || 'An error occurred. Please try again.');
+            if (err.response?.data?.needsVerification) {
+                setVerifyingEmail(err.response.data.email);
+                setError(err.response.data.error || 'Please enter the verification code sent to your email.');
+            } else {
+                setError(err.response?.data?.error || 'An error occurred. Please try again.');
+            }
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleResendCode = async () => {
+        if (resendCooldown > 0) return;
+        setError('');
+        try {
+            await axios.post(`${API_BASE}/api/resend-verification`, { email: verifyingEmail });
+            setResendCooldown(60); // 60 seconds cooldown
+            const timer = setInterval(() => {
+                setResendCooldown(prev => {
+                    if (prev <= 1) {
+                        clearInterval(timer);
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        } catch (err) {
+            setError(err.response?.data?.error || 'Failed to resend verification code.');
         }
     };
 
@@ -61,53 +120,135 @@ const Auth = ({ onLogin, onBack }) => {
                 <img src="/logo.png" alt="SafeBox Logo" style={{ height: '40px' }} />
                 <span style={{ color: 'white', fontWeight: 'bold', fontSize: '1rem' }}>Safe Box Fleet</span>
             </div>
-            <div className="auth-card">
-                <h2>{isLogin ? 'Welcome Back' : 'Create Account'}</h2>
-                {error && <div className="error-msg">{error}</div>}
+            
+            {verifyingEmail ? (
+                <div className="auth-card">
+                    <h2>Verify Your Email</h2>
+                    <p style={{ color: '#94a3b8', fontSize: '0.875rem', marginBottom: '1.5rem', textAlign: 'center', lineHeight: '1.5' }}>
+                        We've sent a 6-digit verification code to <strong>{verifyingEmail}</strong>.<br />
+                        Please enter it below to activate your account.
+                    </p>
 
-                <form onSubmit={handleSubmit}>
-                    <div className="form-group">
-                        <label>Username</label>
-                        <input
-                            type="text"
-                            name="username"
-                            value={formData.username}
-                            onChange={handleChange}
-                            required
-                        />
-                    </div>
+                    {error && <div className="error-msg" style={{ marginBottom: '1rem' }}>{error}</div>}
 
-                    <div className="form-group password-group">
-                        <label>Password</label>
-                        <div className="password-input-wrapper">
+                    <form onSubmit={handleSubmit}>
+                        <div className="form-group" style={{ textAlign: 'center' }}>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', textAlign: 'center' }}>Verification Code</label>
                             <input
-                                type={showPassword ? "text" : "password"}
-                                name="password"
-                                value={formData.password}
+                                type="text"
+                                value={verificationCode}
+                                onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                placeholder="000000"
+                                maxLength="6"
+                                style={{
+                                    letterSpacing: '0.4em',
+                                    textAlign: 'center',
+                                    fontSize: '1.5rem',
+                                    fontWeight: 'bold',
+                                    padding: '12px',
+                                    width: '80%',
+                                    margin: 'auto',
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                                    borderRadius: '6px',
+                                    color: '#3b82f6',
+                                    outline: 'none'
+                                }}
+                                required
+                            />
+                        </div>
+
+                        <button 
+                            type="submit" 
+                            className="auth-btn" 
+                            style={{ marginTop: '1.5rem' }} 
+                            disabled={loading || verificationCode.length !== 6}
+                        >
+                            {loading ? 'Verifying...' : 'Verify & Log In'}
+                        </button>
+                    </form>
+
+                    <p className="toggle-text" style={{ marginTop: '1.5rem' }}>
+                        Didn't receive the code?{' '}
+                        {resendCooldown > 0 ? (
+                            <span style={{ color: '#64748b', cursor: 'default' }}>Resend in {resendCooldown}s</span>
+                        ) : (
+                            <span onClick={handleResendCode} style={{ textDecoration: 'underline', color: '#3b82f6', cursor: 'pointer' }}>
+                                Resend Code
+                            </span>
+                        )}
+                    </p>
+                    <p className="toggle-text">
+                        <span 
+                            onClick={() => { setVerifyingEmail(''); setError(''); setVerificationCode(''); }} 
+                            style={{ textDecoration: 'underline', color: '#94a3b8', cursor: 'pointer' }}
+                        >
+                            Back to Register / Log In
+                        </span>
+                    </p>
+                </div>
+            ) : (
+                <div className="auth-card">
+                    <h2>{isLogin ? 'Welcome Back' : 'Create Account'}</h2>
+                    {error && <div className="error-msg">{error}</div>}
+
+                    <form onSubmit={handleSubmit}>
+                        <div className="form-group">
+                            <label>Username</label>
+                            <input
+                                type="text"
+                                name="username"
+                                value={formData.username}
                                 onChange={handleChange}
                                 required
                             />
-                            <span
-                                className="toggle-password"
-                                onClick={() => setShowPassword(!showPassword)}
-                            >
-                                {showPassword ? '👁️' : '👁️‍🗨️'}
-                            </span>
                         </div>
-                    </div>
 
-                    {!isLogin && (
-                        <>
-                            <div className="form-group">
-                                <label>Account Type</label>
-                                <select name="role" value={formData.role} onChange={handleChange}>
-                                    <option value="individual">Individual Owner</option>
-                                    <option value="company">Logistics Company</option>
-                                </select>
+                        <div className="form-group password-group">
+                            <label>Password</label>
+                            <div className="password-input-wrapper">
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    name="password"
+                                    value={formData.password}
+                                    onChange={handleChange}
+                                    required
+                                />
+                                <span
+                                    className="toggle-password"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                >
+                                    {showPassword ? '👁️' : '👁️‍🗨️'}
+                                </span>
                             </div>
+                        </div>
 
-                            {formData.role === 'company' && (
-                                <>
+                        {!isLogin && (
+                            <div className="form-group password-group">
+                                <label>Confirm Password</label>
+                                <div className="password-input-wrapper">
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        name="confirmPassword"
+                                        value={formData.confirmPassword}
+                                        onChange={handleChange}
+                                        required
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {!isLogin && (
+                            <>
+                                <div className="form-group">
+                                    <label>Account Type</label>
+                                    <select name="role" value={formData.role} onChange={handleChange}>
+                                        <option value="individual">Individual Owner</option>
+                                        <option value="company">Logistics Company</option>
+                                    </select>
+                                </div>
+
+                                {formData.role === 'company' && (
                                     <div className="form-group">
                                         <label>Company Name</label>
                                         <input
@@ -118,43 +259,46 @@ const Auth = ({ onLogin, onBack }) => {
                                             required
                                         />
                                     </div>
-                                    <div className="form-group">
-                                        <label>Company Email</label>
-                                        <input
-                                            type="email"
-                                            name="email"
-                                            value={formData.email}
-                                            onChange={handleChange}
-                                            required
-                                        />
-                                    </div>
-                                    <div className="form-group">
-                                        <label>Phone Number</label>
-                                        <input
-                                            type="tel"
-                                            name="phone"
-                                            value={formData.phone}
-                                            onChange={handleChange}
-                                            required
-                                        />
-                                    </div>
-                                </>
-                            )}
-                        </>
-                    )}
+                                )}
 
-                    <button type="submit" className="auth-btn" disabled={loading}>
-                        {loading ? 'Processing...' : (isLogin ? 'Login' : 'Register')}
-                    </button>
-                </form>
+                                <div className="form-group">
+                                    <label>Email Address</label>
+                                    <input
+                                        type="email"
+                                        name="email"
+                                        value={formData.email}
+                                        onChange={handleChange}
+                                        required
+                                    />
+                                </div>
 
-                <p className="toggle-text">
-                    {isLogin ? "Don't have an account? " : "Already have an account? "}
-                    <span onClick={() => setIsLogin(!isLogin)}>
-                        {isLogin ? 'Sign Up' : 'Login'}
-                    </span>
-                </p>
-            </div>
+                                <div className="form-group">
+                                    <label>Phone Number</label>
+                                    <input
+                                        type="tel"
+                                        name="phone"
+                                        value={formData.phone}
+                                        onChange={handleChange}
+                                        placeholder="e.g. +234..."
+                                        required
+                                    />
+                                </div>
+                            </>
+                        )}
+
+                        <button type="submit" className="auth-btn" disabled={loading}>
+                            {loading ? 'Processing...' : (isLogin ? 'Login' : 'Register')}
+                        </button>
+                    </form>
+
+                    <p className="toggle-text">
+                        {isLogin ? "Don't have an account? " : "Already have an account? "}
+                        <span onClick={() => { setIsLogin(!isLogin); setError(''); }}>
+                            {isLogin ? 'Sign Up' : 'Login'}
+                        </span>
+                    </p>
+                </div>
+            )}
         </div>
     );
 };
