@@ -450,12 +450,13 @@ function initDb() {
         const adminExists = db.prepare("SELECT 1 FROM users WHERE role = 'admin'").get();
         if (!adminExists) {
             const bcrypt = require('bcrypt');
-            const hashedAdminPassword = bcrypt.hashSync('admin', 12);
+            const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
+            const hashedAdminPassword = bcrypt.hashSync(adminPassword, 12);
             db.prepare(`
                 INSERT INTO users (username, password, role, email, phone, is_verified, plan_id, subscription_status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `).run('admin', hashedAdminPassword, 'admin', 'admin@safebox.com', '+234800000000', 1, 'ENTERPRISE', 'ACTIVE');
-            console.log("🛡️ Seeded default Super Admin user: admin / admin");
+            console.log(`🛡️ Seeded default Super Admin user: admin / ${adminPassword === 'admin' ? 'admin (default)' : 'configured secure password'}`);
         }
     } catch (e) {
         console.error("Failed to seed admin user:", e.message);
