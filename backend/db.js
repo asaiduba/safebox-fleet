@@ -1,7 +1,11 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const db = new Database('database.sqlite');
+const dbPath = process.env.NODE_ENV === 'production'
+    ? '/data/database.sqlite'
+    : 'database.sqlite';
+
+const db = new Database(dbPath);
 
 function initDb() {
     // Migrate users check constraint to support 'admin' role if needed
