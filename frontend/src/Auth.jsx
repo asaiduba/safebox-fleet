@@ -18,14 +18,78 @@ const Auth = ({ onLogin, onBack }) => {
         phone: ''
     });
     const [error, setError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
     
     // Email Verification State
     const [verifyingEmail, setVerifyingEmail] = useState('');
     const [verificationCode, setVerificationCode] = useState('');
     const [resendCooldown, setResendCooldown] = useState(0);
 
+    // Forgot Password State
+    const [isForgotPassword, setIsForgotPassword] = useState(false);
+    const [resetEmailSent, setResetEmailSent] = useState('');
+    const [resetFormData, setResetFormData] = useState({
+        code: '',
+        newPassword: '',
+        confirmNewPassword: ''
+    });
+
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    const handleResetChange = (e) => {
+        setResetFormData({ ...resetFormData, [e.target.name]: e.target.value });
+    };
+
+    const handleForgotPasswordRequest = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSuccessMessage('');
+        setLoading(true);
+
+        try {
+            await axios.post(`${API_BASE}/api/forgot-password`, { email: formData.email });
+            setResetEmailSent(formData.email);
+            setSuccessMessage('Verification code sent to your email.');
+        } catch (err) {
+            setError(err.response?.data?.error || 'Failed to request reset code.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResetPasswordSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSuccessMessage('');
+
+        if (resetFormData.newPassword !== resetFormData.confirmNewPassword) {
+            setError('Passwords do not match.');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const res = await axios.post(`${API_BASE}/api/reset-password`, {
+                email: resetEmailSent,
+                code: resetFormData.code,
+                newPassword: resetFormData.newPassword
+            });
+            setSuccessMessage(res.data.message || 'Password reset successfully! Redirecting...');
+            setTimeout(() => {
+                setIsForgotPassword(false);
+                setResetEmailSent('');
+                setIsLogin(true);
+                setFormData({ ...formData, password: '', email: '' });
+                setResetFormData({ code: '', newPassword: '', confirmNewPassword: '' });
+                setSuccessMessage('');
+            }, 3000);
+        } catch (err) {
+            setError(err.response?.data?.error || 'Failed to reset password.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleSubmit = async (e) => {
@@ -187,10 +251,116 @@ const Auth = ({ onLogin, onBack }) => {
                         </span>
                     </p>
                 </div>
+            ) : isForgotPassword && !resetEmailSent ? (
+                <div className="auth-card">
+                    <h2>Reset Password</h2>
+                    <p style={{ color: '#94a3b8', fontSize: '0.875rem', marginBottom: '1.5rem', textAlign: 'center', lineHeight: '1.5' }}>
+                        Enter your registered email address. We will send you a 6-digit OTP code to reset your password.
+                    </p>
+
+                    {error && <div className="error-msg">{error}</div>}
+                    {successMessage && <div className="success-msg" style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1.5rem', textAlign: 'center', border: '1px solid rgba(34, 197, 94, 0.2)' }}>{successMessage}</div>}
+
+                    <form onSubmit={handleForgotPasswordRequest}>
+                        <div className="form-group">
+                            <label>Email Address</label>
+                            <input
+                                type="email"
+                                name="email"
+                                value={formData.email}
+                                onChange={handleChange}
+                                placeholder="name@company.com"
+                                required
+                            />
+                        </div>
+
+                        <button type="submit" className="auth-btn" disabled={loading}>
+                            {loading ? 'Sending Code...' : 'Send Reset Code'}
+                        </button>
+                    </form>
+
+                    <p className="toggle-text">
+                        <span onClick={() => { setIsForgotPassword(false); setError(''); setSuccessMessage(''); }} style={{ textDecoration: 'underline', color: '#3b82f6', cursor: 'pointer' }}>
+                            Back to Login
+                        </span>
+                    </p>
+                </div>
+            ) : isForgotPassword && resetEmailSent ? (
+                <div className="auth-card">
+                    <h2>Enter Reset Code</h2>
+                    <p style={{ color: '#94a3b8', fontSize: '0.875rem', marginBottom: '1.5rem', textAlign: 'center', lineHeight: '1.5' }}>
+                        We sent a 6-digit verification code to <strong>{resetEmailSent}</strong>. Enter the code and your new password.
+                    </p>
+
+                    {error && <div className="error-msg">{error}</div>}
+                    {successMessage && <div className="success-msg" style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1.5rem', textAlign: 'center', border: '1px solid rgba(34, 197, 94, 0.2)' }}>{successMessage}</div>}
+
+                    <form onSubmit={handleResetPasswordSubmit}>
+                        <div className="form-group">
+                            <label>Verification Code</label>
+                            <input
+                                type="text"
+                                name="code"
+                                value={resetFormData.code}
+                                onChange={handleResetChange}
+                                placeholder="000000"
+                                maxLength="6"
+                                required
+                            />
+                        </div>
+
+                        <div className="form-group password-group">
+                            <label>New Password</label>
+                            <div className="password-input-wrapper">
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    name="newPassword"
+                                    value={resetFormData.newPassword}
+                                    onChange={handleResetChange}
+                                    required
+                                />
+                                <span
+                                    className="toggle-password"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                >
+                                    {showPassword ? '👁' : '👁‍🗨'}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="form-group">
+                            <label>Confirm New Password</label>
+                            <input
+                                type={showPassword ? "text" : "password"}
+                                name="confirmNewPassword"
+                                value={resetFormData.confirmNewPassword}
+                                onChange={handleResetChange}
+                                required
+                            />
+                        </div>
+
+                        <button type="submit" className="auth-btn" disabled={loading}>
+                            {loading ? 'Resetting Password...' : 'Reset Password'}
+                        </button>
+                    </form>
+
+                    <p className="toggle-text">
+                        Didn't receive the code?{' '}
+                        <span onClick={handleForgotPasswordRequest} style={{ textDecoration: 'underline', color: '#3b82f6', cursor: 'pointer' }}>
+                            Resend Code
+                        </span>
+                    </p>
+                    <p className="toggle-text">
+                        <span onClick={() => { setIsForgotPassword(false); setResetEmailSent(''); setError(''); setSuccessMessage(''); }} style={{ textDecoration: 'underline', color: '#3b82f6', cursor: 'pointer' }}>
+                            Back to Login
+                        </span>
+                    </p>
+                </div>
             ) : (
                 <div className="auth-card">
                     <h2>{isLogin ? 'Welcome Back' : 'Create Account'}</h2>
                     {error && <div className="error-msg">{error}</div>}
+                    {successMessage && <div className="success-msg" style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1.5rem', textAlign: 'center', border: '1px solid rgba(34, 197, 94, 0.2)' }}>{successMessage}</div>}
 
                     <form onSubmit={handleSubmit}>
                         <div className="form-group">
@@ -218,9 +388,19 @@ const Auth = ({ onLogin, onBack }) => {
                                     className="toggle-password"
                                     onClick={() => setShowPassword(!showPassword)}
                                 >
-                                    {showPassword ? '👁️' : '👁️‍🗨️'}
+                                    {showPassword ? '👁' : '👁‍🗨'}
                                 </span>
                             </div>
+                            {isLogin && (
+                                <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
+                                    <span 
+                                        onClick={() => { setIsForgotPassword(true); setError(''); setSuccessMessage(''); setFormData({ ...formData, email: '' }); }}
+                                        style={{ color: '#3b82f6', fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'underline' }}
+                                    >
+                                        Forgot Password?
+                                    </span>
+                                </div>
+                            )}
                         </div>
 
                         {!isLogin && (

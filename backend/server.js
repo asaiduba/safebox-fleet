@@ -118,14 +118,20 @@ async function sendVerificationEmail(email, username, code, type = 'registration
 
   const subject = type === 'password_change' 
     ? 'SafeBox Fleet Password Change Verification' 
+    : type === 'password_reset'
+    ? 'Reset Your SafeBox Fleet Password'
     : 'Verify Your SafeBox Fleet Account';
 
   const introText = type === 'password_change'
     ? 'A request was made to change your SafeBox Fleet password. Please use the verification code below to authorize this change:'
+    : type === 'password_reset'
+    ? 'We received a request to reset your SafeBox Fleet password. Please use the verification code below to complete the reset:'
     : 'Thank you for signing up with SafeBox Fleet. Please use the verification code below to activate your account:';
 
   const bodyText = type === 'password_change'
     ? `Hello ${username},\n\nYour SafeBox Fleet password change verification code is: ${code}\n\nThis code will expire in 10 minutes.\n\nThank you,\nSafeBox Fleet Team`
+    : type === 'password_reset'
+    ? `Hello ${username},\n\nYour SafeBox Fleet password reset verification code is: ${code}\n\nThis code will expire in 10 minutes.\n\nThank you,\nSafeBox Fleet Team`
     : `Hello ${username},\n\nYour SafeBox Fleet verification code is: ${code}\n\nThis code will expire in 15 minutes.\n\nThank you,\nSafeBox Fleet Team`;
 
   if (smtpHost && smtpUser && smtpPass) {
@@ -417,6 +423,72 @@ app.post('/api/resend-verification', otpLimiter, async (req, res) => {
   } catch (err) {
     console.error('Failed to resend verification code:', err);
     res.status(500).json({ error: 'Failed to resend verification code.' });
+  }
+});
+
+// Request Password Reset OTP (Forgot Password)
+app.post('/api/forgot-password', otpLimiter, async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required.' });
+  }
+
+  try {
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user) {
+      return res.status(404).json({ error: 'No account found with this email address.' });
+    }
+
+    // Generate new code
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const verificationExpires = Date.now() + 10 * 60 * 1000; // 10 mins
+
+    db.prepare('UPDATE users SET verification_code = ?, verification_expires = ? WHERE id = ?')
+      .run(verificationCode, verificationExpires, user.id);
+
+    // Send email
+    await sendVerificationEmail(email, user.username, verificationCode, 'password_reset');
+
+    res.json({ success: true, message: 'Password reset code sent to your email.' });
+  } catch (err) {
+    console.error('Forgot password request failed:', err);
+    res.status(500).json({ error: 'Failed to send reset code.' });
+  }
+});
+
+// Reset Password with OTP
+app.post('/api/reset-password', otpLimiter, async (req, res) => {
+  const { email, code, newPassword } = req.body;
+  if (!email || !code || !newPassword) {
+    return res.status(400).json({ error: 'Email, verification code, and new password are required.' });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  }
+
+  try {
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    if (user.verification_code !== code) {
+      return res.status(400).json({ error: 'Invalid verification code.' });
+    }
+
+    if (Date.now() > user.verification_expires) {
+      return res.status(400).json({ error: 'Verification code has expired. Please request a new one.' });
+    }
+
+    // Hash and update password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    db.prepare('UPDATE users SET password = ?, verification_code = NULL, verification_expires = NULL WHERE id = ?')
+      .run(hashedPassword, user.id);
+
+    res.json({ success: true, message: 'Password has been reset successfully. You can now log in.' });
+  } catch (err) {
+    console.error('Password reset failed:', err);
+    res.status(500).json({ error: 'Failed to reset password.' });
   }
 });
 
