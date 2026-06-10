@@ -1,9 +1,0 @@
-../Core/Src/esp_bridge.c:35:6:ESP_RxByteCallback	1
-../Core/Src/esp_bridge.c:41:13:prv_KickTx	3
-../Core/Src/esp_bridge.c:53:13:prv_TxEnqueue	3
-../Core/Src/esp_bridge.c:66:12:prv_ReadByte	2
-../Core/Src/esp_bridge.c:77:6:HAL_UART_TxCpltCallback	3
-../Core/Src/esp_bridge.c:97:6:ESP_Init	1
-../Core/Src/esp_bridge.c:104:6:ESP_PublishMQTT	1
-../Core/Src/esp_bridge.c:112:6:ESP_Process	7
-../Core/Src/esp_bridge.c:144:28:ESP_OnCommandReceived	1

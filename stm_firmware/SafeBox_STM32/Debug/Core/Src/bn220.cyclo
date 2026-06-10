@@ -1,8 +1,0 @@
-../Core/Src/bn220.c:40:15:prv_NMEAToDecimal	5
-../Core/Src/bn220.c:58:13:prv_VerifyChecksum	4
-../Core/Src/bn220.c:79:13:prv_GetField	8
-../Core/Src/bn220.c:111:13:prv_ParseGPRMC	3
-../Core/Src/bn220.c:156:6:BN220_Init	1
-../Core/Src/bn220.c:161:6:BN220_ParseNMEA	9
-../Core/Src/bn220.c:201:12:BN220_GetLatestData	1
-../Core/Src/bn220.c:211:6:BN220_HasFix	1
