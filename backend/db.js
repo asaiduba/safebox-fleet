@@ -408,19 +408,24 @@ function initDb() {
 
     // Seed default admin user if not exists (MUST run before vehicles referencing owner_id = 1)
     try {
-        const adminExists = db.prepare("SELECT 1 FROM users WHERE role = 'admin'").get();
+        const adminExists = db.prepare("SELECT 1 FROM users WHERE username = 'admin'").get();
+        const bcrypt = require('bcrypt');
+        const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
+        const hashedAdminPassword = bcrypt.hashSync(adminPassword, 12);
         if (!adminExists) {
-            const bcrypt = require('bcrypt');
-            const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
-            const hashedAdminPassword = bcrypt.hashSync(adminPassword, 12);
             db.prepare(`
                 INSERT INTO users (username, password, role, email, phone, is_verified, plan_id, subscription_status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `).run('admin', hashedAdminPassword, 'admin', 'admin@safebox.com', '+234800000000', 1, 'ENTERPRISE', 'ACTIVE');
             console.log(`🛡️ Seeded default Super Admin user: admin / ${adminPassword === 'admin' ? 'admin (default)' : 'configured secure password'}`);
+        } else {
+            db.prepare(`
+                UPDATE users SET password = ? WHERE username = 'admin'
+            `).run(hashedAdminPassword);
+            console.log(`🛡️ Updated Super Admin user 'admin' password on startup from environment variable.`);
         }
     } catch (e) {
-        console.error("Failed to seed admin user:", e.message);
+        console.error("Failed to seed/update admin user:", e.message);
     }
 
     // Auto-register SAFEBOX_003 to SAFEBOX_007 for the TCP telematics simulator
