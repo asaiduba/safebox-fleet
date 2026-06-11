@@ -4,7 +4,13 @@ const path = require('path');
 const net = require('net');
 
 // Configuration
-const MQTT_BROKER = 'mqtt://broker.emqx.io';
+const MQTT_BROKER = process.env.MQTT_BROKER_URL || process.env.MQTT_BROKER || 'mqtt://broker.emqx.io';
+const MQTT_USER = process.env.MQTT_BROKER_USER || null;
+const MQTT_PASS = process.env.MQTT_BROKER_PASS || null;
+
+const TCP_HOST = process.env.TCP_HOST || 'localhost';
+const TCP_PORT = parseInt(process.env.TCP_PORT || process.env.PORT_TCP || '5000', 10);
+
 const DEVICE_PREFIX = 'MOTO_';
 const DEVICE_COUNT = 50; // 50 Devices
 const LOCK_FILE = path.join(__dirname, 'simulator.lock');
@@ -141,8 +147,8 @@ const tcpConnections = new Map();
 function connectTcpDevice(device) {
     const socket = new net.Socket();
     
-    socket.connect(5000, 'localhost', () => {
-        console.log(`[TCP Simulator] Connected tracker ${device.id} to TCP server on port 5000`);
+    socket.connect(TCP_PORT, TCP_HOST, () => {
+        console.log(`[TCP Simulator] Connected tracker ${device.id} to TCP server at ${TCP_HOST}:${TCP_PORT}`);
         socket.write(`$$LOGIN,${device.id},123456\r\n`);
     });
 
@@ -202,7 +208,11 @@ function initTcpSimulators() {
     });
 }
 
-const client = mqtt.connect(MQTT_BROKER);
+const mqttOptions = MQTT_USER ? {
+    username: MQTT_USER,
+    password: MQTT_PASS
+} : {};
+const client = mqtt.connect(MQTT_BROKER, mqttOptions);
 
 client.on('connect', () => {
     console.log('Connected to MQTT broker');
