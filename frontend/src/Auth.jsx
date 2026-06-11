@@ -24,6 +24,7 @@ const Auth = ({ onLogin, onBack }) => {
     const [verifyingEmail, setVerifyingEmail] = useState('');
     const [verificationCode, setVerificationCode] = useState('');
     const [resendCooldown, setResendCooldown] = useState(0);
+    const [fallbackCode, setFallbackCode] = useState('');
 
     // Forgot Password State
     const [isForgotPassword, setIsForgotPassword] = useState(false);
@@ -46,12 +47,16 @@ const Auth = ({ onLogin, onBack }) => {
         e.preventDefault();
         setError('');
         setSuccessMessage('');
+        setFallbackCode('');
         setLoading(true);
 
         try {
-            await axios.post(`${API_BASE}/api/forgot-password`, { email: formData.email });
+            const res = await axios.post(`${API_BASE}/api/forgot-password`, { email: formData.email });
             setResetEmailSent(formData.email);
             setSuccessMessage('Verification code sent to your email.');
+            if (res.data && res.data.devVerificationCode) {
+                setFallbackCode(res.data.devVerificationCode);
+            }
         } catch (err) {
             setError(err.response?.data?.error || 'Failed to request reset code.');
         } finally {
@@ -84,6 +89,7 @@ const Auth = ({ onLogin, onBack }) => {
                 setFormData({ ...formData, password: '', email: '' });
                 setResetFormData({ code: '', newPassword: '', confirmNewPassword: '' });
                 setSuccessMessage('');
+                setFallbackCode('');
             }, 3000);
         } catch (err) {
             setError(err.response?.data?.error || 'Failed to reset password.');
@@ -124,6 +130,9 @@ const Auth = ({ onLogin, onBack }) => {
             const res = await axios.post(`${API_BASE}${endpoint}`, formData);
             if (res.data.needsVerification) {
                 setVerifyingEmail(res.data.email);
+                if (res.data.devVerificationCode) {
+                    setFallbackCode(res.data.devVerificationCode);
+                }
             } else {
                 onLogin(res.data);
             }
@@ -131,6 +140,9 @@ const Auth = ({ onLogin, onBack }) => {
             if (err.response?.data?.needsVerification) {
                 setVerifyingEmail(err.response.data.email);
                 setError(err.response.data.error || 'Please enter the verification code sent to your email.');
+                if (err.response.data.devVerificationCode) {
+                    setFallbackCode(err.response.data.devVerificationCode);
+                }
             } else {
                 setError(err.response?.data?.error || 'An error occurred. Please try again.');
             }
@@ -142,9 +154,13 @@ const Auth = ({ onLogin, onBack }) => {
     const handleResendCode = async () => {
         if (resendCooldown > 0) return;
         setError('');
+        setFallbackCode('');
         try {
-            await axios.post(`${API_BASE}/api/resend-verification`, { email: verifyingEmail });
+            const res = await axios.post(`${API_BASE}/api/resend-verification`, { email: verifyingEmail });
             setResendCooldown(60); // 60 seconds cooldown
+            if (res.data && res.data.devVerificationCode) {
+                setFallbackCode(res.data.devVerificationCode);
+            }
             const timer = setInterval(() => {
                 setResendCooldown(prev => {
                     if (prev <= 1) {
@@ -192,6 +208,27 @@ const Auth = ({ onLogin, onBack }) => {
                         We've sent a 6-digit verification code to <strong>{verifyingEmail}</strong>.<br />
                         Please enter it below to activate your account.
                     </p>
+
+                    {fallbackCode && (
+                        <div style={{
+                            background: 'rgba(59, 130, 246, 0.1)',
+                            border: '1px solid rgba(59, 130, 246, 0.3)',
+                            color: '#60a5fa',
+                            padding: '1rem',
+                            borderRadius: '8px',
+                            marginBottom: '1.5rem',
+                            textAlign: 'center',
+                            lineHeight: '1.5',
+                            fontSize: '0.9rem'
+                        }}>
+                            📬 <strong>Email Delivery Fallback</strong><br />
+                            We couldn't deliver the verification email. Your code is:<br />
+                            <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#3b82f6', letterSpacing: '2px', display: 'block', margin: '0.5rem 0' }}>
+                                {fallbackCode}
+                            </span>
+                            Enter this code in the field below.
+                        </div>
+                    )}
 
                     {error && <div className="error-msg" style={{ marginBottom: '1rem' }}>{error}</div>}
 
@@ -291,6 +328,27 @@ const Auth = ({ onLogin, onBack }) => {
                     <p style={{ color: '#94a3b8', fontSize: '0.875rem', marginBottom: '1.5rem', textAlign: 'center', lineHeight: '1.5' }}>
                         We sent a 6-digit verification code to <strong>{resetEmailSent}</strong>. Enter the code and your new password.
                     </p>
+
+                    {fallbackCode && (
+                        <div style={{
+                            background: 'rgba(59, 130, 246, 0.1)',
+                            border: '1px solid rgba(59, 130, 246, 0.3)',
+                            color: '#60a5fa',
+                            padding: '1rem',
+                            borderRadius: '8px',
+                            marginBottom: '1.5rem',
+                            textAlign: 'center',
+                            lineHeight: '1.5',
+                            fontSize: '0.9rem'
+                        }}>
+                            📬 <strong>Email Delivery Fallback</strong><br />
+                            We couldn't deliver the verification email. Your code is:<br />
+                            <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#3b82f6', letterSpacing: '2px', display: 'block', margin: '0.5rem 0' }}>
+                                {fallbackCode}
+                            </span>
+                            Enter this code in the field below.
+                        </div>
+                    )}
 
                     {error && <div className="error-msg">{error}</div>}
                     {successMessage && <div className="success-msg" style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1.5rem', textAlign: 'center', border: '1px solid rgba(34, 197, 94, 0.2)' }}>{successMessage}</div>}

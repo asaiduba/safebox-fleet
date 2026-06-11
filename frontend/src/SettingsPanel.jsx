@@ -43,6 +43,7 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
     const [otpCode, setOtpCode] = useState('');
     const [otpLoading, setOtpLoading] = useState(false);
     const [otpError, setOtpError] = useState('');
+    const [settingsFallbackCode, setSettingsFallbackCode] = useState('');
 
     // Notification Toggles (saved to localStorage per user)
     const [batteryAlert, setBatteryAlert] = useState(true);
@@ -665,12 +666,13 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
 
             try {
                 // Request OTP code
-                await axios.post(`${API_BASE}/api/profile/request-password-change-otp`, {
+                const res = await axios.post(`${API_BASE}/api/profile/request-password-change-otp`, {
                     oldPassword
                 });
                 setShowOTPModal(true);
                 setOtpCode('');
                 setOtpError('');
+                setSettingsFallbackCode(res.data && res.data.devVerificationCode ? res.data.devVerificationCode : '');
             } catch (err) {
                 console.error('Failed to request password change OTP:', err);
                 setStatusMsg({ type: 'error', text: err.response?.data?.error || 'Failed to request verification code.' });
@@ -2067,6 +2069,7 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
                                     setShowOTPModal(false);
                                     setOtpCode('');
                                     setOtpError('');
+                                    setSettingsFallbackCode('');
                                     setLoading(false);
                                 }}
                             >
@@ -2079,6 +2082,27 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
                                 We have sent a 6-digit verification code to your email <strong>{user.email}</strong>. Enter the code below to authorize your password change.
                             </p>
                             
+                            {settingsFallbackCode && (
+                                <div style={{
+                                    background: 'rgba(59, 130, 246, 0.1)',
+                                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                                    color: '#60a5fa',
+                                    padding: '1rem',
+                                    borderRadius: '8px',
+                                    marginBottom: '1.5rem',
+                                    textAlign: 'center',
+                                    lineHeight: '1.5',
+                                    fontSize: '0.9rem'
+                                }}>
+                                    📬 <strong>Email Delivery Fallback</strong><br />
+                                    We couldn't deliver the verification email. Your code is:<br />
+                                    <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#3b82f6', letterSpacing: '2px', display: 'block', margin: '0.5rem 0' }}>
+                                        {settingsFallbackCode}
+                                    </span>
+                                    Enter this code in the field below.
+                                </div>
+                            )}
+
                             {otpError && (
                                 <div className="status-alert error modal-alert">
                                     {otpError}
@@ -2107,6 +2131,7 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
                                     setShowOTPModal(false);
                                     setOtpCode('');
                                     setOtpError('');
+                                    setSettingsFallbackCode('');
                                     setLoading(false);
                                 }}
                             >

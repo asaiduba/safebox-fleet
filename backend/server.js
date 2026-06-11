@@ -110,13 +110,8 @@ if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'public')));
 }
 
-// --- SECURITY: Nodemailer Email Sender helper ---
+// --- SECURITY: Nodemailer / Resend Email Sender helper ---
 async function sendVerificationEmail(email, username, code, type = 'registration') {
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpPort = process.env.SMTP_PORT;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
-
   const subject = type === 'password_change' 
     ? 'SafeBox Fleet Password Change Verification' 
     : type === 'password_reset'
@@ -135,8 +130,68 @@ async function sendVerificationEmail(email, username, code, type = 'registration
     ? `Hello ${username},\n\nYour SafeBox Fleet password reset verification code is: ${code}\n\nThis code will expire in 10 minutes.\n\nThank you,\nSafeBox Fleet Team`
     : `Hello ${username},\n\nYour SafeBox Fleet verification code is: ${code}\n\nThis code will expire in 15 minutes.\n\nThank you,\nSafeBox Fleet Team`;
 
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; background: #0f172a; color: white;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h2 style="color: #3b82f6; margin-top: 10px;">SafeBox Fleet</h2>
+      </div>
+      <p>Hello <strong>${username}</strong>,</p>
+      <p>${introText}</p>
+      <div style="text-align: center; margin: 30px 0; padding: 15px; background: rgba(59, 130, 246, 0.1); border: 2px dashed #3b82f6; border-radius: 6px; font-size: 2rem; font-weight: bold; letter-spacing: 0.25em; color: #3b82f6;">
+        ${code}
+      </div>
+      <p style="font-size: 0.875rem; color: #94a3b8;">This code will expire in ${type === 'password_change' ? '10' : '15'} minutes. If you did not request this, you can safely ignore this email.</p>
+      <hr style="border: 0; border-top: 1px solid #334155; margin: 30px 0;" />
+      <p style="font-size: 0.75rem; color: #64748b; text-align: center;">SafeBox Fleet — Secure Vehicle Tracking & Telematics Engine</p>
+    </div>
+  `;
+
+  // 1. Try Resend API (Primary - HTTPS port 443, not blocked)
+  if (process.env.RESEND_API_KEY) {
+    try {
+      console.log(`✉️ Attempting to send email via Resend to ${email}...`);
+      const fromEmail = process.env.RESEND_FROM_EMAIL || 'SafeBox Fleet <onboarding@resend.dev>';
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 seconds timeout
+
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: email,
+          subject: subject,
+          html: htmlContent
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        console.log(`✉️ Real verification email (${type}) sent via Resend to: ${email}`);
+        return { success: true };
+      } else {
+        const errText = await response.text();
+        console.error(`❌ Resend API failed (${response.status}):`, errText);
+      }
+    } catch (err) {
+      console.error('❌ Resend API exception:', err.message);
+    }
+  }
+
+  // 2. Try SMTP Nodemailer (Secondary/Backup - will timeout/fail fast if blocked)
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = process.env.SMTP_PORT;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+
   if (smtpHost && smtpUser && smtpPass) {
     try {
+      console.log(`✉️ Attempting to send email via SMTP to ${email}...`);
       const transporter = nodemailer.createTransport({
         host: smtpHost,
         port: parseInt(smtpPort) || 587,
@@ -144,7 +199,10 @@ async function sendVerificationEmail(email, username, code, type = 'registration
         auth: {
           user: smtpUser,
           pass: smtpPass
-        }
+        },
+        connectionTimeout: 3000,
+        greetingTimeout: 3000,
+        socketTimeout: 3000
       });
 
       const mailOptions = {
@@ -152,36 +210,24 @@ async function sendVerificationEmail(email, username, code, type = 'registration
         to: email,
         subject: subject,
         text: bodyText,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; background: #0f172a; color: white;">
-            <div style="text-align: center; margin-bottom: 20px;">
-              <h2 style="color: #3b82f6; margin-top: 10px;">SafeBox Fleet</h2>
-            </div>
-            <p>Hello <strong>${username}</strong>,</p>
-            <p>${introText}</p>
-            <div style="text-align: center; margin: 30px 0; padding: 15px; background: rgba(59, 130, 246, 0.1); border: 2px dashed #3b82f6; border-radius: 6px; font-size: 2rem; font-weight: bold; letter-spacing: 0.25em; color: #3b82f6;">
-              ${code}
-            </div>
-            <p style="font-size: 0.875rem; color: #94a3b8;">This code will expire in ${type === 'password_change' ? '10' : '15'} minutes. If you did not request this, you can safely ignore this email.</p>
-            <hr style="border: 0; border-top: 1px solid #334155; margin: 30px 0;" />
-            <p style="font-size: 0.75rem; color: #64748b; text-align: center;">SafeBox Fleet — Secure Vehicle Tracking & Telematics Engine</p>
-          </div>
-        `
+        html: htmlContent
       };
 
       await transporter.sendMail(mailOptions);
-      console.log(`✉️ Real verification email (${type}) sent to: ${email}`);
-      return;
+      console.log(`✉️ Real verification email (${type}) sent via SMTP to: ${email}`);
+      return { success: true };
     } catch (smtpErr) {
-      console.error('❌ SMTP dispatch failed, falling back to console log:', smtpErr.message);
+      console.error('❌ SMTP dispatch failed:', smtpErr.message);
     }
   }
 
+  // 3. Fallback: Log to console
   console.log(`\n======================================================`);
   console.log(`✉️  [MOCK EMAIL] Password/Verification Code for ${username} (${email}) - Type: ${type}`);
   console.log(`👉  CODE: ${code}`);
   console.log(`⏳  Expires: in ${type === 'password_change' ? '10' : '15'} minutes`);
   console.log(`======================================================\n`);
+  return { success: false, fallback: true };
 }
 
 async function sendMaintenanceEmail(email, username, vehicleName, reminder, odometer) {
@@ -302,9 +348,14 @@ app.post('/api/register', registerLimiter, async (req, res) => {
     stmt.run(username, hashedPassword, role, role === 'company' ? companyName : null, email, phone, verificationCode, verificationExpires);
 
     // Send verification email
-    await sendVerificationEmail(email, username, verificationCode);
+    const emailResult = await sendVerificationEmail(email, username, verificationCode);
 
-    res.json({ success: true, needsVerification: true, email });
+    res.json({
+      success: true,
+      needsVerification: true,
+      email,
+      devVerificationCode: (emailResult && emailResult.success) ? null : verificationCode
+    });
   } catch (err) {
     console.error('Registration error:', err);
     res.status(500).json({ error: 'Registration failed' });
@@ -333,18 +384,22 @@ app.post('/api/login', authLimiter, async (req, res) => {
       // Generate new OTP on block if expired, otherwise keep existing
       let verificationCode = user.verification_code;
       let expires = user.verification_expires;
+      let emailSent = false;
 
       if (!verificationCode || Date.now() > expires) {
         verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
         expires = Date.now() + 15 * 60 * 1000;
         db.prepare('UPDATE users SET verification_code = ?, verification_expires = ? WHERE id = ?').run(verificationCode, expires, user.id);
-        await sendVerificationEmail(user.email, user.username, verificationCode);
       }
+
+      const emailResult = await sendVerificationEmail(user.email, user.username, verificationCode);
+      emailSent = emailResult && emailResult.success;
 
       return res.status(403).json({ 
         error: 'Please verify your email address. A verification code has been sent.', 
         needsVerification: true, 
-        email: user.email 
+        email: user.email,
+        devVerificationCode: emailSent ? null : verificationCode
       });
     }
 
@@ -418,9 +473,13 @@ app.post('/api/resend-verification', otpLimiter, async (req, res) => {
     db.prepare('UPDATE users SET verification_code = ?, verification_expires = ? WHERE id = ?').run(verificationCode, verificationExpires, user.id);
 
     // Resend email
-    await sendVerificationEmail(email, user.username, verificationCode);
+    const emailResult = await sendVerificationEmail(email, user.username, verificationCode);
 
-    res.json({ success: true, message: 'Verification code resent successfully.' });
+    res.json({
+      success: true,
+      message: 'Verification code resent successfully.',
+      devVerificationCode: (emailResult && emailResult.success) ? null : verificationCode
+    });
   } catch (err) {
     console.error('Failed to resend verification code:', err);
     res.status(500).json({ error: 'Failed to resend verification code.' });
@@ -448,9 +507,13 @@ app.post('/api/forgot-password', otpLimiter, async (req, res) => {
       .run(verificationCode, verificationExpires, user.id);
 
     // Send email
-    await sendVerificationEmail(email, user.username, verificationCode, 'password_reset');
+    const emailResult = await sendVerificationEmail(email, user.username, verificationCode, 'password_reset');
 
-    res.json({ success: true, message: 'Password reset code sent to your email.' });
+    res.json({
+      success: true,
+      message: 'Password reset code sent to your email.',
+      devVerificationCode: (emailResult && emailResult.success) ? null : verificationCode
+    });
   } catch (err) {
     console.error('Forgot password request failed:', err);
     res.status(500).json({ error: 'Failed to send reset code.' });
@@ -531,9 +594,13 @@ app.post('/api/profile/request-password-change-otp', authMiddleware, async (req,
       .run(verificationCode, verificationExpires, userId);
 
     // Send verification email
-    await sendVerificationEmail(user.email, user.username, verificationCode, 'password_change');
+    const emailResult = await sendVerificationEmail(user.email, user.username, verificationCode, 'password_change');
 
-    res.json({ success: true, message: 'Verification OTP sent to your email.' });
+    res.json({
+      success: true,
+      message: 'Verification OTP sent to your email.',
+      devVerificationCode: (emailResult && emailResult.success) ? null : verificationCode
+    });
   } catch (err) {
     console.error('Failed to request password change OTP:', err);
     res.status(500).json({ error: 'Failed to request verification code.' });
