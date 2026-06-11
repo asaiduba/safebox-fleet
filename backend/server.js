@@ -97,6 +97,13 @@ function authMiddleware(req, res, next) {
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Check if user is suspended in the database
+    const user = db.prepare('SELECT subscription_status FROM users WHERE id = ?').get(decoded.id);
+    if (user && user.subscription_status === 'SUSPENDED') {
+      return res.status(403).json({ error: 'Your account has been suspended. Please contact support at safebox.hq@gmail.com.' });
+    }
+
     req.user = decoded; // { id, username, role }
     next();
   } catch (err) {
@@ -425,6 +432,11 @@ app.post('/api/login', authLimiter, async (req, res) => {
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Check if account is suspended
+    if (user.subscription_status === 'SUSPENDED') {
+      return res.status(403).json({ error: 'Your account has been suspended. Please contact support at safebox.hq@gmail.com.' });
     }
 
     // Check verification status
@@ -1784,9 +1796,13 @@ app.delete('/api/admin/tenants/:id', authMiddleware, adminMiddleware, (req, res)
       db.prepare(`DELETE FROM report_schedules WHERE user_id = ?`).run(id);
       // 9. Delete report history
       db.prepare(`DELETE FROM report_history WHERE generated_by = ?`).run(id);
-      // 10. Delete subscriptions
+      // 10. Delete reports
+      db.prepare(`DELETE FROM reports WHERE user_id = ?`).run(id);
+      // 11. Delete support codes
+      db.prepare(`DELETE FROM support_codes WHERE user_id = ?`).run(id);
+      // 12. Delete subscriptions
       db.prepare(`DELETE FROM subscriptions WHERE user_id = ?`).run(id);
-      // 11. Finally delete the user
+      // 13. Finally delete the user
       db.prepare(`DELETE FROM users WHERE id = ?`).run(id);
     })();
 
@@ -1794,7 +1810,7 @@ app.delete('/api/admin/tenants/:id', authMiddleware, adminMiddleware, (req, res)
     res.json({ success: true, message: 'Tenant and all associated data deleted successfully.' });
   } catch (err) {
     console.error("Super Admin delete tenant error:", err);
-    res.status(500).json({ error: 'Failed to delete tenant account and associated data' });
+    res.status(500).json({ error: 'Failed to delete tenant: ' + err.message });
   }
 });
 
