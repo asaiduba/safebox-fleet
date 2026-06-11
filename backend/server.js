@@ -231,11 +231,6 @@ async function sendVerificationEmail(email, username, code, type = 'registration
 }
 
 async function sendMaintenanceEmail(email, username, vehicleName, reminder, odometer) {
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpPort = process.env.SMTP_PORT;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
-
   const limit = (reminder.last_service_km || 0) + (reminder.threshold_km || 0);
   const subject = `SafeBox Fleet: Maintenance Due for ${vehicleName}`;
   const text = `Hello ${username},\n\nThis is an automated alert that vehicle ${vehicleName} requires a scheduled ${reminder.type}.\n\nCurrent Odometer: ${Math.round(odometer)} km\nService Threshold: ${Math.round(limit)} km\nNotes: ${reminder.notes || 'None'}\n\nPlease schedule a service soon.\n\nBest regards,\nSafeBox Fleet Team`;
@@ -270,14 +265,65 @@ async function sendMaintenanceEmail(email, username, vehicleName, reminder, odom
     </div>
   `;
 
+  // 1. Try Resend HTTP API (Primary/Preferred - runs on HTTPS port 443)
+  if (process.env.RESEND_API_KEY) {
+    try {
+      console.log(`✉️ Attempting to send maintenance email via Resend to ${email}...`);
+      const fromEmail = process.env.RESEND_FROM_EMAIL || 'SafeBox Fleet Alert <onboarding@resend.dev>';
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 seconds timeout
+
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: email,
+          subject: subject,
+          html: html
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        console.log(`✉️ Real maintenance email sent via Resend to: ${email}`);
+        return;
+      } else {
+        const errText = await response.text();
+        console.error(`❌ Resend API failed for maintenance email (${response.status}):`, errText);
+      }
+    } catch (err) {
+      console.error('❌ Resend API exception for maintenance email:', err.message);
+    }
+  }
+
+  // 2. Try SMTP Nodemailer (Secondary/Backup - will timeout/fail fast if blocked)
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = process.env.SMTP_PORT;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+
   if (smtpHost && smtpUser && smtpPass) {
     try {
+      console.log(`✉️ Attempting to send maintenance email via SMTP to ${email}...`);
       const transporter = nodemailer.createTransport({
         host: smtpHost,
         port: parseInt(smtpPort) || 587,
         secure: parseInt(smtpPort) === 465,
-        auth: { user: smtpUser, pass: smtpPass }
+        auth: {
+          user: smtpUser,
+          pass: smtpPass
+        },
+        connectionTimeout: 3000,
+        greetingTimeout: 3000,
+        socketTimeout: 3000
       });
+
       await transporter.sendMail({
         from: `"SafeBox Fleet Alert" <${smtpUser}>`,
         to: email,
@@ -285,12 +331,14 @@ async function sendMaintenanceEmail(email, username, vehicleName, reminder, odom
         text,
         html
       });
-      console.log(`✉️ Maintenance email sent to: ${email}`);
+      console.log(`✉️ Real maintenance email sent via SMTP to: ${email}`);
       return;
     } catch (smtpErr) {
       console.error('❌ Maintenance SMTP failed, falling back to console log:', smtpErr.message);
     }
   }
+
+  // 3. Fallback: Log to console
   console.log(`\n======================================================`);
   console.log(`✉️  [MOCK EMAIL] Maintenance Alert for ${username} (${email})`);
   console.log(`👉  VEHICLE: ${vehicleName}`);
