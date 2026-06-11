@@ -57,11 +57,7 @@ io.use((socket, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     
-    // Check if user is suspended in the database
-    const user = db.prepare('SELECT subscription_status FROM users WHERE id = ?').get(decoded.id);
-    if (user && user.subscription_status === 'SUSPENDED') {
-      return next(new Error('Authentication error: Your account has been suspended. Please contact support.'));
-    }
+
     
     socket.user = decoded; // { id, username, role }
     next();
@@ -121,12 +117,23 @@ function authMiddleware(req, res, next) {
     const decoded = jwt.verify(token, JWT_SECRET);
 
     // Check if user is suspended in the database
-    const user = db.prepare('SELECT subscription_status FROM users WHERE id = ?').get(decoded.id);
-    if (user && user.subscription_status === 'SUSPENDED') {
-      return res.status(403).json({ error: 'Your account has been suspended. Please contact support at safebox.hq@gmail.com.' });
-    }
-
+    const user = db.prepare('SELECT subscription_status, role FROM users WHERE id = ?').get(decoded.id);
     req.user = decoded; // { id, username, role }
+
+    if (user && user.subscription_status === 'SUSPENDED' && user.role !== 'admin') {
+      const basePath = req.originalUrl.split('?')[0];
+      const isAllowed = 
+        basePath.startsWith('/api/profile') || 
+        basePath.startsWith('/api/payments') || 
+        basePath.startsWith('/api/subscriptions') || 
+        (basePath === '/api/vehicles' && req.method === 'GET') ||
+        (basePath === '/api/geofences' && req.method === 'GET') ||
+        (basePath === '/api/override/pending' && req.method === 'GET');
+
+      if (!isAllowed) {
+        return res.status(403).json({ error: 'Your subscription is suspended. Please renew your plan in Settings -> Billing to restore tracking and controls.' });
+      }
+    }
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Session expired or invalid. Please log in again.' });
@@ -456,10 +463,7 @@ app.post('/api/login', authLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Check if account is suspended
-    if (user.subscription_status === 'SUSPENDED') {
-      return res.status(403).json({ error: 'Your account has been suspended. Please contact support at safebox.hq@gmail.com.' });
-    }
+
 
     // Check verification status
     if (user.is_verified === 0) {
@@ -794,8 +798,10 @@ mqttClient.on('message', (topic, message) => {
 
       // Verify the vehicle exists and find its owner
       const vehicle = db.prepare(`
-        SELECT owner_id, name, lat, lng, odometer_km, curfew_enabled, curfew_start, curfew_end, curfew_days, curfew_allow_override, curfew_holiday_mode, override_status, override_expires, cloud_locked, subscription_status
-        FROM vehicles WHERE id = ?
+        SELECT v.owner_id, v.name, v.lat, v.lng, v.odometer_km, v.curfew_enabled, v.curfew_start, v.curfew_end, v.curfew_days, v.curfew_allow_override, v.curfew_holiday_mode, v.override_status, v.override_expires, v.cloud_locked, v.subscription_status, u.subscription_status AS user_subscription_status
+        FROM vehicles v
+        LEFT JOIN users u ON v.owner_id = u.id
+        WHERE v.id = ?
       `).get(payload.deviceId);
       if (!vehicle) {
         console.warn(`⚠️ Received telemetry for unregistered device: ${payload.deviceId}`);
@@ -803,8 +809,8 @@ mqttClient.on('message', (topic, message) => {
       }
       const ownerId = vehicle.owner_id;
 
-      if (vehicle.subscription_status === 'SUSPENDED') {
-        console.log(`[Subscription Policy] Suspended vehicle ${payload.deviceId} telemetry ignored.`);
+      if (vehicle.subscription_status === 'SUSPENDED' || vehicle.user_subscription_status === 'SUSPENDED') {
+        console.log(`[Subscription Policy] Suspended vehicle or owner for ${payload.deviceId} telemetry ignored.`);
         return;
       }
 
@@ -1210,13 +1216,18 @@ mqttClient.on('message', (topic, message) => {
       const payload = JSON.parse(payloadStr);
 
       // Verify the vehicle exists and find its owner
-      const vehicle = db.prepare('SELECT owner_id, name, subscription_status FROM vehicles WHERE id = ?').get(deviceId);
+      const vehicle = db.prepare(`
+        SELECT v.owner_id, v.name, v.subscription_status, u.subscription_status AS user_subscription_status
+        FROM vehicles v
+        LEFT JOIN users u ON v.owner_id = u.id
+        WHERE v.id = ?
+      `).get(deviceId);
       if (!vehicle) {
         console.warn(`⚠️ Received alert for unregistered device: ${deviceId}`);
         return;
       }
-      if (vehicle.subscription_status === 'SUSPENDED') {
-        console.log(`[Subscription Policy] Suspended vehicle ${deviceId} alert ignored.`);
+      if (vehicle.subscription_status === 'SUSPENDED' || vehicle.user_subscription_status === 'SUSPENDED') {
+        console.log(`[Subscription Policy] Suspended vehicle or owner for ${deviceId} alert ignored.`);
         return;
       }
       const ownerId = vehicle.owner_id;
@@ -1412,15 +1423,17 @@ const tcpServer = net.createServer((socket) => {
         }
 
         const vehicle = db.prepare(`
-          SELECT owner_id, name, lat, lng, odometer_km, curfew_enabled, curfew_start, curfew_end, curfew_days, curfew_allow_override, curfew_holiday_mode, override_status, override_expires, cloud_locked, ble_beacon_id, ble_beacon_rssi_threshold, subscription_status
-          FROM vehicles WHERE id = ?
+          SELECT v.owner_id, v.name, v.lat, v.lng, v.odometer_km, v.curfew_enabled, v.curfew_start, v.curfew_end, v.curfew_days, v.curfew_allow_override, v.curfew_holiday_mode, v.override_status, v.override_expires, v.cloud_locked, v.ble_beacon_id, v.ble_beacon_rssi_threshold, v.subscription_status, u.subscription_status AS user_subscription_status
+          FROM vehicles v
+          LEFT JOIN users u ON v.owner_id = u.id
+          WHERE v.id = ?
         `).get(deviceId);
 
         if (!vehicle) continue;
         const ownerId = vehicle.owner_id;
 
-        if (vehicle.subscription_status === 'SUSPENDED') {
-          console.log(`[Subscription Policy] Suspended vehicle ${deviceId} TCP telemetry ignored.`);
+        if (vehicle.subscription_status === 'SUSPENDED' || vehicle.user_subscription_status === 'SUSPENDED') {
+          console.log(`[Subscription Policy] Suspended vehicle or owner for ${deviceId} TCP telemetry ignored.`);
           socket.write(`$$DATA,FAIL,Suspended\r\n`);
           continue;
         }
@@ -1587,8 +1600,25 @@ const tcpServer = net.createServer((socket) => {
 app.get('/api/vehicles', (req, res) => {
   const userId = getRequestUserId(req);
   try {
+    const user = db.prepare('SELECT subscription_status, role FROM users WHERE id = ?').get(userId);
+    const isUserSuspended = user && user.subscription_status === 'SUSPENDED' && user.role !== 'admin';
+
     const vehicles = db.prepare('SELECT * FROM vehicles WHERE owner_id = ?').all(userId);
-    res.json(vehicles);
+
+    const processed = vehicles.map(v => {
+      if (isUserSuspended || v.subscription_status === 'SUSPENDED') {
+        return {
+          ...v,
+          lat: 0.0,
+          lng: 0.0,
+          speed: 0,
+          odometer_km: 0
+        };
+      }
+      return v;
+    });
+
+    res.json(processed);
   } catch (err) {
     console.error('Get vehicles error:', err);
     res.status(500).json({ error: 'Failed to retrieve vehicles' });
@@ -2187,6 +2217,11 @@ app.post('/api/vehicles/curfew', (req, res) => {
 app.get('/api/override/pending', authMiddleware, (req, res) => {
   const userId = getRequestUserId(req);
   try {
+    const user = db.prepare('SELECT subscription_status, role FROM users WHERE id = ?').get(userId);
+    if (user && user.subscription_status === 'SUSPENDED' && user.role !== 'admin') {
+      return res.json([]);
+    }
+
     const list = db.prepare(`
       SELECT o.*, v.name as vehicle_name, v.plate_number
       FROM override_requests o
@@ -2506,6 +2541,11 @@ app.get('/api/geofences', (req, res) => {
   const { vehicleId } = req.query;
   const userId = getRequestUserId(req);
   try {
+    const user = db.prepare('SELECT subscription_status, role FROM users WHERE id = ?').get(userId);
+    if (user && user.subscription_status === 'SUSPENDED' && user.role !== 'admin') {
+      return res.json([]);
+    }
+
     // Verify ownership of the vehicle
     const vehicle = db.prepare('SELECT owner_id FROM vehicles WHERE id = ?').get(vehicleId);
     if (!vehicle) {

@@ -31,25 +31,30 @@ axios.interceptors.request.use(
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-      // Do not reload for public auth endpoints so inline error messages can be displayed
+    if (error.response) {
       const url = error.config && error.config.url;
-      if (url && (
+      const isPublicAuthUrl = url && (
         url.endsWith('/api/login') || 
         url.endsWith('/api/register') || 
         url.endsWith('/api/verify-email') ||
         url.endsWith('/api/forgot-password') ||
         url.endsWith('/api/reset-password')
-      )) {
+      );
+
+      if (error.response.status === 403) {
+        if (!isPublicAuthUrl && error.response.data?.error) {
+          alert(error.response.data.error);
+        }
         return Promise.reject(error);
       }
 
-      if (error.response.status === 403 && error.response.data?.error) {
-        alert(error.response.data.error);
+      if (error.response.status === 401) {
+        if (isPublicAuthUrl) {
+          return Promise.reject(error);
+        }
+        localStorage.removeItem('user');
+        window.location.reload();
       }
-
-      localStorage.removeItem('user');
-      window.location.reload();
     }
     return Promise.reject(error);
   }

@@ -67,8 +67,7 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
     const [billingCycle, setBillingCycle] = useState('monthly');
     const [pricePerVehicle, setPricePerVehicle] = useState(3000);
 
-    // Tab Navigation State
-    const [activeTab, setActiveTab] = useState('general');
+    const [activeTab, setActiveTab] = useState(user?.subscription_status === 'SUSPENDED' ? 'billing' : 'general');
 
     // Maintenance Alerts States
     const [selectedVehicleId, setSelectedVehicleId] = useState('');
@@ -800,6 +799,8 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
                             type="button" 
                             className={`sidebar-tab ${activeTab === 'thresholds' ? 'active' : ''}`}
                             onClick={() => setActiveTab('thresholds')}
+                            disabled={user?.subscription_status === 'SUSPENDED'}
+                            style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
                             {user.role === 'company' ? '🛡️ Safety & Curfew' : '🕒 Curfew Settings'}
                         </button>
@@ -814,6 +815,8 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
                             type="button" 
                             className={`sidebar-tab ${activeTab === 'maintenance' ? 'active' : ''}`}
                             onClick={() => setActiveTab('maintenance')}
+                            disabled={user?.subscription_status === 'SUSPENDED'}
+                            style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
                             🔧 Maintenance Alerts
                         </button>
@@ -821,6 +824,8 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
                             type="button" 
                             className={`sidebar-tab ${activeTab === 'support' ? 'active' : ''}`}
                             onClick={() => setActiveTab('support')}
+                            disabled={user?.subscription_status === 'SUSPENDED'}
+                            style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
                             💬 Support Mode
                         </button>
@@ -828,6 +833,8 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
                             type="button" 
                             className={`sidebar-tab ${activeTab === 'fuel' ? 'active' : ''}`}
                             onClick={() => setActiveTab('fuel')}
+                            disabled={user?.subscription_status === 'SUSPENDED'}
+                            style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
                             ⛽ Fuel & Cost
                         </button>
@@ -835,6 +842,8 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
                             type="button" 
                             className={`sidebar-tab ${activeTab === 'ble' ? 'active' : ''}`}
                             onClick={() => setActiveTab('ble')}
+                            disabled={user?.subscription_status === 'SUSPENDED'}
+                            style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
                             🔑 BLE Keyless
                         </button>

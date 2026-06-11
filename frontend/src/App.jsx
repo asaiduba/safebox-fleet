@@ -1276,7 +1276,7 @@ function App() {
                                         {selectedVehicle && selectedVehicle.id === v.id && (
                                             <Popup open onClose={() => setSelectedVehicleId(null)}>
                                                 <div className="info-window" style={{ position: 'relative' }}>
-                                                    {selectedVehicle.subscription_status === 'SUSPENDED' || selectedVehicle.subscription_status === 'EXPIRED' ? (
+                                                    {selectedVehicle.subscription_status === 'SUSPENDED' || selectedVehicle.subscription_status === 'EXPIRED' || user?.subscription_status === 'SUSPENDED' ? (
                                                         <div className="suspended-popup-overlay">
                                                             <span className="lock-icon">🔒</span>
                                                             <span className="suspension-title">SUSPENDED</span>
