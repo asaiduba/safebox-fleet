@@ -6,6 +6,63 @@ import SupportDashboard from './SupportDashboard';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
+const ServerLogsViewer = () => {
+    const [logs, setLogs] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const logsEndRef = useRef(null);
+
+    const fetchLogs = async () => {
+        setError('');
+        try {
+            const res = await axios.get(`${API_BASE}/api/admin/logs`);
+            setLogs(res.data || []);
+        } catch (err) {
+            setError(err.response?.data?.error || err.message || 'Failed to fetch logs');
+        }
+    };
+
+    useEffect(() => {
+        fetchLogs();
+        const interval = setInterval(fetchLogs, 5000);
+        return () => clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        if (logsEndRef.current) {
+            logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [logs]);
+
+    return (
+        <div className="terminal-card" style={{ marginTop: '20px', flex: '1', display: 'flex', flexDirection: 'column' }}>
+            <div className="terminal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 15px', borderBottom: '1px solid #334155' }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', color: '#f8fafc' }}>🖥️ Running Server Console Logs (Diagnostics)</h3>
+                <button className="refresh-btn" onClick={fetchLogs} disabled={loading} style={{ padding: '4px 10px', fontSize: '0.8rem', borderRadius: '4px', background: '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                    🔄 Refresh
+                </button>
+            </div>
+            <div className="terminal-screen" style={{ height: '300px', overflowY: 'auto', padding: '15px', background: '#090d16', fontFamily: 'monospace', fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {error && <div className="terminal-line"><span style={{ color: '#ef4444' }}>[ERROR] {error}</span></div>}
+                {logs.length === 0 ? (
+                    <div className="terminal-line"><span style={{ color: '#64748b' }}>No logs recorded yet.</span></div>
+                ) : (
+                    logs.map((log, idx) => (
+                        <div key={idx} className="terminal-line" style={{ display: 'flex', gap: '10px', wordBreak: 'break-all' }}>
+                            <span style={{ color: '#64748b', flexShrink: 0 }}>[{new Date(log.time).toLocaleTimeString()}]</span>
+                            <span style={{ color: log.type === 'error' ? '#ef4444' : '#10b981', fontWeight: log.type === 'error' ? 'bold' : 'normal', flexShrink: 0 }}>
+                                {log.type.toUpperCase()}
+                            </span>
+                            <span style={{ color: '#f8fafc', whiteSpace: 'pre-wrap' }}>{log.message}</span>
+                        </div>
+                    ))
+                )}
+                <div ref={logsEndRef} />
+            </div>
+        </div>
+    );
+};
+
 const AdminDashboard = ({ user, onLogout, onBackToClient, onImpersonate }) => {
     const [activeTab, setActiveTab] = useState('overview');
     const [metrics, setMetrics] = useState(null);
@@ -104,7 +161,9 @@ const AdminDashboard = ({ user, onLogout, onBackToClient, onImpersonate }) => {
             setMetrics(metricsRes.data);
             alert(`Account "${username}" and all related fleet data have been successfully deleted.`);
         } catch (err) {
-            alert(err.response?.data?.error || 'Failed to delete tenant');
+            console.error('Delete tenant error:', err);
+            const errMsg = err.response?.data?.error || err.message || 'Unknown error';
+            alert(`Failed to delete tenant: ${errMsg}`);
         }
     };
 
@@ -666,8 +725,9 @@ const AdminDashboard = ({ user, onLogout, onBackToClient, onImpersonate }) => {
 
                         {/* 5. SUPPORT DIAGNOSTICS TAB */}
                         {activeTab === 'support' && (
-                            <div className="panel-container">
+                            <div className="panel-container" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                                 <SupportDashboard onBack={() => setActiveTab('overview')} />
+                                <ServerLogsViewer />
                             </div>
                         )}
                     </div>

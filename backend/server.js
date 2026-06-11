@@ -1,6 +1,21 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+
+// --- Memory logs interceptor for remote super admin diagnostics ---
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+global.serverLogs = [];
+console.log = (...args) => {
+  global.serverLogs.push({ type: 'log', time: new Date().toISOString(), message: args.join(' ') });
+  if (global.serverLogs.length > 200) global.serverLogs.shift();
+  originalConsoleLog.apply(console, args);
+};
+console.error = (...args) => {
+  global.serverLogs.push({ type: 'error', time: new Date().toISOString(), message: args.join(' ') });
+  if (global.serverLogs.length > 200) global.serverLogs.shift();
+  originalConsoleError.apply(console, args);
+};
 const socketIo = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -41,6 +56,13 @@ io.use((socket, next) => {
   }
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    
+    // Check if user is suspended in the database
+    const user = db.prepare('SELECT subscription_status FROM users WHERE id = ?').get(decoded.id);
+    if (user && user.subscription_status === 'SUSPENDED') {
+      return next(new Error('Authentication error: Your account has been suspended. Please contact support.'));
+    }
+    
     socket.user = decoded; // { id, username, role }
     next();
   } catch (err) {
@@ -850,6 +872,15 @@ mqttClient.on('message', (topic, message) => {
             mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'ALLOW_START' }));
             mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'UNLOCK' }));
             payload.locked = false;
+          }
+
+          // Re-enforce Remote Lock / Suspension: If the vehicle should be locked (cloud_locked === 1)
+          // but the device reports being unlocked (locked === false)
+          if (!payload.locked && vehicle.cloud_locked === 1) {
+            console.log(`[Security Policy] Vehicle ${payload.deviceId} is cloud-locked/suspended but device is unlocked. Re-enforcing lock.`);
+            mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'BLOCK_START' }));
+            mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
+            payload.locked = true;
           }
         }
       }
@@ -1738,9 +1769,40 @@ app.post('/api/admin/tenants/:id/toggle-status', authMiddleware, adminMiddleware
     db.transaction(() => {
       // 1. Update user
       db.prepare("UPDATE users SET subscription_status = ? WHERE id = ?").run(newStatus, id);
-      // 2. Propagate to vehicles
-      db.prepare("UPDATE vehicles SET subscription_status = ? WHERE owner_id = ?").run(newStatus, id);
+      // 2. Propagate to vehicles (Also force remote lock state if suspended)
+      if (newStatus === 'SUSPENDED') {
+        db.prepare("UPDATE vehicles SET subscription_status = 'SUSPENDED', cloud_locked = 1, is_locked = 1 WHERE owner_id = ?").run(id);
+      } else {
+        db.prepare("UPDATE vehicles SET subscription_status = 'ACTIVE', cloud_locked = 0, is_locked = 0 WHERE owner_id = ?").run(id);
+      }
     })();
+
+    // 3. Send commands to active trackers (MQTT / TCP)
+    const vehicles = db.prepare("SELECT id FROM vehicles WHERE owner_id = ?").all(id);
+    vehicles.forEach(v => {
+      if (newStatus === 'SUSPENDED') {
+        mqttClient.publish(`/device/${v.id}/command`, JSON.stringify({ command: 'BLOCK_START' }));
+        mqttClient.publish(`/device/${v.id}/command`, JSON.stringify({ command: 'LOCK' }));
+        if (activeTcpSockets.has(v.id)) {
+          activeTcpSockets.get(v.id).write(`$$CMD,${v.id},SET_CLOUDLOCKED,1\r\n`);
+        }
+      } else {
+        mqttClient.publish(`/device/${v.id}/command`, JSON.stringify({ command: 'ALLOW_START' }));
+        mqttClient.publish(`/device/${v.id}/command`, JSON.stringify({ command: 'UNLOCK' }));
+        if (activeTcpSockets.has(v.id)) {
+          activeTcpSockets.get(v.id).write(`$$CMD,${v.id},SET_CLOUDLOCKED,0\r\n`);
+        }
+      }
+    });
+
+    if (newStatus === 'SUSPENDED') {
+      try {
+        io.in(`user_${id}`).disconnectSockets(true);
+        console.log(`🔌 Terminated active WebSocket connections for suspended user ID: ${id}`);
+      } catch (e) {
+        console.error(`Failed to disconnect sockets for suspended user ID: ${id}`, e);
+      }
+    }
 
     console.log(`🛡️ Super Admin changed subscription status of user ${id} to ${newStatus}`);
     res.json({ success: true, newStatus });
@@ -1812,6 +1874,12 @@ app.delete('/api/admin/tenants/:id', authMiddleware, adminMiddleware, (req, res)
     console.error("Super Admin delete tenant error:", err);
     res.status(500).json({ error: 'Failed to delete tenant: ' + err.message });
   }
+});
+
+
+// --- SUPER ADMIN: Get Running Server Logs ---
+app.get('/api/admin/logs', authMiddleware, adminMiddleware, (req, res) => {
+  res.json(global.serverLogs || []);
 });
 
 
@@ -2935,6 +3003,14 @@ io.on('connection', (socket) => {
   socket.on('send-command', (data) => {
     // data: { deviceId, command }
     try {
+      // Check if user is suspended in the database
+      const user = db.prepare('SELECT subscription_status FROM users WHERE id = ?').get(userId);
+      if (user && user.subscription_status === 'SUSPENDED') {
+        console.warn(`⚠️ Suspended User ${userId} attempted to send command on device ${data.deviceId}. Disconnecting socket.`);
+        socket.disconnect(true);
+        return;
+      }
+
       // Verify ownership of the vehicle before letting them send commands
       const vehicle = db.prepare('SELECT owner_id FROM vehicles WHERE id = ?').get(data.deviceId);
       if (!vehicle || vehicle.owner_id !== userId) {

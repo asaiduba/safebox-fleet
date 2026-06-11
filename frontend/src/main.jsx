@@ -31,7 +31,7 @@ axios.interceptors.request.use(
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
       // Do not reload for public auth endpoints so inline error messages can be displayed
       const url = error.config && error.config.url;
       if (url && (
@@ -43,6 +43,11 @@ axios.interceptors.response.use(
       )) {
         return Promise.reject(error);
       }
+
+      if (error.response.status === 403 && error.response.data?.error) {
+        alert(error.response.data.error);
+      }
+
       localStorage.removeItem('user');
       window.location.reload();
     }

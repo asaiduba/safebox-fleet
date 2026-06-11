@@ -5,7 +5,7 @@ const dbPath = process.env.NODE_ENV === 'production'
     ? '/data/database.sqlite'
     : 'database.sqlite';
 
-const db = new Database(dbPath);
+const db = new Database(dbPath, { timeout: 7000 });
 
 function initDb() {
     // Migrate users check constraint to support 'admin' role if needed
