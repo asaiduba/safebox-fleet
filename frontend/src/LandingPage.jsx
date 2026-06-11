@@ -133,7 +133,7 @@ export default function LandingPage({ onGetStarted, user, onBackToDashboard }) {
                             <li>Custom Telemetry Webhooks</li>
                             <li>Dedicated Account Manager</li>
                         </ul>
-                        <a href="mailto:support@safebox.com" className="pricing-link-btn">Contact Sales</a>
+                        <a href="mailto:safebox.hq@gmail.com" className="pricing-link-btn">Contact Sales</a>
                     </div>
                 </div>
 
@@ -212,7 +212,7 @@ export default function LandingPage({ onGetStarted, user, onBackToDashboard }) {
                     </div>
                     <div className="footer-col">
                         <h4>Contact Us</h4>
-                        <p>Email: <a href="mailto:support@safebox.com" style={{ display: 'inline', color: '#60a5fa' }}>support@safebox.com</a></p>
+                        <p>Email: <a href="mailto:safebox.hq@gmail.com" style={{ display: 'inline', color: '#60a5fa' }}>safebox.hq@gmail.com</a></p>
                         <p>Phone: <a href="tel:+2347032101663" style={{ display: 'inline', color: '#60a5fa' }}>+234 703 210 1663</a></p>
                         <p>Address: PEZ Carnegie Mellon University Africa, Kigali Innovation City</p>
                     </div>
