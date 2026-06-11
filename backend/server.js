@@ -794,7 +794,7 @@ mqttClient.on('message', (topic, message) => {
 
       // Verify the vehicle exists and find its owner
       const vehicle = db.prepare(`
-        SELECT owner_id, name, lat, lng, odometer_km, curfew_enabled, curfew_start, curfew_end, curfew_days, curfew_allow_override, curfew_holiday_mode, override_status, override_expires, cloud_locked
+        SELECT owner_id, name, lat, lng, odometer_km, curfew_enabled, curfew_start, curfew_end, curfew_days, curfew_allow_override, curfew_holiday_mode, override_status, override_expires, cloud_locked, subscription_status
         FROM vehicles WHERE id = ?
       `).get(payload.deviceId);
       if (!vehicle) {
@@ -802,6 +802,11 @@ mqttClient.on('message', (topic, message) => {
         return;
       }
       const ownerId = vehicle.owner_id;
+
+      if (vehicle.subscription_status === 'SUSPENDED') {
+        console.log(`[Subscription Policy] Suspended vehicle ${payload.deviceId} telemetry ignored.`);
+        return;
+      }
 
       // Curfew enforcement check (Operating Hours Policy)
       if (vehicle.curfew_enabled === 1) {
@@ -1205,9 +1210,13 @@ mqttClient.on('message', (topic, message) => {
       const payload = JSON.parse(payloadStr);
 
       // Verify the vehicle exists and find its owner
-      const vehicle = db.prepare('SELECT owner_id, name FROM vehicles WHERE id = ?').get(deviceId);
+      const vehicle = db.prepare('SELECT owner_id, name, subscription_status FROM vehicles WHERE id = ?').get(deviceId);
       if (!vehicle) {
         console.warn(`⚠️ Received alert for unregistered device: ${deviceId}`);
+        return;
+      }
+      if (vehicle.subscription_status === 'SUSPENDED') {
+        console.log(`[Subscription Policy] Suspended vehicle ${deviceId} alert ignored.`);
         return;
       }
       const ownerId = vehicle.owner_id;
@@ -1403,12 +1412,18 @@ const tcpServer = net.createServer((socket) => {
         }
 
         const vehicle = db.prepare(`
-          SELECT owner_id, name, lat, lng, odometer_km, curfew_enabled, curfew_start, curfew_end, curfew_days, curfew_allow_override, curfew_holiday_mode, override_status, override_expires, cloud_locked, ble_beacon_id, ble_beacon_rssi_threshold
+          SELECT owner_id, name, lat, lng, odometer_km, curfew_enabled, curfew_start, curfew_end, curfew_days, curfew_allow_override, curfew_holiday_mode, override_status, override_expires, cloud_locked, ble_beacon_id, ble_beacon_rssi_threshold, subscription_status
           FROM vehicles WHERE id = ?
         `).get(deviceId);
 
         if (!vehicle) continue;
         const ownerId = vehicle.owner_id;
+
+        if (vehicle.subscription_status === 'SUSPENDED') {
+          console.log(`[Subscription Policy] Suspended vehicle ${deviceId} TCP telemetry ignored.`);
+          socket.write(`$$DATA,FAIL,Suspended\r\n`);
+          continue;
+        }
 
         // Proximity check (driver presence)
         let driverPresent = false;

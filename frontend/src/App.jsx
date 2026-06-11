@@ -668,7 +668,7 @@ function App() {
             )}
 
             {/* Analytics Dashboard Overlay */}
-            {user && showAnalytics && (
+            {user && showAnalytics && user.subscription_status !== 'SUSPENDED' && (
                 <AnalyticsDashboard
                     onBack={() => setShowAnalytics(false)}
                     onOpenReports={() => setShowReports(true)}
@@ -688,7 +688,7 @@ function App() {
             )}
 
             {/* Reports Overlay */}
-            {user && showReports && (
+            {user && showReports && user.subscription_status !== 'SUSPENDED' && (
                 <ReportsPanel
                     vehicles={vehicles}
                     onClose={() => setShowReports(false)}
@@ -871,7 +871,7 @@ function App() {
                             <h1>SafeBox Fleet</h1>
                         </div>
                         <div className="user-info">
-                            {user.role === 'company' && (
+                            {user.role === 'company' && user.subscription_status !== 'SUSPENDED' && (
                                 <button
                                     className="analytics-btn"
                                     onClick={() => setShowAnalytics(true)}

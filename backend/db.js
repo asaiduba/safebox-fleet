@@ -438,9 +438,11 @@ function initDb() {
 
     // Auto-register SAFEBOX_003 to SAFEBOX_007 for the TCP telematics simulator
     try {
+        const adminUser = db.prepare("SELECT id FROM users WHERE username = 'admin'").get();
+        const adminId = adminUser ? adminUser.id : 1;
         const insertStmt = db.prepare("INSERT OR IGNORE INTO vehicles (id, name, owner_id, is_locked, ble_beacon_id, ble_beacon_rssi_threshold) VALUES (?, ?, ?, ?, ?, ?)");
         for (let i = 3; i <= 7; i++) {
-            insertStmt.run(`SAFEBOX_00` + i, `COTS Tracker 0` + i, 1, 1, `TAG_00` + i, -80);
+            insertStmt.run(`SAFEBOX_00` + i, `COTS Tracker 0` + i, adminId, 1, `TAG_00` + i, -80);
         }
         console.log("Registered SAFEBOX_003 - SAFEBOX_007 in database for simulation testing.");
     } catch (e) {
