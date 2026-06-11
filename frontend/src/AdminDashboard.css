@@ -824,3 +824,15 @@
     background: rgba(99, 102, 241, 0.15);
     color: #c7d2fe;
 }
+
+.btn-action-toggle.delete {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.4);
+    margin-left: 0.5rem;
+}
+
+.btn-action-toggle.delete:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+}
+

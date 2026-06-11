@@ -1738,6 +1738,67 @@ app.post('/api/admin/tenants/:id/toggle-status', authMiddleware, adminMiddleware
   }
 });
 
+// --- SUPER ADMIN: Delete Tenant Account ---
+app.delete('/api/admin/tenants/:id', authMiddleware, adminMiddleware, (req, res) => {
+  const { id } = req.params;
+  try {
+    const user = db.prepare("SELECT username, role FROM users WHERE id = ?").get(id);
+    if (!user) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    if (user.role === 'admin') {
+      return res.status(400).json({ error: 'Cannot delete an administrator account' });
+    }
+
+    db.transaction(() => {
+      // Get all vehicles owned by this tenant
+      const vehicles = db.prepare("SELECT id FROM vehicles WHERE owner_id = ?").all(id);
+      const vehicleIds = vehicles.map(v => v.id);
+
+      if (vehicleIds.length > 0) {
+        const placeholders = vehicleIds.map(() => '?').join(',');
+        
+        // 1. Delete from vehicle_history
+        db.prepare(`DELETE FROM vehicle_history WHERE vehicle_id IN (${placeholders})`).run(...vehicleIds);
+        // 2. Delete from vehicle_alerts
+        db.prepare(`DELETE FROM vehicle_alerts WHERE vehicle_id IN (${placeholders})`).run(...vehicleIds);
+        // 3. Delete from geofences
+        db.prepare(`DELETE FROM geofences WHERE vehicle_id IN (${placeholders})`).run(...vehicleIds);
+        // 4. Delete from maintenance_reminders
+        db.prepare(`DELETE FROM maintenance_reminders WHERE vehicle_id IN (${placeholders})`).run(...vehicleIds);
+        // 5. Delete from override_requests
+        db.prepare(`DELETE FROM override_requests WHERE vehicle_id IN (${placeholders})`).run(...vehicleIds);
+        
+        // Check if fuel_settings table exists
+        try {
+          db.prepare(`DELETE FROM fuel_settings WHERE vehicle_id IN (${placeholders})`).run(...vehicleIds);
+        } catch (e) { /* ignore if table doesn't exist */ }
+
+        // 6. Delete from vehicles
+        db.prepare(`DELETE FROM vehicles WHERE owner_id = ?`).run(id);
+      }
+
+      // 7. Delete payments
+      db.prepare(`DELETE FROM payments WHERE user_id = ?`).run(id);
+      // 8. Delete report schedules
+      db.prepare(`DELETE FROM report_schedules WHERE user_id = ?`).run(id);
+      // 9. Delete report history
+      db.prepare(`DELETE FROM report_history WHERE generated_by = ?`).run(id);
+      // 10. Delete subscriptions
+      db.prepare(`DELETE FROM subscriptions WHERE user_id = ?`).run(id);
+      // 11. Finally delete the user
+      db.prepare(`DELETE FROM users WHERE id = ?`).run(id);
+    })();
+
+    console.log(`🛡️ Super Admin deleted user ${user.username} (ID: ${id}) and all associated fleet data.`);
+    res.json({ success: true, message: 'Tenant and all associated data deleted successfully.' });
+  } catch (err) {
+    console.error("Super Admin delete tenant error:", err);
+    res.status(500).json({ error: 'Failed to delete tenant account and associated data' });
+  }
+});
+
+
 // --- SUPER ADMIN: Device Inventory List ---
 app.get('/api/admin/devices', authMiddleware, adminMiddleware, (req, res) => {
   try {
@@ -3660,47 +3721,112 @@ server.listen(PORT, () => {
 
             // Dispatch Email
             if (s.delivery_method && s.delivery_method.includes('email')) {
-              const smtpHost = process.env.SMTP_HOST;
-              const smtpPort = process.env.SMTP_PORT || 587;
-              const smtpUser = process.env.SMTP_USER;
-              const smtpPass = process.env.SMTP_PASS;
+              const recipientsList = s.recipients ? s.recipients.split(',').map(email => email.trim()) : [user.email];
+              const subject = `Scheduled SafeBox Report: ${s.report_type} (${s.frequency.toUpperCase()})`;
+              const text = `Hello,\n\nPlease find attached your scheduled ${s.frequency} SafeBox Fleet Report for ${dateRangeText}.\n\nSafeBox Fleet Team`;
+              const html = `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                  <h2>Scheduled SafeBox Fleet Report</h2>
+                  <p>Hello,</p>
+                  <p>Your scheduled <strong>${s.frequency}</strong> report (<strong>${s.report_type}</strong>) has been generated successfully.</p>
+                  <p><strong>Report Period:</strong> ${dateRangeText}</p>
+                  <p>Please find the compiled PDF document attached to this email.</p>
+                  <hr style="border:0; border-top:1px solid #e2e8f0; margin:20px 0;" />
+                  <p style="font-size:0.8rem; color:#64748b;">This is an automated delivery. You can manage your schedules directly inside the Reports module of your Safebox Dashboard.</p>
+                </div>
+              `;
 
-              const recipientsList = s.recipients ? s.recipients.split(',') : [user.email];
-              const mailOptions = {
-                from: `"SafeBox Fleet Intelligence" <${smtpUser || 'support@safebox.com'}>`,
-                to: recipientsList.join(', '),
-                subject: `Scheduled SafeBox Report: ${s.report_type} (${s.frequency.toUpperCase()})`,
-                text: `Hello,\n\nPlease find attached your scheduled ${s.frequency} SafeBox Fleet Report for ${dateRangeText}.\n\nSafeBox Fleet Team`,
-                html: `
-                  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-                    <h2>Scheduled SafeBox Fleet Report</h2>
-                    <p>Hello,</p>
-                    <p>Your scheduled <strong>${s.frequency}</strong> report (<strong>${s.report_type}</strong>) has been generated successfully.</p>
-                    <p><strong>Report Period:</strong> ${dateRangeText}</p>
-                    <p>Please find the compiled PDF document attached to this email.</p>
-                    <hr style="border:0; border-top:1px solid #e2e8f0; margin:20px 0;" />
-                    <p style="font-size:0.8rem; color:#64748b;">This is an automated delivery. You can manage your schedules directly inside the Reports module of your Safebox Dashboard.</p>
-                  </div>
-                `,
-                attachments: [
-                  {
-                    filename: result.reportName,
-                    path: result.filePath
+              let emailSent = false;
+
+              // 1. Try Resend API
+              if (process.env.RESEND_API_KEY) {
+                try {
+                  console.log(`✉️ [Scheduler] Attempting to send report email via Resend...`);
+                  const fromEmail = process.env.RESEND_FROM_EMAIL || 'SafeBox Fleet Intelligence <onboarding@resend.dev>';
+                  
+                  const fs = require('fs');
+                  const fileContent = fs.readFileSync(result.filePath);
+                  const base64Content = fileContent.toString('base64');
+
+                  const controller = new AbortController();
+                  const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 seconds for attachment
+
+                  const response = await fetch('https://api.resend.com/emails', {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                      from: fromEmail,
+                      to: recipientsList,
+                      subject: subject,
+                      html: html,
+                      attachments: [
+                        {
+                          content: base64Content,
+                          filename: result.reportName
+                        }
+                      ]
+                    }),
+                    signal: controller.signal
+                  });
+                  clearTimeout(timeoutId);
+
+                  if (response.ok) {
+                    console.log(`✉️ [Scheduler] Dispatched email report ${result.reportName} via Resend to ${recipientsList.join(', ')}`);
+                    emailSent = true;
+                  } else {
+                    const errText = await response.text();
+                    console.error(`❌ [Scheduler] Resend API failed (${response.status}):`, errText);
                   }
-                ]
-              };
+                } catch (err) {
+                  console.error('❌ [Scheduler] Resend API exception:', err.message);
+                }
+              }
 
-              if (smtpHost && smtpUser && smtpPass) {
-                const transporter = nodemailer.createTransport({
-                  host: smtpHost,
-                  port: parseInt(smtpPort),
-                  secure: parseInt(smtpPort) === 465,
-                  auth: { user: smtpUser, pass: smtpPass }
-                });
-                await transporter.sendMail(mailOptions);
-                console.log(`[Scheduler] Dispatched email report ${result.reportName} to ${s.recipients}`);
-              } else {
-                console.log(`[SMTP MOCK] Dispatched email report ${result.reportName} to ${s.recipients}`);
+              // 2. Try SMTP Nodemailer
+              if (!emailSent) {
+                const smtpHost = process.env.SMTP_HOST;
+                const smtpPort = process.env.SMTP_PORT || 587;
+                const smtpUser = process.env.SMTP_USER;
+                const smtpPass = process.env.SMTP_PASS;
+
+                if (smtpHost && smtpUser && smtpPass) {
+                  try {
+                    const transporter = nodemailer.createTransport({
+                      host: smtpHost,
+                      port: parseInt(smtpPort),
+                      secure: parseInt(smtpPort) === 465,
+                      auth: { user: smtpUser, pass: smtpPass },
+                      connectionTimeout: 3000,
+                      greetingTimeout: 3000,
+                      socketTimeout: 3000
+                    });
+                    await transporter.sendMail({
+                      from: `"SafeBox Fleet Intelligence" <${smtpUser}>`,
+                      to: recipientsList.join(', '),
+                      subject,
+                      text,
+                      html,
+                      attachments: [
+                        {
+                          filename: result.reportName,
+                          path: result.filePath
+                        }
+                      ]
+                    });
+                    console.log(`✉️ [Scheduler] Dispatched email report ${result.reportName} via SMTP to ${recipientsList.join(', ')}`);
+                    emailSent = true;
+                  } catch (smtpErr) {
+                    console.error('❌ [Scheduler] SMTP failed:', smtpErr.message);
+                  }
+                }
+              }
+
+              // 3. Fallback Mock Log
+              if (!emailSent) {
+                console.log(`[SMTP MOCK] Dispatched email report ${result.reportName} to ${recipientsList.join(', ')}`);
               }
             }
 

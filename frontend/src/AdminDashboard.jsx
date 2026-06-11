@@ -87,6 +87,27 @@ const AdminDashboard = ({ user, onLogout, onBackToClient, onImpersonate }) => {
         }
     };
 
+    // Delete Tenant Account and Fleet Data
+    const handleDeleteTenant = async (tenantId, username) => {
+        if (!window.confirm(`⚠️ WARNING: Are you absolutely sure you want to permanently delete the account "${username}"?\n\nThis will permanently delete:\n- This user account\n- All of their vehicles\n- All GPS travel history & speed analytics\n- All geofence boundaries\n- All maintenance logs & schedules\n- All payment logs\n\nThis action CANNOT BE UNDONE. Proceed?`)) {
+            return;
+        }
+
+        try {
+            await axios.delete(`${API_BASE}/api/admin/tenants/${tenantId}`);
+            
+            // Update local state
+            setTenants(prev => prev.filter(t => t.id !== tenantId));
+            
+            // Refresh metrics
+            const metricsRes = await axios.get(`${API_BASE}/api/admin/metrics`);
+            setMetrics(metricsRes.data);
+            alert(`Account "${username}" and all related fleet data have been successfully deleted.`);
+        } catch (err) {
+            alert(err.response?.data?.error || 'Failed to delete tenant');
+        }
+    };
+
     // Bulk Whitelist Devices
     const handleBulkWhitelist = async (e) => {
         e.preventDefault();
@@ -442,7 +463,9 @@ const AdminDashboard = ({ user, onLogout, onBackToClient, onImpersonate }) => {
                                                         </td>
                                                         <td>
                                                             <div>{t.email}</div>
-                                                            <div className="td-sub">{t.phone}</div>
+                                                            <div className="td-sub" style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '0.85rem', marginTop: '4px' }}>
+                                                                📞 {t.phone || 'No phone'}
+                                                            </div>
                                                         </td>
                                                         <td>
                                                             <span className={`badge-plan ${t.plan_id?.toLowerCase()}`}>
@@ -471,6 +494,12 @@ const AdminDashboard = ({ user, onLogout, onBackToClient, onImpersonate }) => {
                                                                 onClick={() => onImpersonate(t)}
                                                             >
                                                                 🔑 Impersonate
+                                                            </button>
+                                                            <button 
+                                                                className="btn-action-toggle delete"
+                                                                onClick={() => handleDeleteTenant(t.id, t.username)}
+                                                            >
+                                                                🗑️ Delete
                                                             </button>
                                                         </td>
                                                     </tr>
