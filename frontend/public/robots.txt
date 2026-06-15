@@ -1,0 +1,10 @@
+# SafeBox Fleet - robots.txt
+# Allow all search engine crawlers
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /socket.io/
+
+# Sitemap location
+Sitemap: https://safeboxfleet.com/sitemap.xml

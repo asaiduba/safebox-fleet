@@ -142,7 +142,6 @@ function authMiddleware(req, res, next) {
 
 // Serve static frontend files in production
 if (process.env.NODE_ENV === 'production') {
-  const path = require('path');
   app.use(express.static(path.join(__dirname, 'public')));
 }
 
@@ -3685,6 +3684,15 @@ app.post('/api/vehicles/fuel-settings', authMiddleware, (req, res) => {
     res.status(500).json({ error: err.message || 'Failed to save configuration' });
   }
 });
+
+// --- SPA Catch-All Route (must be AFTER all API routes) ---
+// In production, serve index.html for any route that isn't an API endpoint
+// This enables proper SPA routing and ensures search engine crawlers receive the HTML document
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  });
+}
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

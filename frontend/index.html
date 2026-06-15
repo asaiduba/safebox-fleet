@@ -4,15 +4,137 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/png" href="/favicon.png?v=2" />
+  <link rel="apple-touch-icon" href="/logo.png" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="SafeBox Fleet — Real-time IoT vehicle tracking, remote engine kill, geofencing, and fleet analytics. Secure your motorcycles and vehicles with STM32-powered hardware and cloud intelligence." />
+
+  <!-- Primary SEO Meta Tags -->
+  <title>SafeBox Fleet — IoT Vehicle Tracking & Security | Nigeria</title>
+  <meta name="description" content="SafeBox Fleet provides real-time GPS vehicle tracking, remote engine kill, geofencing alerts, and fleet analytics for motorcycles and vehicles in Nigeria. Protect your fleet with STM32-powered IoT hardware starting at ₦3,000/month." />
+  <meta name="keywords" content="vehicle tracking Nigeria, GPS tracker, fleet management, motorcycle tracker, remote engine kill, geofencing, IoT vehicle security, SafeBox, SafeBox Fleet, fleet tracking Lagos, vehicle security Africa" />
+  <meta name="author" content="SafeBox Fleet" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://safeboxfleet.com/" />
   <meta name="theme-color" content="#0f172a" />
-  <title>SafeBox - Secure Vehicle Tracking</title>
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://safeboxfleet.com/" />
+  <meta property="og:title" content="SafeBox Fleet — IoT Vehicle Tracking & Security" />
+  <meta property="og:description" content="Real-time GPS tracking, remote engine kill, geofencing, and fleet analytics. Protect your vehicles with smart IoT hardware starting at ₦3,000/month." />
+  <meta property="og:image" content="https://safeboxfleet.com/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:site_name" content="SafeBox Fleet" />
+  <meta property="og:locale" content="en_NG" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="SafeBox Fleet — IoT Vehicle Tracking & Security" />
+  <meta name="twitter:description" content="Real-time GPS tracking, remote engine kill, geofencing, and fleet analytics. Protect your vehicles with smart IoT hardware starting at ₦3,000/month." />
+  <meta name="twitter:image" content="https://safeboxfleet.com/og-image.png" />
+
+  <!-- JSON-LD Structured Data: Organization -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "SafeBox Fleet",
+    "url": "https://safeboxfleet.com",
+    "logo": "https://safeboxfleet.com/logo.png",
+    "description": "IoT vehicle tracking and fleet security platform for motorcycles and vehicles in Nigeria and Africa.",
+    "email": "safebox.hq@gmail.com",
+    "telephone": "+2347032101663",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "Kigali",
+      "addressCountry": "RW",
+      "streetAddress": "PEZ Carnegie Mellon University Africa, Kigali Innovation City"
+    },
+    "sameAs": []
+  }
+  </script>
+
+  <!-- JSON-LD Structured Data: SoftwareApplication -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "SafeBox Fleet",
+    "operatingSystem": "Web",
+    "applicationCategory": "BusinessApplication",
+    "description": "Real-time IoT vehicle tracking platform with remote engine kill, geofencing, fleet analytics, and driver behavior scoring.",
+    "url": "https://safeboxfleet.com",
+    "offers": {
+      "@type": "Offer",
+      "price": "3000",
+      "priceCurrency": "NGN",
+      "priceValidUntil": "2027-12-31",
+      "description": "Monthly tracking subscription per vehicle"
+    },
+    "featureList": [
+      "Real-Time GPS Telemetry",
+      "Remote Engine Lock/Unlock",
+      "Geofencing Alerts",
+      "Fleet Analytics Dashboard",
+      "Driver Behavior Scoring",
+      "Trip History & Reports",
+      "Multi-Vehicle Management"
+    ],
+    "screenshot": "https://safeboxfleet.com/hero-dashboard.png"
+  }
+  </script>
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <!-- Pre-rendered HTML for SEO crawlers (replaced by React on load) -->
+    <noscript>
+      <header>
+        <h1>SafeBox Fleet — IoT Vehicle Tracking & Security</h1>
+        <nav>
+          <a href="#features">Features</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#about">About Us</a>
+        </nav>
+      </header>
+      <main>
+        <section>
+          <h2>Advanced Fleet Tracking & Security</h2>
+          <p>Monitor your vehicles in real-time with our state-of-the-art IoT solution. Get insights, alerts, and full control at your fingertips.</p>
+        </section>
+        <section id="features">
+          <h2>Industrial IoT Capabilities</h2>
+          <p>Enterprise-grade fleet intelligence to monitor, protect, and optimize your assets.</p>
+          <ul>
+            <li><strong>Real-Time GPS Telemetry</strong> — Dual-satellite positioning tracking with sub-meter accuracy, streamed instantly over secure MQTT brokers.</li>
+            <li><strong>Advanced Remote Cutoff</strong> — Remotely disable or enable vehicle engines instantly from your dashboard, complete with anti-tampering notifications.</li>
+            <li><strong>Fleet Analytics & Health</strong> — Track battery health, fuel levels, and telemetry logs over time.</li>
+            <li><strong>Driver Behavior Safety</strong> — Monitor speed violations, harsh braking, and cornering thresholds with leaderboard tracking.</li>
+          </ul>
+        </section>
+        <section id="pricing">
+          <h2>Transparent & Scalable Plans</h2>
+          <p>No hidden fees. Pick a plan that fits your logistics operation.</p>
+          <ul>
+            <li><strong>Monthly Tracker</strong> — ₦3,000/month per vehicle. Real-Time GPS, Remote Engine Lock/Unlock, Instant Alerts.</li>
+            <li><strong>Annual Fleet Bundle</strong> — ₦30,000/year per vehicle. Save 16% annually. Includes 90-Day History & Analytics.</li>
+            <li><strong>Enterprise IoT Suite</strong> — Custom pricing. Direct Developer API Access, Custom Telemetry Webhooks.</li>
+          </ul>
+        </section>
+        <section id="about">
+          <h2>About SafeBox Fleet</h2>
+          <p>SafeBox Fleet was founded with a mission to make vehicle security accessible and smart. We combine cutting-edge IoT hardware with intuitive software to give you peace of mind. Whether you are an individual owner or managing a large fleet, our technology scales with you.</p>
+          <p>Email: <a href="mailto:safebox.hq@gmail.com">safebox.hq@gmail.com</a></p>
+          <p>Phone: <a href="tel:+2347032101663">+234 703 210 1663</a></p>
+          <p>Address: PEZ Carnegie Mellon University Africa, Kigali Innovation City</p>
+        </section>
+      </main>
+      <footer>
+        <p>&copy; 2024 SafeBox Fleet. All rights reserved. Securing your journey, one mile at a time.</p>
+      </footer>
+    </noscript>
+  </div>
   <script type="module" src="/src/main.jsx"></script>
 </body>
 
