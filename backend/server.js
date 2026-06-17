@@ -3767,7 +3767,7 @@ app.post('/api/vehicles/fuel-settings', authMiddleware, (req, res) => {
 // In production, serve index.html for any route that isn't an API endpoint
 // This enables proper SPA routing and ensures search engine crawlers receive the HTML document
 if (process.env.NODE_ENV === 'production') {
-  app.get('*', (req, res) => {
+  app.get('*splat', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
   });
 }
