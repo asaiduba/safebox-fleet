@@ -1649,6 +1649,65 @@ app.post('/api/vehicles', (req, res) => {
   }
 });
 
+// HTTP-to-MQTT Webhook Bridge for Traccar (Ingesting SinoTrack, Teltonika, etc.)
+app.post('/api/telematics-webhook', (req, res) => {
+  try {
+    const data = req.body;
+    console.log('[Webhook Bridge] Received Traccar payload');
+
+    // Create a mapping from internal Traccar ID to actual IMEI (uniqueId)
+    const deviceMap = new Map();
+    if (data.devices && Array.isArray(data.devices)) {
+      for (const dev of data.devices) {
+        deviceMap.set(dev.id, dev.uniqueId);
+      }
+    }
+
+    // Handle Traccar standard HTTP positions array
+    if (data.positions && Array.isArray(data.positions)) {
+      for (const pos of data.positions) {
+        if (!pos.deviceId) continue;
+
+        // Resolve the internal ID to the 15-digit IMEI (uniqueId)
+        let deviceId = pos.deviceId.toString();
+        if (deviceMap.has(pos.deviceId)) {
+          deviceId = deviceMap.get(pos.deviceId);
+        } else if (pos.uniqueId) {
+          deviceId = pos.uniqueId.toString();
+        }
+
+        console.log(`[Webhook Bridge] Resolved deviceId/IMEI: ${deviceId}`);
+        
+        // Normalize the payload to match the SafeBox MQTT status schema
+        const normalizedPayload = {
+          deviceId: deviceId,
+          lat: pos.latitude || 0,
+          lng: pos.longitude || 0,
+          speed: pos.speed ? Math.round(pos.speed * 1.852) : 0, // Knots to km/h conversion
+          battery: pos.attributes?.batteryLevel || pos.attributes?.battery || 100,
+          fuel: pos.attributes?.fuel || 100,
+          locked: pos.attributes?.ignition === false // If ignition is false, engine start is blocked/locked
+        };
+
+        // Publish to MQTT broker (HiveMQ / EMQX)
+        const topic = `/device/${deviceId}/status`;
+        mqttClient.publish(topic, JSON.stringify(normalizedPayload), { qos: 1 }, (mqttErr) => {
+          if (mqttErr) {
+            console.error(`[Webhook Bridge] Failed to publish MQTT status for ${deviceId}:`, mqttErr.message);
+          } else {
+            console.log(`[Webhook Bridge] Published status to MQTT for ${deviceId}`);
+          }
+        });
+      }
+    }
+
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('[Webhook Bridge] Error processing webhook:', err.message);
+    res.status(500).json({ error: 'Failed to process telematics payload' });
+  }
+});
+
 // Admin Route: Whitelist/Authorize new tracker IMEIs (SafeBox Super Admin functionality)
 app.post('/api/admin/authorize-device', (req, res) => {
   const { id, secret } = req.body;

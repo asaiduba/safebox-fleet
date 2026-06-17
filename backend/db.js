@@ -132,6 +132,7 @@ function initDb() {
             odometer_km REAL DEFAULT 0,
             ble_beacon_id TEXT,
             ble_beacon_rssi_threshold INTEGER DEFAULT -80,
+            device_type TEXT DEFAULT 'mokosmart',
             FOREIGN KEY(owner_id) REFERENCES users(id)
         )
     `);
@@ -196,6 +197,9 @@ function initDb() {
     } catch (e) {}
     try {
         db.exec("ALTER TABLE vehicles ADD COLUMN ble_beacon_rssi_threshold INTEGER DEFAULT -80");
+    } catch (e) {}
+    try {
+        db.exec("ALTER TABLE vehicles ADD COLUMN device_type TEXT DEFAULT 'mokosmart'");
     } catch (e) {}
 
     // 3. Create Vehicle History Table for Analytics
