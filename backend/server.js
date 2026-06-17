@@ -1653,7 +1653,7 @@ app.post('/api/vehicles', (req, res) => {
 app.post('/api/telematics-webhook', (req, res) => {
   try {
     const data = req.body;
-    console.log('[Webhook Bridge] Received Traccar payload');
+    console.log('[Webhook Bridge] Received Traccar payload:', JSON.stringify(data));
 
     // Create a mapping from internal Traccar ID to actual IMEI (uniqueId)
     const deviceMap = new Map();
@@ -1661,50 +1661,58 @@ app.post('/api/telematics-webhook', (req, res) => {
       for (const dev of data.devices) {
         deviceMap.set(dev.id, dev.uniqueId);
       }
+    } else if (data.device) {
+      deviceMap.set(data.device.id, data.device.uniqueId);
     }
 
-    // Handle Traccar standard HTTP positions array
+    const positionsToProcess = [];
     if (data.positions && Array.isArray(data.positions)) {
-      for (const pos of data.positions) {
-        if (!pos.deviceId) continue;
+      positionsToProcess.push(...data.positions);
+    } else if (data.position) {
+      positionsToProcess.push(data.position);
+    }
 
-        // Resolve the internal ID to the 15-digit IMEI (uniqueId)
-        let deviceId = pos.deviceId.toString();
-        if (deviceMap.has(pos.deviceId)) {
-          deviceId = deviceMap.get(pos.deviceId);
-        } else if (pos.uniqueId) {
-          deviceId = pos.uniqueId.toString();
-        }
+    for (const pos of positionsToProcess) {
+      if (!pos.deviceId) continue;
 
-        console.log(`[Webhook Bridge] Resolved deviceId/IMEI: ${deviceId}`);
-        
-        // Normalize the payload to match the SafeBox MQTT status schema
-        const normalizedPayload = {
-          deviceId: deviceId,
-          lat: pos.latitude || 0,
-          lng: pos.longitude || 0,
-          speed: pos.speed ? Math.round(pos.speed * 1.852) : 0, // Knots to km/h conversion
-          battery: pos.attributes?.batteryLevel || pos.attributes?.battery || 100,
-          fuel: pos.attributes?.fuel || 100,
-          locked: pos.attributes?.ignition === false // If ignition is false, engine start is blocked/locked
-        };
-
-        // Publish to MQTT broker (HiveMQ / EMQX)
-        const topic = `/device/${deviceId}/status`;
-        mqttClient.publish(topic, JSON.stringify(normalizedPayload), { qos: 1 }, (mqttErr) => {
-          if (mqttErr) {
-            console.error(`[Webhook Bridge] Failed to publish MQTT status for ${deviceId}:`, mqttErr.message);
-          } else {
-            console.log(`[Webhook Bridge] Published status to MQTT for ${deviceId}`);
-          }
-        });
+      // Resolve the internal ID to the 15-digit IMEI (uniqueId)
+      let deviceId = pos.deviceId.toString();
+      if (deviceMap.has(pos.deviceId)) {
+        deviceId = deviceMap.get(pos.deviceId);
+      } else if (pos.uniqueId) {
+        deviceId = pos.uniqueId.toString();
+      } else if (data.device && data.device.id === pos.deviceId) {
+        deviceId = data.device.uniqueId;
       }
+
+      console.log(`[Webhook Bridge] Resolved deviceId/IMEI: ${deviceId}`);
+      
+      // Normalize the payload to match the SafeBox MQTT status schema
+      const normalizedPayload = {
+        deviceId: deviceId,
+        lat: pos.latitude || 0,
+        lng: pos.longitude || 0,
+        speed: pos.speed ? Math.round(pos.speed * 1.852) : 0, // Knots to km/h conversion
+        battery: pos.attributes?.batteryLevel || pos.attributes?.battery || 100,
+        fuel: pos.attributes?.fuel || 100,
+        locked: pos.attributes?.ignition === false // If ignition is false, engine start is blocked/locked
+      };
+
+      // Publish to MQTT broker (HiveMQ / EMQX)
+      const topic = `/device/${deviceId}/status`;
+      mqttClient.publish(topic, JSON.stringify(normalizedPayload), { qos: 1 }, (mqttErr) => {
+        if (mqttErr) {
+          console.error(`[Webhook Bridge] Failed to publish MQTT status for ${deviceId}:`, mqttErr.message);
+        } else {
+          console.log(`[Webhook Bridge] Published status to MQTT for ${deviceId}`);
+        }
+      });
     }
 
     res.sendStatus(200);
   } catch (err) {
     console.error('[Webhook Bridge] Error processing webhook:', err.message);
-    res.status(500).json({ error: 'Failed to process telematics payload' });
+    res.status(500).json({ error: 'Failed to process telematics payload: ' + err.message });
   }
 });
 
