@@ -1620,7 +1620,7 @@ app.get('/api/vehicles', (req, res) => {
     res.json(processed);
   } catch (err) {
     console.error('Get vehicles error:', err);
-    res.status(500).json({ error: 'Failed to retrieve vehicles' });
+    res.status(500).json({ error: 'Failed to retrieve vehicles: ' + err.message });
   }
 });
 
@@ -1705,6 +1705,25 @@ app.post('/api/telematics-webhook', (req, res) => {
   } catch (err) {
     console.error('[Webhook Bridge] Error processing webhook:', err.message);
     res.status(500).json({ error: 'Failed to process telematics payload' });
+  }
+});
+
+// Temporary Database Diagnostics Endpoint
+app.get('/api/debug-db-status', (req, res) => {
+  try {
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+    const tableSchemas = {};
+    for (const t of tables) {
+      tableSchemas[t.name] = db.prepare(`PRAGMA table_info(${t.name})`).all();
+    }
+    res.json({
+      success: true,
+      tables: tables.map(t => t.name),
+      schemas: tableSchemas,
+      logs: global.serverLogs || []
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 
@@ -1805,7 +1824,7 @@ app.get('/api/admin/metrics', authMiddleware, adminMiddleware, (req, res) => {
     });
   } catch (err) {
     console.error("Super Admin metrics error:", err);
-    res.status(500).json({ error: 'Failed to fetch admin metrics' });
+    res.status(500).json({ error: 'Failed to fetch admin metrics: ' + err.message });
   }
 });
 
@@ -1823,7 +1842,7 @@ app.get('/api/admin/alerts', authMiddleware, adminMiddleware, (req, res) => {
     res.json(alerts);
   } catch (err) {
     console.error("Super Admin alerts fetch error:", err);
-    res.status(500).json({ error: 'Failed to fetch global alerts feed' });
+    res.status(500).json({ error: 'Failed to fetch global alerts feed: ' + err.message });
   }
 });
 
@@ -1854,7 +1873,7 @@ app.get('/api/admin/tenants', authMiddleware, adminMiddleware, (req, res) => {
     res.json(enrichedTenants);
   } catch (err) {
     console.error("Super Admin tenants fetch error:", err);
-    res.status(500).json({ error: 'Failed to fetch tenants list' });
+    res.status(500).json({ error: 'Failed to fetch tenants list: ' + err.message });
   }
 });
 
@@ -2000,7 +2019,7 @@ app.get('/api/admin/devices', authMiddleware, adminMiddleware, (req, res) => {
     res.json(devices);
   } catch (err) {
     console.error("Super Admin devices fetch error:", err);
-    res.status(500).json({ error: 'Failed to fetch device inventory' });
+    res.status(500).json({ error: 'Failed to fetch device inventory: ' + err.message });
   }
 });
 
@@ -2051,7 +2070,7 @@ app.get('/api/admin/payments', authMiddleware, adminMiddleware, (req, res) => {
     res.json(payments);
   } catch (err) {
     console.error("Super Admin payments fetch error:", err);
-    res.status(500).json({ error: 'Failed to fetch payment logs' });
+    res.status(500).json({ error: 'Failed to fetch payment logs: ' + err.message });
   }
 });
 
