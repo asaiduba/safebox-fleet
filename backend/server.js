@@ -1708,25 +1708,6 @@ app.post('/api/telematics-webhook', (req, res) => {
   }
 });
 
-// Temporary Database Diagnostics Endpoint
-app.get('/api/debug-db-status', (req, res) => {
-  try {
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-    const tableSchemas = {};
-    for (const t of tables) {
-      tableSchemas[t.name] = db.prepare(`PRAGMA table_info(${t.name})`).all();
-    }
-    res.json({
-      success: true,
-      tables: tables.map(t => t.name),
-      schemas: tableSchemas,
-      logs: global.serverLogs || []
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message, stack: err.stack });
-  }
-});
-
 // Admin Route: Whitelist/Authorize new tracker IMEIs (SafeBox Super Admin functionality)
 app.post('/api/admin/authorize-device', (req, res) => {
   const { id, secret } = req.body;
