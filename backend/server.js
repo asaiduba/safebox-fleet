@@ -38,7 +38,7 @@ const server = http.createServer(app);
 
 // --- SECURITY: CORS origin restriction ---
 const ALLOWED_ORIGINS = process.env.NODE_ENV === 'production'
-  ? (process.env.ALLOWED_ORIGINS || 'https://safebox.onrender.com').split(',')
+  ? (process.env.ALLOWED_ORIGINS || 'https://safebox.onrender.com,https://safeboxfleet.com,https://safebox-fleet-production.up.railway.app').split(',')
   : ['http://localhost:5173', 'http://localhost:3000'];
 
 const io = socketIo(server, {
