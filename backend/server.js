@@ -1640,32 +1640,35 @@ app.post('/api/vehicles', async (req, res) => {
       return res.status(400).json({ error: 'Unauthorized Device ID. This tracker is not registered in the SafeBox system. Please contact Support to authorize your hardware.' });
     }
 
-    // 3. Register in Traccar automatically if it is a physical 15-digit IMEI
+    // 3. Register in Traccar automatically if it is a physical 15-digit IMEI (Non-blocking background call)
     if (/^\d{15}$/.test(id)) {
       const traccarUrl = process.env.TRACCAR_URL || 'https://traccar-production-e4f0.up.railway.app';
       const traccarUser = process.env.TRACCAR_USER || 'admin@safebox.com';
       const traccarPass = process.env.TRACCAR_PASS || 'adminpassword';
 
       if (traccarUrl && traccarUser && traccarPass) {
-        try {
-          const auth = 'Basic ' + Buffer.from(`${traccarUser}:${traccarPass}`).toString('base64');
-          const traccarRes = await fetch(`${traccarUrl}/api/devices`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': auth
-            },
-            body: JSON.stringify({ name: name || `Vehicle ${id}`, uniqueId: id })
-          });
+        // Run in background without await so it never blocks SafeBox registration
+        (async () => {
+          try {
+            const auth = 'Basic ' + Buffer.from(`${traccarUser}:${traccarPass}`).toString('base64');
+            const traccarRes = await fetch(`${traccarUrl}/api/devices`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': auth
+              },
+              body: JSON.stringify({ name: name || `Vehicle ${id}`, uniqueId: id })
+            });
 
-          if (traccarRes.status !== 200 && traccarRes.status !== 400) {
-            console.error(`[Traccar Sync] Failed to register device ${id} in Traccar. Status: ${traccarRes.status}`);
-          } else {
-            console.log(`[Traccar Sync] Successfully registered/verified device ${id} in Traccar.`);
+            if (traccarRes.status !== 200 && traccarRes.status !== 400) {
+              console.error(`[Traccar Sync] Failed to register device ${id} in Traccar. Status: ${traccarRes.status}`);
+            } else {
+              console.log(`[Traccar Sync] Successfully registered/verified device ${id} in Traccar.`);
+            }
+          } catch (traccarErr) {
+            console.error('[Traccar Sync] Background error connecting to Traccar API:', traccarErr.message);
           }
-        } catch (traccarErr) {
-          console.error('[Traccar Sync] Error connecting to Traccar API:', traccarErr.message);
-        }
+        })();
       }
     }
 
