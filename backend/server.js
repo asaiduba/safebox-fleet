@@ -1338,252 +1338,575 @@ mqttClient.on('message', (topic, message) => {
   }
 });
 
-// --- TCP Telematics Ingestion Server (Mokosmart VT001-L) ---
+// --- Multi-Protocol TCP Helper Functions ---
+
+function reflect(val, bits) {
+  let res = 0;
+  for (let i = 0; i < bits; i++) {
+    if ((val & (1 << i)) !== 0) {
+      res |= (1 << (bits - 1 - i));
+    }
+  }
+  return res;
+}
+
+function calculateGT06CRC(data) {
+  let crc = 0xFFFF;
+  const polynomial = 0x1021;
+
+  for (let i = 0; i < data.length; i++) {
+    let byte = data[i];
+    byte = reflect(byte, 8);
+    
+    crc ^= (byte << 8);
+    for (let j = 0; j < 8; j++) {
+      if ((crc & 0x8000) !== 0) {
+        crc = ((crc << 1) ^ polynomial) & 0xFFFF;
+      } else {
+        crc = (crc << 1) & 0xFFFF;
+      }
+    }
+  }
+  return reflect(crc, 16) ^ 0xFFFF;
+}
+
+function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignition, rawBleList = '') {
+  const nowMs = Date.now();
+  const vehicle = db.prepare(`
+    SELECT v.owner_id, v.name, v.lat, v.lng, v.odometer_km, v.curfew_enabled, v.curfew_start, v.curfew_end, v.curfew_days, v.curfew_allow_override, v.curfew_holiday_mode, v.override_status, v.override_expires, v.cloud_locked, v.ble_beacon_id, v.ble_beacon_rssi_threshold, v.subscription_status, u.subscription_status AS user_subscription_status
+    FROM vehicles v
+    LEFT JOIN users u ON v.owner_id = u.id
+    WHERE v.id = ?
+  `).get(deviceId);
+
+  if (!vehicle) return null;
+  const ownerId = vehicle.owner_id;
+
+  if (vehicle.subscription_status === 'SUSPENDED' || vehicle.user_subscription_status === 'SUSPENDED') {
+    console.log(`[Subscription Policy] Suspended vehicle or owner for ${deviceId} TCP telemetry ignored.`);
+    return null;
+  }
+
+  // Parse BLE Beacons if provided
+  const bleBeacons = [];
+  if (rawBleList) {
+    rawBleList.split(';').forEach(pair => {
+      const [mac, rssi] = pair.split(':');
+      if (mac && rssi) {
+        bleBeacons.push({ mac: mac.trim(), rssi: parseInt(rssi.trim()) });
+      }
+    });
+  }
+
+  // Proximity check (driver presence)
+  let driverPresent = false;
+  if (vehicle.ble_beacon_id) {
+    const matchedTag = bleBeacons.find(b => b.mac === vehicle.ble_beacon_id);
+    if (matchedTag && matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold) {
+      driverPresent = true;
+    }
+  } else {
+    driverPresent = true;
+  }
+
+  // Curfew validation
+  let curfewLocked = false;
+  if (vehicle.curfew_enabled === 1) {
+    const now = new Date();
+    const isAllowed = isWithinAllowedHours(now, vehicle.curfew_start, vehicle.curfew_end, vehicle.curfew_days, vehicle.curfew_holiday_mode);
+    if (!isAllowed) {
+      let hasOverride = false;
+      if (vehicle.override_status === 'APPROVED_MIDNIGHT' || vehicle.override_status === 'APPROVED_ONCE') {
+        if (Date.now() < vehicle.override_expires) {
+          hasOverride = true;
+        }
+      }
+      if (!hasOverride) {
+        curfewLocked = true;
+      }
+    }
+  }
+
+  const shouldBeLocked = (vehicle.cloud_locked === 1 || curfewLocked || !driverPresent);
+  const isLocked = shouldBeLocked ? 1 : 0;
+
+  // Hotwiring Detection Alert
+  if (ignition === 1 && vehicle.cloud_locked === 1) {
+    if (!global.alertCooldowns) global.alertCooldowns = new Map();
+    const hotwireKey = `${deviceId}-hotwire`;
+    const lastHotwire = global.alertCooldowns.get(hotwireKey);
+    if (!lastHotwire || (nowMs - lastHotwire > 300000)) {
+      const alertMsg = `Critical Security: Hotwiring / Ignition Bypass detected on vehicle ${vehicle.name || deviceId}! ACC turned ON while vehicle is cloud locked.`;
+      console.warn(`[SECURITY ALERT] ${alertMsg}`);
+      
+      try {
+        db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
+          deviceId, 'THEFT_HOTWIRE', alertMsg, nowMs
+        );
+      } catch (e) {}
+
+      io.to(`user_${ownerId}`).emit('notification', {
+        id: nowMs + 10,
+        type: 'THEFT',
+        severity: 'error',
+        message: alertMsg,
+        timestamp: nowMs,
+        is_read: false
+      });
+      io.to(`user_${ownerId}`).emit('device-alert', {
+        vehicleId: deviceId,
+        type: 'DEVICE_TAMPERING',
+        message: alertMsg,
+        timestamp: nowMs
+      });
+
+      global.alertCooldowns.set(hotwireKey, nowMs);
+    }
+  }
+
+  // Towing Detection Alert
+  if (ignition === 0 && speed > 2) {
+    if (!global.alertCooldowns) global.alertCooldowns = new Map();
+    const towingKey = `${deviceId}-towing`;
+    const lastTowing = global.alertCooldowns.get(towingKey);
+    if (!lastTowing || (nowMs - lastTowing > 300000)) {
+      const alertMsg = `Critical Alert: Towing / Unauthorized vehicle movement detected on vehicle ${vehicle.name || deviceId}! Vehicle moving (${speed} km/h) with ignition OFF.`;
+      console.warn(`[SECURITY ALERT] ${alertMsg}`);
+
+      try {
+        db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
+          deviceId, 'THEFT_TOWING', alertMsg, nowMs
+        );
+      } catch (e) {}
+
+      io.to(`user_${ownerId}`).emit('notification', {
+        id: nowMs + 11,
+        type: 'THEFT',
+        severity: 'error',
+        message: alertMsg,
+        timestamp: nowMs,
+        is_read: false
+      });
+      io.to(`user_${ownerId}`).emit('device-alert', {
+        vehicleId: deviceId,
+        type: 'DEVICE_TAMPERING',
+        message: alertMsg,
+        timestamp: nowMs
+      });
+
+      global.alertCooldowns.set(towingKey, nowMs);
+    }
+  }
+
+  // Odometer calculation
+  let newOdometer = vehicle.odometer_km || 0;
+  if (vehicle.lat !== null && vehicle.lng !== null && vehicle.lat !== 0 && vehicle.lng !== 0 &&
+      lat !== null && lng !== null && lat !== 0 && lng !== 0) {
+    const delta = getDistanceFromLatLonInKm(vehicle.lat, vehicle.lng, lat, lng);
+    if (delta > 0 && delta <= 2) {
+      newOdometer += delta;
+    }
+  }
+
+  // Update database
+  try {
+    db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ? WHERE id = ?')
+      .run(nowMs, battery || 100, fuel || 100, isLocked, lat || 0, lng || 0, newOdometer, deviceId);
+
+    db.prepare(`
+      INSERT INTO vehicle_history (vehicle_id, timestamp, speed, battery_level, fuel_level, lat, lng)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(deviceId, nowMs, speed || 0, battery || 100, fuel || 100, lat || 0, lng || 0);
+  } catch (dbErr) {
+    console.error('[TCP DB] Failed to save telematics record:', dbErr.message);
+  }
+
+  // Update frontend
+  io.to(`user_${ownerId}`).emit('device-data', {
+    topic: `/device/${deviceId}/status`,
+    payload: {
+      deviceId,
+      lat,
+      lng,
+      speed,
+      battery,
+      fuel,
+      locked: isLocked === 1,
+      timestamp: nowMs
+    }
+  });
+
+  return { isLocked };
+}
+
+// --- TCP Telematics Ingestion Server (Multi-Protocol support) ---
 const activeTcpSockets = new Map(); // Maps deviceId -> net.Socket
 
 const TCP_PORT = process.env.PORT_TCP || 5000;
 const tcpServer = net.createServer((socket) => {
   let authenticatedDeviceId = null;
+  let deviceType = null; // 'custom', 'gt06', 'teltonika'
+  let buffer = Buffer.alloc(0);
+
   console.log(`🔌 New TCP connection from: ${socket.remoteAddress}:${socket.remotePort}`);
 
   socket.on('data', (data) => {
-    const payloadStr = data.toString().trim();
-    const lines = payloadStr.split('\n');
-    
-    for (let rawLine of lines) {
-      rawLine = rawLine.trim();
-      if (!rawLine) continue;
+    buffer = Buffer.concat([buffer, data]);
+    let processedLength = 0;
 
-      if (!rawLine.startsWith('$$')) {
-        console.warn(`[TCP Parser] Invalid packet header: ${rawLine}`);
-        continue;
-      }
+    while (buffer.length - processedLength >= 2) {
+      // 1. Custom ASCII simulator protocol ($$)
+      if (buffer[processedLength] === 0x24 && buffer[processedLength + 1] === 0x24) {
+        const newlineIndex = buffer.indexOf('\n', processedLength);
+        if (newlineIndex === -1) break; // wait for full line
 
-      const parts = rawLine.substring(2).split(',');
-      const packetType = parts[0];
-      const deviceId = parts[1];
+        const rawLine = buffer.subarray(processedLength, newlineIndex).toString().trim();
+        processedLength = newlineIndex + 1;
 
-      if (!deviceId) {
-        console.warn(`[TCP Parser] Missing DeviceID in packet: ${rawLine}`);
-        continue;
-      }
+        if (!rawLine) continue;
 
-      // 1. Connection / Login Packet
-      if (packetType === 'LOGIN') {
-        const password = parts[2];
-        const vehicle = db.prepare('SELECT owner_id FROM vehicles WHERE id = ?').get(deviceId);
-        if (!vehicle) {
-          console.warn(`[TCP Auth] Connection attempt for unregistered Device: ${deviceId}`);
-          socket.write(`$$LOGIN,FAIL,Unregistered\r\n`);
-          socket.destroy();
-          return;
-        }
+        const parts = rawLine.substring(2).split(',');
+        const packetType = parts[0];
+        const deviceId = parts[1];
 
-        authenticatedDeviceId = deviceId;
-        activeTcpSockets.set(deviceId, socket);
-        console.log(`%c[TCP Auth] Device ${deviceId} authenticated and socket mapped.`, 'color: green');
-        socket.write(`$$LOGIN,OK\r\n`);
-        
-        const currentConfig = db.prepare('SELECT cloud_locked, ble_beacon_id, ble_beacon_rssi_threshold FROM vehicles WHERE id = ?').get(deviceId);
-        if (currentConfig) {
-          socket.write(`$$CMD,${deviceId},SET_CLOUDLOCKED,${currentConfig.cloud_locked}\r\n`);
-          if (currentConfig.ble_beacon_id) {
-            socket.write(`$$CMD,${deviceId},SET_BLE_BEACON,${currentConfig.ble_beacon_id},${currentConfig.ble_beacon_rssi_threshold}\r\n`);
-          }
-        }
-        continue;
-      }
-
-      if (authenticatedDeviceId !== deviceId) {
-        console.warn(`[TCP Security] Data packet from unauthenticated socket for Device: ${deviceId}`);
-        socket.write(`$$ERROR,Unauthenticated\r\n`);
-        socket.destroy();
-        return;
-      }
-
-      // 2. Telematics Data Packet
-      if (packetType === 'DATA') {
-        const lat = parseFloat(parts[2]);
-        const lng = parseFloat(parts[3]);
-        const speed = parseFloat(parts[4]);
-        const battery = parseInt(parts[5]);
-        const fuel = parseInt(parts[6]);
-        const ignition = parseInt(parts[7]); // 1 = ACC ON, 0 = ACC OFF
-        const rawBleList = parts[8] || '';
-
-        const bleBeacons = [];
-        if (rawBleList) {
-          rawBleList.split(';').forEach(pair => {
-            const [mac, rssi] = pair.split(':');
-            if (mac && rssi) {
-              bleBeacons.push({ mac: mac.trim(), rssi: parseInt(rssi.trim()) });
-            }
-          });
-        }
-
-        const vehicle = db.prepare(`
-          SELECT v.owner_id, v.name, v.lat, v.lng, v.odometer_km, v.curfew_enabled, v.curfew_start, v.curfew_end, v.curfew_days, v.curfew_allow_override, v.curfew_holiday_mode, v.override_status, v.override_expires, v.cloud_locked, v.ble_beacon_id, v.ble_beacon_rssi_threshold, v.subscription_status, u.subscription_status AS user_subscription_status
-          FROM vehicles v
-          LEFT JOIN users u ON v.owner_id = u.id
-          WHERE v.id = ?
-        `).get(deviceId);
-
-        if (!vehicle) continue;
-        const ownerId = vehicle.owner_id;
-
-        if (vehicle.subscription_status === 'SUSPENDED' || vehicle.user_subscription_status === 'SUSPENDED') {
-          console.log(`[Subscription Policy] Suspended vehicle or owner for ${deviceId} TCP telemetry ignored.`);
-          socket.write(`$$DATA,FAIL,Suspended\r\n`);
+        if (!deviceId) {
+          console.warn(`[TCP Parser] Missing DeviceID in packet: ${rawLine}`);
           continue;
         }
 
-        // Proximity check (driver presence)
-        let driverPresent = false;
-        if (vehicle.ble_beacon_id) {
-          const matchedTag = bleBeacons.find(b => b.mac === vehicle.ble_beacon_id);
-          if (matchedTag && matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold) {
-            driverPresent = true;
+        if (packetType === 'LOGIN') {
+          const password = parts[2];
+          const vehicle = db.prepare('SELECT owner_id FROM vehicles WHERE id = ?').get(deviceId);
+          if (!vehicle) {
+            console.warn(`[TCP Auth] Connection attempt for unregistered Device: ${deviceId}`);
+            socket.write(`$$LOGIN,FAIL,Unregistered\r\n`);
+            socket.destroy();
+            return;
           }
-        } else {
-          driverPresent = true;
-        }
 
-        // Curfew validation
-        let curfewLocked = false;
-        if (vehicle.curfew_enabled === 1) {
-          const now = new Date();
-          const isAllowed = isWithinAllowedHours(now, vehicle.curfew_start, vehicle.curfew_end, vehicle.curfew_days, vehicle.curfew_holiday_mode);
-          if (!isAllowed) {
-            let hasOverride = false;
-            if (vehicle.override_status === 'APPROVED_MIDNIGHT' || vehicle.override_status === 'APPROVED_ONCE') {
-              if (Date.now() < vehicle.override_expires) {
-                hasOverride = true;
+          authenticatedDeviceId = deviceId;
+          deviceType = 'custom';
+          activeTcpSockets.set(deviceId, socket);
+          console.log(`[TCP Auth] Custom Device ${deviceId} authenticated.`);
+          socket.write(`$$LOGIN,OK\r\n`);
+
+          const currentConfig = db.prepare('SELECT cloud_locked, ble_beacon_id, ble_beacon_rssi_threshold FROM vehicles WHERE id = ?').get(deviceId);
+          if (currentConfig) {
+            socket.write(`$$CMD,${deviceId},SET_CLOUDLOCKED,${currentConfig.cloud_locked}\r\n`);
+            if (currentConfig.ble_beacon_id) {
+              socket.write(`$$CMD,${deviceId},SET_BLE_BEACON,${currentConfig.ble_beacon_id},${currentConfig.ble_beacon_rssi_threshold}\r\n`);
+            }
+          }
+        } 
+        
+        else if (packetType === 'DATA') {
+          if (authenticatedDeviceId !== deviceId) {
+            console.warn(`[TCP Security] Data packet from unauthenticated socket for Device: ${deviceId}`);
+            socket.write(`$$ERROR,Unauthenticated\r\n`);
+            socket.destroy();
+            return;
+          }
+
+          const lat = parseFloat(parts[2]);
+          const lng = parseFloat(parts[3]);
+          const speed = parseFloat(parts[4]);
+          const battery = parseInt(parts[5]);
+          const fuel = parseInt(parts[6]);
+          const ignition = parseInt(parts[7]);
+          const rawBleList = parts[8] || '';
+
+          handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignition, rawBleList);
+          socket.write(`$$DATA,OK\r\n`);
+        }
+      }
+
+      // 2. Concox GT06 protocol (0x78 0x78 or 0x79 0x79)
+      else if ((buffer[processedLength] === 0x78 && buffer[processedLength + 1] === 0x78) ||
+               (buffer[processedLength] === 0x79 && buffer[processedLength + 1] === 0x79)) {
+        
+        if (buffer.length - processedLength < 6) break;
+
+        const isExtended = buffer[processedLength] === 0x79;
+        const length = isExtended 
+          ? buffer.readUInt16BE(processedLength + 2) 
+          : buffer[processedLength + 2];
+        const packetLength = length + (isExtended ? 6 : 5);
+
+        if (buffer.length - processedLength < packetLength) break;
+
+        const packet = buffer.subarray(processedLength, processedLength + packetLength);
+        processedLength += packetLength;
+
+        try {
+          const lengthOffset = isExtended ? 4 : 3;
+          const protocolNumber = packet[lengthOffset];
+          const serialNumber = packet.readUInt16BE(packetLength - 4);
+
+          // 0x01: Login Message
+          if (protocolNumber === 0x01) {
+            let imei = "";
+            const imeiOffset = isExtended ? 1 : 0;
+            for (let i = 0; i < 8; i++) {
+              const byte = packet[4 + imeiOffset + i];
+              imei += ((byte >> 4) & 0x0F).toString(16) + (byte & 0x0F).toString(16);
+            }
+            if (imei.startsWith('0')) imei = imei.substring(1);
+
+            console.log(`[GT06 TCP] Login attempt from IMEI: ${imei}`);
+            const vehicle = db.prepare('SELECT owner_id FROM vehicles WHERE id = ?').get(imei);
+            if (!vehicle) {
+              console.warn(`[GT06 TCP] Login rejected: IMEI ${imei} not registered.`);
+              socket.destroy();
+              return;
+            }
+
+            authenticatedDeviceId = imei;
+            deviceType = 'gt06';
+            activeTcpSockets.set(imei, socket);
+            console.log(`[GT06 TCP] Device ${imei} authenticated.`);
+
+            // Response ACK
+            const response = Buffer.from([0x78, 0x78, 0x05, 0x01, packet[packetLength - 4], packet[packetLength - 3], 0x00, 0x00, 0x0D, 0x0A]);
+            const responseCrc = calculateGT06CRC(response.subarray(2, 6));
+            response.writeUInt16BE(responseCrc, 6);
+            socket.write(response);
+          }
+
+          // 0x12, 0x16, 0x22: Location Data / Alarm Data Message
+          else if (protocolNumber === 0x12 || protocolNumber === 0x16 || protocolNumber === 0x22) {
+            if (!authenticatedDeviceId) {
+              console.warn(`[GT06 TCP] Location/Alarm packet received before Login.`);
+              socket.destroy();
+              return;
+            }
+
+            const offset = isExtended ? 1 : 0;
+            const rawLat = packet.readUInt32BE(11 + offset);
+            const rawLng = packet.readUInt32BE(15 + offset);
+            let lat = rawLat / 1800000.0;
+            let lng = rawLng / 1800000.0;
+            const speed = packet[19 + offset];
+
+            const byteCourseStatus = packet[20 + offset];
+            const isNorth = (byteCourseStatus & 0x04) !== 0;
+            const isWest = (byteCourseStatus & 0x08) !== 0;
+
+            if (!isNorth) lat = -lat;
+            if (isWest) lng = -lng;
+
+            // Determine if ignition is ON/OFF
+            let ignition = 1; // Default to ON for basic location updates
+            
+            // For alarm packets (0x16), the terminal information status byte is often at offset 31 + offset
+            if (protocolNumber === 0x16 && packet.length > 31 + offset) {
+              const terminalInfo = packet[31 + offset];
+              ignition = (terminalInfo & 0x02) !== 0 ? 1 : 0;
+            }
+
+            console.log(`[GT06 TCP] Location for ${authenticatedDeviceId} (Protocol 0x${protocolNumber.toString(16)}): Lat=${lat}, Lng=${lng}, Speed=${speed}, Ignition=${ignition}`);
+            handleIncomingTelemetry(authenticatedDeviceId, lat, lng, speed, 100, 100, ignition);
+
+            // Response ACK
+            const response = Buffer.from([0x78, 0x78, 0x05, protocolNumber, packet[packetLength - 4], packet[packetLength - 3], 0x00, 0x00, 0x0D, 0x0A]);
+            const responseCrc = calculateGT06CRC(response.subarray(2, 6));
+            response.writeUInt16BE(responseCrc, 6);
+            socket.write(response);
+          }
+
+          // 0x13: Status / Heartbeat Message
+          else if (protocolNumber === 0x13) {
+            if (authenticatedDeviceId) {
+              const offset = isExtended ? 1 : 0;
+              const terminalInfo = packet[4 + offset];
+              const ignition = (terminalInfo & 0x02) !== 0 ? 1 : 0;
+              const batLevel = packet[5 + offset];
+              const battery = Math.min(100, Math.round((batLevel / 6.0) * 100));
+
+              // Fetch last known lat/lng from database to avoid overwriting with 0
+              const vehicle = db.prepare('SELECT lat, lng FROM vehicles WHERE id = ?').get(authenticatedDeviceId);
+              const lastLat = vehicle ? vehicle.lat : 0;
+              const lastLng = vehicle ? vehicle.lng : 0;
+
+              console.log(`[GT06 TCP] Heartbeat status for ${authenticatedDeviceId}: Ignition=${ignition}, Battery=${battery}%`);
+              handleIncomingTelemetry(authenticatedDeviceId, lastLat, lastLng, 0, battery, 100, ignition);
+            }
+
+            // Response ACK
+            const response = Buffer.from([0x78, 0x78, 0x05, 0x13, packet[packetLength - 4], packet[packetLength - 3], 0x00, 0x00, 0x0D, 0x0A]);
+            const responseCrc = calculateGT06CRC(response.subarray(2, 6));
+            response.writeUInt16BE(responseCrc, 6);
+            socket.write(response);
+          }
+        } catch (gtErr) {
+          console.error(`[GT06 TCP] Packet parse error:`, gtErr.message);
+        }
+      }
+
+      // 3. Teltonika IMEI Login packet (starts with 0x00, followed by length 10-20)
+      else if (!authenticatedDeviceId && 
+               buffer[processedLength] === 0x00 && 
+               buffer[processedLength + 1] >= 10 && 
+               buffer[processedLength + 1] <= 20 &&
+               buffer.length - processedLength >= buffer[processedLength + 1] + 2) {
+        
+        const imeiLen = buffer[processedLength + 1];
+        const packetLength = imeiLen + 2;
+        const imeiStr = buffer.subarray(processedLength + 2, processedLength + packetLength).toString('ascii');
+
+        if (/^\d+$/.test(imeiStr)) {
+          processedLength += packetLength;
+          console.log(`[Teltonika TCP] Login attempt from IMEI: ${imeiStr}`);
+
+          const vehicle = db.prepare('SELECT owner_id FROM vehicles WHERE id = ?').get(imeiStr);
+          if (!vehicle) {
+            console.warn(`[Teltonika TCP] Login rejected: IMEI ${imeiStr} not registered.`);
+            socket.write(Buffer.from([0x00]));
+            socket.destroy();
+            return;
+          }
+
+          authenticatedDeviceId = imeiStr;
+          deviceType = 'teltonika';
+          activeTcpSockets.set(imeiStr, socket);
+          console.log(`[Teltonika TCP] Device ${imeiStr} authenticated.`);
+          socket.write(Buffer.from([0x01])); // Accept connection
+        } else {
+          processedLength += 1;
+        }
+      }
+
+      // 4. Teltonika Codec 8 / 8E binary data packets (4 zeros + 4 length)
+      else if (buffer.length - processedLength >= 12 && 
+               buffer.readUInt32BE(processedLength) === 0x00000000) {
+        
+        const dataLength = buffer.readUInt32BE(processedLength + 4);
+        const packetLength = dataLength + 12;
+
+        if (buffer.length - processedLength < packetLength) break; // wait for full packet
+
+        const packet = buffer.subarray(processedLength, processedLength + packetLength);
+        processedLength += packetLength;
+
+        try {
+          if (!authenticatedDeviceId) {
+            console.warn(`[Teltonika TCP] Data packet received before login.`);
+            socket.destroy();
+            return;
+          }
+
+          const codecId = packet[8];
+          const numRecords = packet[9];
+          console.log(`[Teltonika TCP] Parsing ${numRecords} records (Codec ${codecId})`);
+
+          let offset = 10;
+          let lastLat = null;
+          let lastLng = null;
+          let lastSpeed = null;
+          let lastIgnition = 1;
+
+          for (let r = 0; r < numRecords; r++) {
+            if (offset + 15 > packet.length) break;
+
+            // Timestamp (8 bytes)
+            const tsMs = Number(packet.readBigUInt64BE(offset));
+            offset += 8;
+
+            // Priority (1 byte)
+            const priority = packet[offset];
+            offset += 1;
+
+            // GPS Element (15 bytes)
+            const rawLng = packet.readInt32BE(offset);
+            const rawLat = packet.readInt32BE(offset + 4);
+            const altitude = packet.readInt16BE(offset + 8);
+            const angle = packet.readInt16BE(offset + 10);
+            const satellites = packet[offset + 12];
+            const speed = packet.readInt16BE(offset + 13);
+
+            lastLng = rawLng / 10000000.0;
+            lastLat = rawLat / 10000000.0;
+            lastSpeed = speed;
+
+            offset += 15;
+
+            // I/O Element (Variable length)
+            const isExtended = codecId === 0x8E;
+            const eventId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+            offset += isExtended ? 2 : 1;
+
+            const totalIoCount = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+            offset += isExtended ? 2 : 1;
+
+            // 1-byte properties
+            const io1Count = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+            offset += isExtended ? 2 : 1;
+            for (let i = 0; i < io1Count; i++) {
+              const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+              offset += isExtended ? 2 : 1;
+              const val = packet[offset];
+              offset += 1;
+
+              if (propId === 239 || propId === 1) { // ACC/Ignition
+                lastIgnition = val;
               }
             }
-            if (!hasOverride) {
-              curfewLocked = true;
+
+            // 2-byte properties
+            const io2Count = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+            offset += isExtended ? 2 : 1;
+            for (let i = 0; i < io2Count; i++) {
+              const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+              offset += isExtended ? 2 : 1;
+              offset += 2;
+            }
+
+            // 4-byte properties
+            const io4Count = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+            offset += isExtended ? 2 : 1;
+            for (let i = 0; i < io4Count; i++) {
+              const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+              offset += isExtended ? 2 : 1;
+              offset += 4;
+            }
+
+            // 8-byte properties
+            const io8Count = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+            offset += isExtended ? 2 : 1;
+            for (let i = 0; i < io8Count; i++) {
+              const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+              offset += isExtended ? 2 : 1;
+              offset += 8;
             }
           }
-        }
 
-        const shouldBeLocked = (vehicle.cloud_locked === 1 || curfewLocked || !driverPresent);
-        const isLocked = shouldBeLocked ? 1 : 0;
-        const nowMs = Date.now();
-
-        // Hotwiring Detection Alert
-        if (ignition === 1 && vehicle.cloud_locked === 1) {
-          if (!global.alertCooldowns) global.alertCooldowns = new Map();
-          const hotwireKey = `${deviceId}-hotwire`;
-          const lastHotwire = global.alertCooldowns.get(hotwireKey);
-          if (!lastHotwire || (nowMs - lastHotwire > 300000)) {
-            const alertMsg = `Critical Security: Hotwiring / Ignition Bypass detected on vehicle ${vehicle.name || deviceId}! ACC turned ON while vehicle is cloud locked.`;
-            console.warn(`[SECURITY ALERT] ${alertMsg}`);
-            
-            try {
-              db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
-                deviceId, 'THEFT_HOTWIRE', alertMsg, nowMs
-              );
-            } catch (e) {}
-
-            io.to(`user_${ownerId}`).emit('notification', {
-              id: nowMs + 10,
-              type: 'THEFT',
-              severity: 'error',
-              message: alertMsg,
-              timestamp: nowMs,
-              is_read: false
-            });
-            io.to(`user_${ownerId}`).emit('device-alert', {
-              vehicleId: deviceId,
-              type: 'DEVICE_TAMPERING',
-              message: alertMsg,
-              timestamp: nowMs
-            });
-
-            global.alertCooldowns.set(hotwireKey, nowMs);
+          if (lastLat !== null && lastLng !== null) {
+            console.log(`[Teltonika TCP] Telemetry parsed: Lat=${lastLat}, Lng=${lastLng}, Speed=${lastSpeed}`);
+            handleIncomingTelemetry(authenticatedDeviceId, lastLat, lastLng, lastSpeed, 100, 100, lastIgnition);
           }
+
+          // ACK response: 4-byte UInt32BE count of records
+          const ack = Buffer.alloc(4);
+          ack.writeUInt32BE(numRecords, 0);
+          socket.write(ack);
+        } catch (telErr) {
+          console.error(`[Teltonika TCP] Parse error:`, telErr.message);
         }
-
-        // Towing Detection Alert
-        if (ignition === 0 && speed > 2) {
-          if (!global.alertCooldowns) global.alertCooldowns = new Map();
-          const towingKey = `${deviceId}-towing`;
-          const lastTowing = global.alertCooldowns.get(towingKey);
-          if (!lastTowing || (nowMs - lastTowing > 300000)) {
-            const alertMsg = `Critical Alert: Towing / Unauthorized vehicle movement detected on vehicle ${vehicle.name || deviceId}! Vehicle moving (${speed} km/h) with ignition OFF.`;
-            console.warn(`[SECURITY ALERT] ${alertMsg}`);
-
-            try {
-              db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
-                deviceId, 'THEFT_TOWING', alertMsg, nowMs
-              );
-            } catch (e) {}
-
-            io.to(`user_${ownerId}`).emit('notification', {
-              id: nowMs + 11,
-              type: 'THEFT',
-              severity: 'error',
-              message: alertMsg,
-              timestamp: nowMs,
-              is_read: false
-            });
-            io.to(`user_${ownerId}`).emit('device-alert', {
-              vehicleId: deviceId,
-              type: 'DEVICE_TAMPERING',
-              message: alertMsg,
-              timestamp: nowMs
-            });
-
-            global.alertCooldowns.set(towingKey, nowMs);
-          }
-        }
-
-        // Odometer calculation
-        let newOdometer = vehicle.odometer_km || 0;
-        if (vehicle.lat !== null && vehicle.lng !== null && vehicle.lat !== 0 && vehicle.lng !== 0 &&
-            lat !== null && lng !== null && lat !== 0 && lng !== 0) {
-          const delta = getDistanceFromLatLonInKm(vehicle.lat, vehicle.lng, lat, lng);
-          if (delta > 0 && delta <= 2) {
-            newOdometer += delta;
-          }
-        }
-
-        // Update database
-        try {
-          db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ? WHERE id = ?')
-            .run(nowMs, battery || 100, fuel || 100, isLocked, lat || 0, lng || 0, newOdometer, deviceId);
-
-          db.prepare(`
-            INSERT INTO vehicle_history (vehicle_id, timestamp, speed, battery_level, fuel_level, lat, lng)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-          `).run(deviceId, nowMs, speed || 0, battery || 100, fuel || 100, lat || 0, lng || 0);
-        } catch (dbErr) {
-          console.error('[TCP DB] Failed to save telematics record:', dbErr.message);
-        }
-
-        // Update frontend
-        io.to(`user_${ownerId}`).emit('device-data', {
-          topic: `/device/${deviceId}/status`,
-          payload: {
-            deviceId,
-            lat,
-            lng,
-            speed,
-            battery,
-            fuel,
-            locked: isLocked === 1,
-            timestamp: nowMs
-          }
-        });
-
-        socket.write(`$$DATA,OK\r\n`);
       }
+
+      // 5. Unrecognized header - advance by 1 byte to find next valid packet
+      else {
+        processedLength += 1;
+      }
+    }
+
+    if (processedLength > 0) {
+      buffer = buffer.subarray(processedLength);
     }
   });
 
   socket.on('close', () => {
     if (authenticatedDeviceId) {
-      console.log(`🔌 Connection closed for Device: ${authenticatedDeviceId}`);
+      console.log(`🔌 Connection closed for Device: ${authenticatedDeviceId} (${deviceType})`);
       activeTcpSockets.delete(authenticatedDeviceId);
     } else {
       console.log('🔌 Unauthenticated TCP socket closed.');
