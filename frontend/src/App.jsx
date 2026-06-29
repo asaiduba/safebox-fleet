@@ -89,6 +89,18 @@ class ErrorBoundary extends React.Component {
     }
 }
 
+const getVehicleEmoji = (type) => {
+    switch (type?.toLowerCase()) {
+        case 'motorcycle': return '🏍️';
+        case 'tricycle': return '🛺';
+        case 'bus': return '🚌';
+        case 'truck': return '🚚';
+        case 'van': return '🚐';
+        case 'car':
+        default: return '🚗';
+    }
+};
+
 function App() {
     // Initialize user from localStorage if available
     const [user, setUser] = useState(() => {
@@ -1074,7 +1086,7 @@ function App() {
                                                     </span>
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.1rem' }}>
-                                                    {v.plate_number && <span className="plate-badge">{v.plate_number}</span>}
+                                                    {v.plate_number && <span className="plate-badge">{getVehicleEmoji(v.vehicle_type)} {v.plate_number}</span>}
                                                     {v.driver_name && <span className="driver-badge">👤 {v.driver_name}</span>}
                                                 </div>
                                             </div>
@@ -1273,12 +1285,12 @@ function App() {
                                     className: 'custom-vehicle-marker-wrapper',
                                     html: `
                                         <div class="vehicle-marker-glowing ${markerClass} ${isSelected ? 'selected' : ''}">
-                                            <div class="marker-dot"></div>
-                                            <div class="marker-pulse"></div>
+                                            <div class="marker-ripple"></div>
+                                            <div class="marker-core">${getVehicleEmoji(v.vehicle_type)}</div>
                                         </div>
                                     `,
-                                    iconSize: [24, 24],
-                                    iconAnchor: [12, 12]
+                                    iconSize: [36, 36],
+                                    iconAnchor: [18, 18]
                                 });
 
                                 return (

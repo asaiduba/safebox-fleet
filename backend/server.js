@@ -1954,7 +1954,7 @@ app.get('/api/vehicles', (req, res) => {
 });
 
 app.post('/api/vehicles', async (req, res) => {
-  const { id, name, plateNumber, driverName } = req.body;
+  const { id, name, plateNumber, driverName, vehicleType } = req.body;
   const ownerId = getRequestUserId(req); // SECURE: Use resolved user ID
   try {
     // 1. Validate Format (Must be MOTO_XXX, SAFEBOX_XXX, or 15-digit IMEI)
@@ -2001,8 +2001,9 @@ app.post('/api/vehicles', async (req, res) => {
       }
     }
 
-    const stmt = db.prepare('INSERT INTO vehicles (id, name, owner_id, plate_number, driver_name, is_locked) VALUES (?, ?, ?, ?, ?, 1)');
-    stmt.run(id, name, ownerId, plateNumber || null, driverName || null);
+    const typeToSave = vehicleType || 'car';
+    const stmt = db.prepare('INSERT INTO vehicles (id, name, owner_id, plate_number, driver_name, vehicle_type, is_locked) VALUES (?, ?, ?, ?, ?, ?, 1)');
+    stmt.run(id, name, ownerId, plateNumber || null, driverName || null, typeToSave);
     res.json({ success: true });
   } catch (err) {
     console.error("Add vehicle error:", err);
@@ -3521,7 +3522,7 @@ app.get('/api/shared-track/:token', (req, res) => {
     return res.status(410).json({ error: 'This tracking session has expired.', expired: true });
   }
 
-  const vehicle = db.prepare('SELECT id, name, plate_number, driver_name, lat, lng, battery_level, fuel_level, last_seen FROM vehicles WHERE id = ?').get(link.vehicle_id);
+  const vehicle = db.prepare('SELECT id, name, plate_number, driver_name, vehicle_type, lat, lng, battery_level, fuel_level, last_seen FROM vehicles WHERE id = ?').get(link.vehicle_id);
 
   if (!vehicle) {
     return res.status(404).json({ error: 'Vehicle no longer exists.' });
@@ -3532,6 +3533,7 @@ app.get('/api/shared-track/:token', (req, res) => {
     name: vehicle.name,
     plateNumber: vehicle.plate_number,
     driverName: vehicle.driver_name,
+    vehicleType: vehicle.vehicle_type,
     lat: vehicle.lat,
     lng: vehicle.lng,
     battery: vehicle.battery_level,

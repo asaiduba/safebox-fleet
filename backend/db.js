@@ -133,10 +133,11 @@ function initDb() {
             ble_beacon_id TEXT,
             ble_beacon_rssi_threshold INTEGER DEFAULT -80,
             device_type TEXT DEFAULT 'mokosmart',
+            vehicle_type TEXT DEFAULT 'car',
             FOREIGN KEY(owner_id) REFERENCES users(id)
         )
     `);
-
+ 
     // Schema Migration: Ensure all vehicle columns exist in vehicles table
     try {
         db.exec('ALTER TABLE vehicles ADD COLUMN lat REAL DEFAULT 0');
@@ -200,6 +201,9 @@ function initDb() {
     } catch (e) {}
     try {
         db.exec("ALTER TABLE vehicles ADD COLUMN device_type TEXT DEFAULT 'mokosmart'");
+    } catch (e) {}
+    try {
+        db.exec("ALTER TABLE vehicles ADD COLUMN vehicle_type TEXT DEFAULT 'car'");
     } catch (e) {}
 
     // 3. Create Vehicle History Table for Analytics

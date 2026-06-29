@@ -9,6 +9,7 @@ export default function AddVehicleModal({ user, onClose, onVehicleAdded }) {
     const [name, setName] = useState('');
     const [plateNumber, setPlateNumber] = useState('');
     const [driverName, setDriverName] = useState('');
+    const [vehicleType, setVehicleType] = useState('car');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -36,6 +37,7 @@ export default function AddVehicleModal({ user, onClose, onVehicleAdded }) {
                 name: cleanName || `Vehicle ${cleanId}`,
                 plateNumber: cleanPlate || null,
                 driverName: cleanDriver || null,
+                vehicleType,
                 ownerId: user.id
             });
 
@@ -100,6 +102,30 @@ export default function AddVehicleModal({ user, onClose, onVehicleAdded }) {
                             onChange={(e) => setDriverName(e.target.value)} 
                             placeholder="e.g. John Doe"
                         />
+                    </div>
+
+                    <div className="form-group">
+                        <label>Vehicle Type</label>
+                        <select 
+                            value={vehicleType} 
+                            onChange={(e) => setVehicleType(e.target.value)}
+                            style={{ 
+                                width: '100%', 
+                                padding: '0.75rem', 
+                                borderRadius: '0.5rem', 
+                                background: '#1e293b', 
+                                border: '1px solid rgba(255, 255, 255, 0.1)', 
+                                color: 'white',
+                                outline: 'none'
+                            }}
+                        >
+                            <option value="car">🚗 Car</option>
+                            <option value="motorcycle">🏍️ Motorcycle</option>
+                            <option value="tricycle">🛺 Tricycle (Keke)</option>
+                            <option value="bus">🚌 Bus</option>
+                            <option value="truck">🚚 Truck</option>
+                            <option value="van">🚐 Van</option>
+                        </select>
                     </div>
 
                     <footer className="modal-footer">

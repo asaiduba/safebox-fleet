@@ -19,14 +19,27 @@ function MapAutoCenter({ lat, lng }) {
     return null;
 }
 
+// Helper to get vehicle emoji based on type
+export const getVehicleEmoji = (type) => {
+    switch (type?.toLowerCase()) {
+        case 'motorcycle': return '🏍️';
+        case 'tricycle': return '🛺';
+        case 'bus': return '🚌';
+        case 'truck': return '🚚';
+        case 'van': return '🚐';
+        case 'car':
+        default: return '🚗';
+    }
+};
+
 // Custom vehicle marker icon
-function createVehicleIcon() {
+function createVehicleIcon(type) {
     return new L.DivIcon({
         className: 'shared-vehicle-marker-wrapper',
         html: `
             <div class="shared-vehicle-marker">
                 <div class="marker-ripple"></div>
-                <div class="marker-core">🚗</div>
+                <div class="marker-core">${getVehicleEmoji(type)}</div>
             </div>
         `,
         iconSize: [36, 36],
@@ -166,7 +179,7 @@ export default function SharedTracker({ token }) {
 
     if (!vehicleData) return null;
 
-    const { name, plateNumber, driverName, lat, lng, battery, fuel, lastSeen, speed } = vehicleData;
+    const { name, plateNumber, driverName, vehicleType, lat, lng, battery, fuel, lastSeen, speed } = vehicleData;
     const hasLocation = lat && lng && lat !== 0 && lng !== 0;
     const displaySpeed = speed || 0;
 
@@ -179,8 +192,8 @@ export default function SharedTracker({ token }) {
             {/* Header */}
             <div className="shared-tracker-header">
                 <div className="shared-tracker-brand">
-                    <div className="brand-icon">🛡️</div>
-                    <span className="brand-text">SafeBox Fleet</span>
+                    <img src="/logo.png" alt="SafeBox" className="shared-tracker-logo" />
+                    <span className="shared-tracker-brand-text">SafeBox Fleet</span>
                 </div>
                 <div className="shared-tracker-live-badge">
                     <span className="live-dot"></span>
@@ -206,7 +219,7 @@ export default function SharedTracker({ token }) {
                             <MapAutoCenter lat={lat} lng={lng} />
                             <Marker
                                 position={[lat, lng]}
-                                icon={createVehicleIcon()}
+                                icon={createVehicleIcon(vehicleType)}
                             >
                                 <Popup>
                                     <strong>{name}</strong><br />
@@ -226,7 +239,7 @@ export default function SharedTracker({ token }) {
                                 {driverName ? `${driverName} is on the way!` : `${name || 'Vehicle'} is on the way!`}
                             </span>
                             {plateNumber && (
-                                <span className="vehicle-plate">🚗 {plateNumber}</span>
+                                <span className="vehicle-plate">{getVehicleEmoji(vehicleType)} {plateNumber}</span>
                             )}
                             {driverName && name && (
                                 <span className="driver-name">Vehicle: {name}</span>
