@@ -204,6 +204,35 @@ const AdminDashboard = ({ user, onLogout, onBackToClient, onImpersonate }) => {
         }
     };
 
+    // Delete Whitelisted Device IMEI
+    const handleDeleteDevice = async (deviceId, ownerUsername) => {
+        const confirmMsg = ownerUsername 
+            ? `⚠️ WARNING: This device IMEI is currently CLAIMED by user "${ownerUsername}".\n\nDeleting this device will ALSO delete the registered vehicle from that user's fleet list and disconnect their tracker.\n\nAre you sure you want to permanently delete this device?`
+            : `Are you sure you want to delete whitelisted device ID/IMEI "${deviceId}"?`;
+            
+        if (!window.confirm(confirmMsg)) return;
+
+        try {
+            const token = localStorage.getItem('token');
+            await axios.delete(`${API_BASE}/api/admin/devices/${deviceId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            
+            // Refresh local list
+            setDevices(prev => prev.filter(d => d.id !== deviceId));
+            
+            // Refresh metrics
+            const metricsRes = await axios.get(`${API_BASE}/api/admin/metrics`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setMetrics(metricsRes.data);
+            alert(`Device "${deviceId}" has been deleted from whitelist database.`);
+        } catch (err) {
+            console.error('Delete device error:', err);
+            alert(err.response?.data?.error || 'Failed to delete device');
+        }
+    };
+
     // Filter tenants based on search
     const filteredTenants = tenants.filter(t => 
         (t.company_name && t.company_name.toLowerCase().includes(tenantSearch.toLowerCase())) ||
@@ -635,12 +664,13 @@ const AdminDashboard = ({ user, onLogout, onBackToClient, onImpersonate }) => {
                                                     <th>Device IMEI / ID</th>
                                                     <th>Authorized Date</th>
                                                     <th>Status</th>
+                                                    <th style={{ textAlign: 'center' }}>Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {filteredDevices.length === 0 ? (
                                                     <tr>
-                                                        <td colSpan="3" style={{ textAlign: 'center', color: '#64748b', padding: '1rem' }}>
+                                                        <td colSpan="4" style={{ textAlign: 'center', color: '#64748b', padding: '1rem' }}>
                                                             No devices match filters.
                                                         </td>
                                                     </tr>
@@ -661,6 +691,15 @@ const AdminDashboard = ({ user, onLogout, onBackToClient, onImpersonate }) => {
                                                                         ✔️ Available
                                                                     </span>
                                                                 )}
+                                                            </td>
+                                                            <td style={{ textAlign: 'center' }}>
+                                                                <button 
+                                                                    className="btn-action-toggle delete"
+                                                                    onClick={() => handleDeleteDevice(d.id, d.owner_username)}
+                                                                    style={{ padding: '4px 8px', fontSize: '0.75rem', margin: 0 }}
+                                                                >
+                                                                    🗑️ Delete
+                                                                </button>
                                                             </td>
                                                         </tr>
                                                     ))

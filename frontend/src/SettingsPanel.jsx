@@ -2,6 +2,18 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import './SettingsPanel.css';
 
+const getVehicleEmoji = (type) => {
+    switch (type?.toLowerCase()) {
+        case 'motorcycle': return '🏍️';
+        case 'tricycle': return '🛺';
+        case 'bus': return '🚌';
+        case 'truck': return '🚚';
+        case 'van': return '🚐';
+        case 'car':
+        default: return '🚗';
+    }
+};
+
 const CURRENCY_SYMBOLS = {
     'NGN': '₦',
     'USD': '$',
@@ -124,6 +136,53 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
     const [bleLoading, setBleLoading] = useState(false);
     const [bleSuccess, setBleSuccess] = useState('');
     const [bleError, setBleError] = useState('');
+
+    // Manage Vehicles Tab States
+    const [editingVehicleId, setEditingVehicleId] = useState(null);
+    const [editName, setEditName] = useState('');
+    const [editPlateNumber, setEditPlateNumber] = useState('');
+    const [editDriverName, setEditDriverName] = useState('');
+    const [editVehicleType, setEditVehicleType] = useState('car');
+    const [vehicleLoading, setVehicleLoading] = useState(false);
+    const [vehicleSuccess, setVehicleSuccess] = useState('');
+    const [vehicleError, setVehicleError] = useState('');
+
+    const handleStartEditVehicle = (vehicle) => {
+        setEditingVehicleId(vehicle.id);
+        setEditName(vehicle.name || '');
+        setEditPlateNumber(vehicle.plate_number || '');
+        setEditDriverName(vehicle.driver_name || '');
+        setEditVehicleType(vehicle.vehicle_type || 'car');
+        setVehicleSuccess('');
+        setVehicleError('');
+    };
+
+    const handleSaveVehicleEdit = async (vehicleId) => {
+        setVehicleLoading(true);
+        setVehicleSuccess('');
+        setVehicleError('');
+
+        try {
+            const token = localStorage.getItem('token');
+            await axios.put(`${API_BASE}/api/vehicles/${vehicleId}`, {
+                name: editName.trim(),
+                plateNumber: editPlateNumber.trim().toUpperCase(),
+                driverName: editDriverName.trim(),
+                vehicleType: editVehicleType
+            }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            setVehicleSuccess('Vehicle details updated successfully!');
+            setEditingVehicleId(null);
+            fetchBillingStatus(); // Refresh vehicles list
+        } catch (err) {
+            console.error('Failed to update vehicle:', err);
+            setVehicleError(err.response?.data?.error || 'Failed to update vehicle.');
+        } finally {
+            setVehicleLoading(false);
+        }
+    };
 
     // Auto-select first vehicle for BLE settings on load
     useEffect(() => {
@@ -846,6 +905,15 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
                             style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
                             🔑 BLE Keyless
+                        </button>
+                        <button 
+                            type="button" 
+                            className={`sidebar-tab ${activeTab === 'vehicles' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('vehicles')}
+                            disabled={user?.subscription_status === 'SUSPENDED'}
+                            style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                        >
+                            🚗 Manage Vehicles
                         </button>
                     </aside>
 
@@ -2059,6 +2127,126 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
                                             {bleLoading ? 'Saving...' : '💾 Save BLE Configurations'}
                                         </button>
                                     </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'vehicles' && (
+                            <div className="settings-form animate-fade-in">
+                                <div className="form-section">
+                                    <h3>🚗 Manage Registered Fleet Vehicles</h3>
+                                    <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: '1.4' }}>
+                                        Update details for your registered vehicle trackers, including changing vehicle names, assigning/updating driver names, changing license plates, or switching the vehicle type icon.
+                                    </p>
+
+                                    {vehicleSuccess && <div className="status-alert success">{vehicleSuccess}</div>}
+                                    {vehicleError && <div className="status-alert error">{vehicleError}</div>}
+
+                                    <div className="table-responsive" style={{ marginTop: '1rem', overflowX: 'auto' }}>
+                                        <table className="settings-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)', textAlign: 'left' }}>
+                                                    <th style={{ padding: '0.75rem 0.5rem', color: '#94a3b8' }}>Tracker ID/IMEI</th>
+                                                    <th style={{ padding: '0.75rem 0.5rem', color: '#94a3b8' }}>Vehicle Name</th>
+                                                    <th style={{ padding: '0.75rem 0.5rem', color: '#94a3b8' }}>License Plate</th>
+                                                    <th style={{ padding: '0.75rem 0.5rem', color: '#94a3b8' }}>Driver Name</th>
+                                                    <th style={{ padding: '0.75rem 0.5rem', color: '#94a3b8' }}>Vehicle Type</th>
+                                                    <th style={{ padding: '0.75rem 0.5rem', color: '#94a3b8', textAlign: 'center' }}>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {billingVehicles.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan="6" style={{ textAlign: 'center', color: '#64748b', padding: '2rem' }}>
+                                                            No registered vehicles found.
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    billingVehicles.map(v => (
+                                                        <tr key={v.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                                                            <td style={{ padding: '0.75rem 0.5rem', fontFamily: 'monospace', fontWeight: 'bold' }}>{v.id}</td>
+                                                            {editingVehicleId === v.id ? (
+                                                                <>
+                                                                    <td style={{ padding: '0.75rem 0.5rem' }}>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={editName} 
+                                                                            onChange={(e) => setEditName(e.target.value)}
+                                                                            style={{ background: '#1e293b', color: 'white', border: '1px solid #475569', padding: '0.4rem', borderRadius: '0.25rem', width: '100%', outline: 'none', boxSizing: 'border-box' }}
+                                                                        />
+                                                                    </td>
+                                                                    <td style={{ padding: '0.75rem 0.5rem' }}>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={editPlateNumber} 
+                                                                            onChange={(e) => setEditPlateNumber(e.target.value)}
+                                                                            style={{ background: '#1e293b', color: 'white', border: '1px solid #475569', padding: '0.4rem', borderRadius: '0.25rem', width: '100%', outline: 'none', boxSizing: 'border-box' }}
+                                                                        />
+                                                                    </td>
+                                                                    <td style={{ padding: '0.75rem 0.5rem' }}>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={editDriverName} 
+                                                                            onChange={(e) => setEditDriverName(e.target.value)}
+                                                                            style={{ background: '#1e293b', color: 'white', border: '1px solid #475569', padding: '0.4rem', borderRadius: '0.25rem', width: '100%', outline: 'none', boxSizing: 'border-box' }}
+                                                                        />
+                                                                    </td>
+                                                                    <td style={{ padding: '0.75rem 0.5rem' }}>
+                                                                        <select 
+                                                                            value={editVehicleType} 
+                                                                            onChange={(e) => setEditVehicleType(e.target.value)}
+                                                                            style={{ background: '#1e293b', color: 'white', border: '1px solid #475569', padding: '0.4rem', borderRadius: '0.25rem', width: '100%', outline: 'none', boxSizing: 'border-box' }}
+                                                                        >
+                                                                            <option value="car">🚗 Car</option>
+                                                                            <option value="motorcycle">🏍️ Motorcycle</option>
+                                                                            <option value="tricycle">🛺 Tricycle</option>
+                                                                            <option value="bus">🚌 Bus</option>
+                                                                            <option value="truck">🚚 Truck</option>
+                                                                            <option value="van">🚐 Van</option>
+                                                                        </select>
+                                                                    </td>
+                                                                    <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
+                                                                        <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
+                                                                            <button 
+                                                                                onClick={() => handleSaveVehicleEdit(v.id)}
+                                                                                disabled={vehicleLoading}
+                                                                                style={{ padding: '0.4rem 0.75rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
+                                                                            >
+                                                                                {vehicleLoading ? 'Saving...' : '💾 Save'}
+                                                                            </button>
+                                                                            <button 
+                                                                                onClick={() => setEditingVehicleId(null)}
+                                                                                style={{ padding: '0.4rem 0.75rem', background: '#64748b', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
+                                                                            >
+                                                                                Cancel
+                                                                            </button>
+                                                                        </div>
+                                                                    </td>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <td style={{ padding: '0.75rem 0.5rem', fontWeight: 'bold' }}>{v.name || v.id}</td>
+                                                                    <td style={{ padding: '0.75rem 0.5rem' }}>{v.plate_number || <span style={{ color: '#64748b' }}>--</span>}</td>
+                                                                    <td style={{ padding: '0.75rem 0.5rem' }}>{v.driver_name || <span style={{ color: '#64748b' }}>--</span>}</td>
+                                                                    <td style={{ padding: '0.75rem 0.5rem', textTransform: 'capitalize' }}>
+                                                                        {getVehicleEmoji(v.vehicle_type)} {v.vehicle_type || 'car'}
+                                                                    </td>
+                                                                    <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
+                                                                        <button 
+                                                                            onClick={() => handleStartEditVehicle(v)}
+                                                                            style={{ padding: '0.4rem 0.85rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
+                                                                        >
+                                                                            ✏️ Edit
+                                                                        </button>
+                                                                    </td>
+                                                                </>
+                                                            )}
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         )}

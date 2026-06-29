@@ -2011,6 +2011,32 @@ app.post('/api/vehicles', async (req, res) => {
   }
 });
 
+// PUT /api/vehicles/:id - Edit registered vehicle details (Auth required)
+app.put('/api/vehicles/:id', authMiddleware, (req, res) => {
+  const userId = getRequestUserId(req);
+  const vehicleId = req.params.id;
+  const { name, plateNumber, driverName, vehicleType } = req.body;
+
+  try {
+    // 1. Verify owner owns this vehicle
+    const vehicle = db.prepare('SELECT 1 FROM vehicles WHERE id = ? AND owner_id = ?').get(vehicleId, userId);
+    if (!vehicle) {
+      return res.status(404).json({ error: 'Vehicle not found or you do not own this vehicle.' });
+    }
+
+    // 2. Update details
+    const typeToSave = vehicleType || 'car';
+    db.prepare('UPDATE vehicles SET name = ?, plate_number = ?, driver_name = ?, vehicle_type = ? WHERE id = ?')
+      .run(name || `Vehicle ${vehicleId}`, plateNumber || null, driverName || null, typeToSave, vehicleId);
+
+    console.log(`🚗 Vehicle ${vehicleId} updated by owner ${userId}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Update vehicle error:", err);
+    res.status(500).json({ error: 'Failed to update vehicle details: ' + err.message });
+  }
+});
+
 // HTTP-to-MQTT Webhook Bridge for Traccar (Ingesting SinoTrack, Teltonika, etc.)
 app.post('/api/telematics-webhook', (req, res) => {
   try {
@@ -2405,6 +2431,28 @@ app.post('/api/admin/devices/whitelist', authMiddleware, adminMiddleware, (req, 
   } catch (err) {
     console.error('Super Admin bulk whitelist error:', err);
     res.status(500).json({ error: 'Failed to whitelist devices' });
+  }
+});
+
+// --- SUPER ADMIN: Delete Whitelisted Device IMEI ---
+app.delete('/api/admin/devices/:id', authMiddleware, adminMiddleware, (req, res) => {
+  const deviceId = req.params.id;
+  try {
+    // 1. Delete from vehicles first (if registered) to prevent orphan records
+    db.prepare('DELETE FROM vehicles WHERE id = ?').run(deviceId);
+    
+    // 2. Delete from authorized_devices whitelist
+    const info = db.prepare('DELETE FROM authorized_devices WHERE id = ?').run(deviceId);
+
+    if (info.changes === 0) {
+      return res.status(404).json({ error: 'Device not found in whitelist.' });
+    }
+
+    console.log(`🛡️ Whitelisted device ${deviceId} removed by admin`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Super Admin device delete error:", err);
+    res.status(500).json({ error: 'Failed to delete device: ' + err.message });
   }
 });
 
