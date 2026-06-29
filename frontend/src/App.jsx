@@ -17,6 +17,7 @@ import Leaderboard from './Leaderboard';
 import NotificationsPanel from './NotificationsPanel';
 import SupportDashboard from './SupportDashboard';
 import AdminDashboard from './AdminDashboard';
+import SharedTracker from './SharedTracker';
 
 
 // Fix Leaflet default icon issue
@@ -104,6 +105,17 @@ function App() {
     const [showLanding, setShowLanding] = useState(!user);
     const [isSupportRoute, setIsSupportRoute] = useState(window.location.pathname === '/support');
     const [isAdminRoute, setIsAdminRoute] = useState(window.location.pathname === '/admin');
+
+    // Live Location Sharing: detect /track/:token route
+    const [sharedTrackToken] = useState(() => {
+        const path = window.location.pathname;
+        if (path.startsWith('/track/')) {
+            return path.split('/track/')[1];
+        }
+        return null;
+    });
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [shareTargetVehicle, setShareTargetVehicle] = useState(null);
 
     useEffect(() => {
         const handlePopState = () => {
@@ -612,6 +624,11 @@ function App() {
     // Deleted duplicate helpers to avoid TDZ and unused functions
 
 
+
+    // Public shared tracking page — bypass all auth and dashboard rendering
+    if (sharedTrackToken) {
+        return <SharedTracker token={sharedTrackToken} />;
+    }
 
     if (isAdminRoute && user && user.role === 'admin') {
         return (
@@ -1333,6 +1350,13 @@ function App() {
                                                             TRACK 📍
                                                         </button>
                                                         <button
+                                                            className="share-btn"
+                                                            onClick={() => { setShareTargetVehicle(selectedVehicle); setShowShareModal(true); }}
+                                                            style={{ flex: 1, backgroundColor: '#8b5cf6', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
+                                                        >
+                                                            SHARE 🔗
+                                                        </button>
+                                                        <button
                                                             className="history-btn"
                                                             onClick={() => setShowHistory(true)}
                                                             style={{ flex: 1, backgroundColor: '#8b5cf6', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
@@ -1542,7 +1566,103 @@ function App() {
                     </div>
                 </div>
             )}
+
+            {/* Share Link Modal */}
+            {showShareModal && shareTargetVehicle && (
+                <ShareLinkModal
+                    vehicle={shareTargetVehicle}
+                    onClose={() => { setShowShareModal(false); setShareTargetVehicle(null); }}
+                />
+            )}
         </ErrorBoundary>
+    );
+}
+
+// ShareLinkModal Component
+function ShareLinkModal({ vehicle, onClose }) {
+    const [selectedDuration, setSelectedDuration] = useState(30);
+    const [generatedLink, setGeneratedLink] = useState('');
+    const [generating, setGenerating] = useState(false);
+    const [copied, setCopied] = useState(false);
+
+    const durations = [
+        { label: '30 min', value: 30 },
+        { label: '1 hour', value: 60 },
+        { label: '2 hours', value: 120 },
+        { label: '4 hours', value: 240 },
+        { label: '8 hours', value: 480 },
+        { label: '24 hours', value: 1440 }
+    ];
+
+    const handleGenerate = async () => {
+        setGenerating(true);
+        try {
+            const res = await axios.post(`${API_BASE}/api/vehicles/${vehicle.id}/share`, {
+                durationMinutes: selectedDuration
+            });
+            const baseUrl = window.location.origin;
+            setGeneratedLink(`${baseUrl}/track/${res.data.token}`);
+        } catch (err) {
+            alert(err.response?.data?.error || 'Failed to generate share link');
+        }
+        setGenerating(false);
+    };
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(generatedLink);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <div className="share-link-modal-overlay" onClick={onClose}>
+            <div className="share-link-modal" onClick={e => e.stopPropagation()}>
+                <h3>🔗 Share Live Location</h3>
+                <div className="modal-subtitle">
+                    Share a temporary live tracking link for <strong>{vehicle.name}</strong>
+                    {vehicle.plate_number && ` (${vehicle.plate_number})`}.
+                    The recipient can view location without logging in.
+                </div>
+
+                <div className="duration-options">
+                    {durations.map(d => (
+                        <button
+                            key={d.value}
+                            className={`duration-btn ${selectedDuration === d.value ? 'selected' : ''}`}
+                            onClick={() => { setSelectedDuration(d.value); setGeneratedLink(''); }}
+                        >
+                            {d.label}
+                        </button>
+                    ))}
+                </div>
+
+                {!generatedLink && (
+                    <button
+                        className="generate-btn"
+                        onClick={handleGenerate}
+                        disabled={generating}
+                    >
+                        {generating ? 'Generating...' : `Generate Link (${durations.find(d => d.value === selectedDuration)?.label})`}
+                    </button>
+                )}
+
+                {generatedLink && (
+                    <div className="generated-link-box">
+                        <div className="link-label">✅ Link Generated — Share via WhatsApp or SMS</div>
+                        <div className="link-url">
+                            <input type="text" value={generatedLink} readOnly />
+                            <button className="copy-btn" onClick={handleCopy}>
+                                {copied ? '✓ Copied!' : 'Copy'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                <div className="modal-actions">
+                    <button className="close-btn" onClick={onClose}>Close</button>
+                </div>
+            </div>
+        </div>
     );
 }
 

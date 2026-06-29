@@ -1,0 +1,541 @@
+/* SharedTracker.css - Public Live Location Sharing Page */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+.shared-tracker-container {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #0f172a;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header Bar */
+.shared-tracker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 1rem;
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+    z-index: 10;
+}
+
+.shared-tracker-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.shared-tracker-brand .brand-icon {
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+}
+
+.shared-tracker-brand .brand-text {
+    font-weight: 700;
+    font-size: 0.95rem;
+    background: linear-gradient(135deg, #c4b5fd, #8b5cf6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.02em;
+}
+
+.shared-tracker-live-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.7rem;
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #22c55e;
+}
+
+.shared-tracker-live-badge .live-dot {
+    width: 6px;
+    height: 6px;
+    background: #22c55e;
+    border-radius: 50%;
+    animation: livePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.4); }
+}
+
+/* Map */
+.shared-tracker-map {
+    flex: 1;
+    position: relative;
+}
+
+.shared-tracker-map .leaflet-container {
+    height: 100%;
+    width: 100%;
+}
+
+/* Bottom Info Card */
+.shared-tracker-info-card {
+    position: absolute;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 2rem);
+    max-width: 420px;
+    background: rgba(15, 23, 42, 0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 16px;
+    padding: 1rem 1.2rem;
+    z-index: 10;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.1);
+}
+
+.shared-tracker-info-card .info-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+}
+
+.shared-tracker-info-card .vehicle-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.shared-tracker-info-card .vehicle-name {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #f1f5f9;
+    letter-spacing: -0.01em;
+}
+
+.shared-tracker-info-card .vehicle-plate {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #94a3b8;
+    background: rgba(100, 116, 139, 0.15);
+    padding: 0.15rem 0.5rem;
+    border-radius: 6px;
+    width: fit-content;
+}
+
+.shared-tracker-info-card .driver-name {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    margin-top: 0.1rem;
+}
+
+.shared-tracker-info-card .countdown-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.7rem;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #f59e0b;
+    white-space: nowrap;
+}
+
+.shared-tracker-info-card .countdown-badge.expiring-soon {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    animation: urgentPulse 1s ease-in-out infinite;
+}
+
+@keyframes urgentPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.shared-tracker-info-card .info-card-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.5rem;
+}
+
+.shared-tracker-info-card .stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.5rem 0.3rem;
+    background: rgba(30, 41, 59, 0.6);
+    border-radius: 10px;
+    border: 1px solid rgba(71, 85, 105, 0.2);
+}
+
+.shared-tracker-info-card .stat-value {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+.shared-tracker-info-card .stat-label {
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.1rem;
+}
+
+/* Powered-by footer */
+.shared-tracker-footer {
+    text-align: center;
+    margin-top: 0.6rem;
+    font-size: 0.65rem;
+    color: #475569;
+}
+
+.shared-tracker-footer a {
+    color: #8b5cf6;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+/* Error / Expired Screens */
+.shared-tracker-error {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.shared-tracker-error .error-card {
+    text-align: center;
+    padding: 2.5rem;
+    max-width: 380px;
+    width: calc(100% - 2rem);
+    background: rgba(30, 41, 59, 0.6);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(139, 92, 246, 0.15);
+    border-radius: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.shared-tracker-error .error-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    display: block;
+}
+
+.shared-tracker-error .error-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-bottom: 0.5rem;
+}
+
+.shared-tracker-error .error-message {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    line-height: 1.5;
+}
+
+/* Loading Spinner */
+.shared-tracker-loading {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 1rem;
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.shared-tracker-loading .loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(139, 92, 246, 0.2);
+    border-top: 3px solid #8b5cf6;
+    border-radius: 50%;
+    animation: spinShared 0.8s linear infinite;
+}
+
+@keyframes spinShared {
+    to { transform: rotate(360deg); }
+}
+
+.shared-tracker-loading .loading-text {
+    font-size: 0.9rem;
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+/* Vehicle Marker on shared map */
+.shared-vehicle-marker {
+    position: relative;
+    width: 36px;
+    height: 36px;
+}
+
+.shared-vehicle-marker .marker-core {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.5), 0 0 0 3px rgba(139, 92, 246, 0.2);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    animation: markerBounce 2s ease-in-out infinite;
+}
+
+.shared-vehicle-marker .marker-ripple {
+    position: absolute;
+    inset: -6px;
+    border: 2px solid rgba(139, 92, 246, 0.3);
+    border-radius: 50%;
+    animation: ripple 2s ease-out infinite;
+}
+
+@keyframes markerBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+}
+
+@keyframes ripple {
+    0% { transform: scale(1); opacity: 0.6; }
+    100% { transform: scale(1.8); opacity: 0; }
+}
+
+/* Share Link Modal */
+.share-link-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    animation: fadeInOverlay 0.2s ease;
+}
+
+@keyframes fadeInOverlay {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.share-link-modal {
+    width: calc(100% - 2rem);
+    max-width: 400px;
+    background: linear-gradient(135deg, #1e293b, #0f172a);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(139, 92, 246, 0.1);
+    animation: slideUpModal 0.25s ease;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    color: #f1f5f9;
+}
+
+@keyframes slideUpModal {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.share-link-modal h3 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 0 0 0.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.share-link-modal .modal-subtitle {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    margin-bottom: 1rem;
+}
+
+.share-link-modal .duration-options {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.share-link-modal .duration-btn {
+    padding: 0.6rem 0.4rem;
+    border: 1px solid rgba(100, 116, 139, 0.3);
+    border-radius: 10px;
+    background: rgba(30, 41, 59, 0.5);
+    color: #cbd5e1;
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s ease;
+}
+
+.share-link-modal .duration-btn:hover {
+    border-color: rgba(139, 92, 246, 0.5);
+    background: rgba(139, 92, 246, 0.1);
+    color: #e2e8f0;
+}
+
+.share-link-modal .duration-btn.selected {
+    border-color: #8b5cf6;
+    background: rgba(139, 92, 246, 0.15);
+    color: #c4b5fd;
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.2);
+}
+
+.share-link-modal .generate-btn {
+    width: 100%;
+    padding: 0.7rem;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+    color: white;
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: 0 4px 14px rgba(139, 92, 246, 0.3);
+}
+
+.share-link-modal .generate-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
+}
+
+.share-link-modal .generate-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Generated Link Display */
+.share-link-modal .generated-link-box {
+    margin-top: 1rem;
+    padding: 0.8rem;
+    background: rgba(34, 197, 94, 0.05);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    border-radius: 10px;
+}
+
+.share-link-modal .generated-link-box .link-label {
+    font-size: 0.7rem;
+    color: #22c55e;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.4rem;
+}
+
+.share-link-modal .generated-link-box .link-url {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.share-link-modal .generated-link-box .link-url input {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid rgba(100, 116, 139, 0.3);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.6);
+    color: #e2e8f0;
+    font-size: 0.75rem;
+    font-family: monospace;
+    outline: none;
+}
+
+.share-link-modal .generated-link-box .copy-btn {
+    padding: 0.5rem 0.8rem;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: 8px;
+    background: rgba(34, 197, 94, 0.1);
+    color: #22c55e;
+    font-weight: 600;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.share-link-modal .generated-link-box .copy-btn:hover {
+    background: rgba(34, 197, 94, 0.2);
+}
+
+.share-link-modal .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1rem;
+}
+
+.share-link-modal .close-btn {
+    padding: 0.5rem 1.2rem;
+    border: 1px solid rgba(100, 116, 139, 0.3);
+    border-radius: 8px;
+    background: transparent;
+    color: #94a3b8;
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.share-link-modal .close-btn:hover {
+    border-color: rgba(139, 92, 246, 0.3);
+    color: #e2e8f0;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 480px) {
+    .shared-tracker-header {
+        padding: 0.5rem 0.75rem;
+    }
+
+    .shared-tracker-info-card {
+        bottom: 0.75rem;
+        width: calc(100% - 1.5rem);
+        padding: 0.8rem 1rem;
+    }
+
+    .shared-tracker-info-card .vehicle-name {
+        font-size: 0.9rem;
+    }
+
+    .shared-tracker-info-card .stat-value {
+        font-size: 0.9rem;
+    }
+
+    .share-link-modal .duration-options {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

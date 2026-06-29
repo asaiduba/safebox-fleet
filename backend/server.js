@@ -1202,6 +1202,9 @@ mqttClient.on('message', (topic, message) => {
       }
 
       io.to(`user_${ownerId}`).emit('device-data', { topic: topic, payload });
+
+      // Broadcast to any active shared tracking viewers
+      broadcastToSharedTrackers(payload.deviceId, payload.lat, payload.lng, payload.speed, payload.timestamp || Date.now());
     } catch (e) {
       console.error("Failed to parse MQTT payload", e);
     }
@@ -1535,6 +1538,9 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
       timestamp: nowMs
     }
   });
+
+  // Broadcast to any active shared tracking viewers
+  broadcastToSharedTrackers(deviceId, lat, lng, speed, nowMs);
 
   return { isLocked };
 }
@@ -3462,6 +3468,137 @@ app.get('/api/payments/status', (req, res) => {
     res.status(500).json({ error: 'Failed to retrieve payment details' });
   }
 });
+
+// --- LIVE LOCATION SHARING API ---
+
+// POST /api/vehicles/:id/share - Generate a temporary share link (Auth required)
+app.post('/api/vehicles/:id/share', authMiddleware, (req, res) => {
+  const userId = getRequestUserId(req);
+  const vehicleId = req.params.id;
+  const { durationMinutes } = req.body;
+
+  if (!durationMinutes || durationMinutes < 1 || durationMinutes > 1440) {
+    return res.status(400).json({ error: 'Duration must be between 1 and 1440 minutes (24 hours).' });
+  }
+
+  // Verify the user owns this vehicle
+  const vehicle = db.prepare('SELECT id, name, plate_number, driver_name FROM vehicles WHERE id = ? AND owner_id = ?').get(vehicleId, userId);
+  if (!vehicle) {
+    return res.status(404).json({ error: 'Vehicle not found or you do not own this vehicle.' });
+  }
+
+  const token = crypto.randomBytes(16).toString('hex');
+  const expiresAt = Date.now() + (durationMinutes * 60 * 1000);
+
+  db.prepare('INSERT INTO shared_tracking_links (token, vehicle_id, created_by, expires_at, active) VALUES (?, ?, ?, ?, 1)')
+    .run(token, vehicleId, userId, expiresAt);
+
+  console.log(`🔗 Live share link created for vehicle ${vehicleId} by user ${userId}, expires in ${durationMinutes}m, token: ${token}`);
+
+  res.json({
+    token,
+    expiresAt,
+    durationMinutes,
+    vehicleName: vehicle.name,
+    plateNumber: vehicle.plate_number
+  });
+});
+
+// GET /api/shared-track/:token - Public endpoint, no auth required
+app.get('/api/shared-track/:token', (req, res) => {
+  const { token } = req.params;
+  const now = Date.now();
+
+  const link = db.prepare('SELECT * FROM shared_tracking_links WHERE token = ? AND active = 1').get(token);
+
+  if (!link) {
+    return res.status(404).json({ error: 'Tracking link not found or has been revoked.' });
+  }
+
+  if (link.expires_at <= now) {
+    // Mark as inactive
+    db.prepare('UPDATE shared_tracking_links SET active = 0 WHERE token = ?').run(token);
+    return res.status(410).json({ error: 'This tracking session has expired.', expired: true });
+  }
+
+  const vehicle = db.prepare('SELECT id, name, plate_number, driver_name, lat, lng, battery_level, fuel_level, last_seen FROM vehicles WHERE id = ?').get(link.vehicle_id);
+
+  if (!vehicle) {
+    return res.status(404).json({ error: 'Vehicle no longer exists.' });
+  }
+
+  res.json({
+    vehicleId: vehicle.id,
+    name: vehicle.name,
+    plateNumber: vehicle.plate_number,
+    driverName: vehicle.driver_name,
+    lat: vehicle.lat,
+    lng: vehicle.lng,
+    battery: vehicle.battery_level,
+    fuel: vehicle.fuel_level,
+    lastSeen: vehicle.last_seen,
+    expiresAt: link.expires_at
+  });
+});
+
+// DELETE /api/shared-track/:token - Revoke a share link (Auth required)
+app.delete('/api/shared-track/:token', authMiddleware, (req, res) => {
+  const userId = getRequestUserId(req);
+  const { token } = req.params;
+
+  const link = db.prepare('SELECT * FROM shared_tracking_links WHERE token = ? AND created_by = ?').get(token, userId);
+  if (!link) {
+    return res.status(404).json({ error: 'Link not found or you did not create it.' });
+  }
+
+  db.prepare('UPDATE shared_tracking_links SET active = 0 WHERE token = ?').run(token);
+  console.log(`🔗 Share link ${token} revoked by user ${userId}`);
+  res.json({ success: true });
+});
+
+// --- SHARED TRACKING Socket.io Namespace (Public, no JWT auth) ---
+const sharedTrackingNs = io.of('/shared-tracking');
+// No JWT auth middleware on this namespace — public access via token validation
+sharedTrackingNs.on('connection', (socket) => {
+  console.log(`📡 Shared tracking viewer connected: ${socket.id}`);
+
+  socket.on('join-shared-track', (token) => {
+    const now = Date.now();
+    const link = db.prepare('SELECT vehicle_id FROM shared_tracking_links WHERE token = ? AND active = 1 AND expires_at > ?').get(token, now);
+    if (link) {
+      socket.join(`shared_track_${token}`);
+      socket.sharedToken = token;
+      socket.sharedVehicleId = link.vehicle_id;
+      console.log(`📡 Viewer ${socket.id} joined shared room for token ${token} (vehicle: ${link.vehicle_id})`);
+    } else {
+      socket.emit('shared-track-error', { error: 'Link expired or invalid.' });
+      console.log(`📡 Viewer ${socket.id} tried invalid/expired token: ${token}`);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`📡 Shared tracking viewer disconnected: ${socket.id}`);
+  });
+});
+
+// Helper: Broadcast to all shared tracking viewers for a given vehicle
+function broadcastToSharedTrackers(deviceId, lat, lng, speed, timestamp) {
+  try {
+    const now = Date.now();
+    const activeLinks = db.prepare('SELECT token FROM shared_tracking_links WHERE vehicle_id = ? AND active = 1 AND expires_at > ?').all(deviceId, now);
+    activeLinks.forEach(link => {
+      sharedTrackingNs.to(`shared_track_${link.token}`).emit('shared-device-data', {
+        deviceId,
+        lat,
+        lng,
+        speed,
+        timestamp
+      });
+    });
+  } catch (e) {
+    // Non-critical — don't crash telemetry pipeline
+  }
+}
 
 // Socket.io Connection
 io.on('connection', (socket) => {

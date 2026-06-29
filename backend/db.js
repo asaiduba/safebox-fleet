@@ -481,6 +481,21 @@ function initDb() {
         console.error("Failed to seed authorized devices:", e.message);
     }
 
+    // 17. Create Shared Tracking Links Table (Live Location Sharing)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS shared_tracking_links (
+            token TEXT PRIMARY KEY,
+            vehicle_id TEXT NOT NULL,
+            created_by INTEGER,
+            expires_at INTEGER NOT NULL,
+            active INTEGER DEFAULT 1,
+            created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+            FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE,
+            FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_shared_links_vehicle ON shared_tracking_links(vehicle_id, active)`);
+
     // Auto-seed mock companies (users with role='company') and payments for Super Admin analytics
     try {
         const companyCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'company'").get().count;
