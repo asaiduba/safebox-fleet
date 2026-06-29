@@ -20,7 +20,7 @@
     padding: 0.65rem 1rem;
     background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
     border-bottom: 1px solid rgba(139, 92, 246, 0.2);
-    z-index: 10;
+    z-index: 2000;
 }
 
 .shared-tracker-brand {
@@ -101,7 +101,7 @@
     border: 1px solid rgba(139, 92, 246, 0.2);
     border-radius: 16px;
     padding: 1rem 1.2rem;
-    z-index: 10;
+    z-index: 2000;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.1);
 }
 
