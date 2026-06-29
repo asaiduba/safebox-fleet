@@ -163,18 +163,15 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
         setVehicleError('');
 
         try {
-            const token = localStorage.getItem('token');
             await axios.put(`${API_BASE}/api/vehicles/${vehicleId}`, {
                 name: editName.trim(),
                 plateNumber: editPlateNumber.trim().toUpperCase(),
                 driverName: editDriverName.trim(),
                 vehicleType: editVehicleType
-            }, {
-                headers: { Authorization: `Bearer ${token}` }
             });
 
             setVehicleSuccess('Vehicle details updated successfully!');
-            setEditingVehicleId(null);
+            // We do NOT clear editingVehicleId anymore so that the card remains open showing the updated state and success message.
             fetchBillingStatus(); // Refresh vehicles list
         } catch (err) {
             console.error('Failed to update vehicle:', err);
@@ -211,13 +208,10 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
         setBleSuccess('');
 
         try {
-            const token = localStorage.getItem('token');
             await axios.post(`${API_BASE}/api/vehicles/ble-settings`, {
                 vehicleId: bleVehicleId,
                 bleBeaconId: bleBeaconId.trim(),
                 bleBeaconRssiThreshold: parseInt(bleBeaconRssiThreshold)
-            }, {
-                headers: { Authorization: `Bearer ${token}` }
             });
 
             setBleSuccess('BLE Keyless Entry configurations saved successfully!');
@@ -234,10 +228,7 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
         setFuelLoading(true);
         setFuelError('');
         try {
-            const token = localStorage.getItem('token');
-            const res = await axios.get(`${API_BASE}/api/vehicles/fuel-settings`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await axios.get(`${API_BASE}/api/vehicles/fuel-settings`);
             setFuelSettingsList(res.data);
         } catch (err) {
             console.error('Failed to load fuel settings:', err);
@@ -258,14 +249,11 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
         setFuelError('');
         setFuelSuccess('');
         try {
-            const token = localStorage.getItem('token');
             await axios.post(`${API_BASE}/api/vehicles/fuel-settings`, {
                 vehicleId: vId,
                 fuelType,
                 fuelPrice: parseFloat(fuelPrice),
                 fuelEfficiency: parseFloat(fuelEfficiency)
-            }, {
-                headers: { Authorization: `Bearer ${token}` }
             });
             setFuelSuccess('Fuel settings updated successfully!');
             setEditingFuelVehicleId(null);
@@ -296,14 +284,11 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
         setFuelError('');
         setFuelSuccess('');
         try {
-            const token = localStorage.getItem('token');
             await axios.post(`${API_BASE}/api/vehicles/fuel-settings`, {
                 vehicleIds: selectedFuelVehicles,
                 fuelType: bulkFuelType,
                 fuelPrice: parseFloat(bulkFuelPrice),
                 fuelEfficiency: parseFloat(bulkFuelEfficiency)
-            }, {
-                headers: { Authorization: `Bearer ${token}` }
             });
             setFuelSuccess(`Fuel settings updated successfully for ${selectedFuelVehicles.length} vehicles!`);
             setSelectedFuelVehicles([]);
@@ -742,15 +727,12 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
 
         try {
             // Update Database User Info directly (no password change)
-            const token = localStorage.getItem('token');
             await axios.post(`${API_BASE}/api/profile/update`, {
                 userId: user.id,
                 email,
                 phone,
                 companyName: user.role === 'company' ? companyName : undefined,
                 currency
-            }, {
-                headers: { Authorization: `Bearer ${token}` }
             });
 
             // Persist Notification and Threshold settings locally
@@ -2136,117 +2118,171 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
                                 <div className="form-section">
                                     <h3>🚗 Manage Registered Fleet Vehicles</h3>
                                     <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: '1.4' }}>
-                                        Update details for your registered vehicle trackers, including changing vehicle names, assigning/updating driver names, changing license plates, or switching the vehicle type icon.
+                                        Select a vehicle from your registered fleet to update its name, license plate, assigned driver, or vehicle type icon.
                                     </p>
 
-                                    {vehicleSuccess && <div className="status-alert success">{vehicleSuccess}</div>}
-                                    {vehicleError && <div className="status-alert error">{vehicleError}</div>}
-
-                                    <div className="table-responsive" style={{ marginTop: '1rem', overflowX: 'auto' }}>
-                                        <table className="settings-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                            <thead>
-                                                <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)', textAlign: 'left' }}>
-                                                    <th style={{ padding: '0.75rem 0.5rem', color: '#94a3b8' }}>Tracker ID/IMEI</th>
-                                                    <th style={{ padding: '0.75rem 0.5rem', color: '#94a3b8' }}>Vehicle Name</th>
-                                                    <th style={{ padding: '0.75rem 0.5rem', color: '#94a3b8' }}>License Plate</th>
-                                                    <th style={{ padding: '0.75rem 0.5rem', color: '#94a3b8' }}>Driver Name</th>
-                                                    <th style={{ padding: '0.75rem 0.5rem', color: '#94a3b8' }}>Vehicle Type</th>
-                                                    <th style={{ padding: '0.75rem 0.5rem', color: '#94a3b8', textAlign: 'center' }}>Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {billingVehicles.length === 0 ? (
-                                                    <tr>
-                                                        <td colSpan="6" style={{ textAlign: 'center', color: '#64748b', padding: '2rem' }}>
-                                                            No registered vehicles found.
-                                                        </td>
-                                                    </tr>
-                                                ) : (
-                                                    billingVehicles.map(v => (
-                                                        <tr key={v.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                                                            <td style={{ padding: '0.75rem 0.5rem', fontFamily: 'monospace', fontWeight: 'bold' }}>{v.id}</td>
-                                                            {editingVehicleId === v.id ? (
-                                                                <>
-                                                                    <td style={{ padding: '0.75rem 0.5rem' }}>
-                                                                        <input 
-                                                                            type="text" 
-                                                                            value={editName} 
-                                                                            onChange={(e) => setEditName(e.target.value)}
-                                                                            style={{ background: '#1e293b', color: 'white', border: '1px solid #475569', padding: '0.4rem', borderRadius: '0.25rem', width: '100%', outline: 'none', boxSizing: 'border-box' }}
-                                                                        />
-                                                                    </td>
-                                                                    <td style={{ padding: '0.75rem 0.5rem' }}>
-                                                                        <input 
-                                                                            type="text" 
-                                                                            value={editPlateNumber} 
-                                                                            onChange={(e) => setEditPlateNumber(e.target.value)}
-                                                                            style={{ background: '#1e293b', color: 'white', border: '1px solid #475569', padding: '0.4rem', borderRadius: '0.25rem', width: '100%', outline: 'none', boxSizing: 'border-box' }}
-                                                                        />
-                                                                    </td>
-                                                                    <td style={{ padding: '0.75rem 0.5rem' }}>
-                                                                        <input 
-                                                                            type="text" 
-                                                                            value={editDriverName} 
-                                                                            onChange={(e) => setEditDriverName(e.target.value)}
-                                                                            style={{ background: '#1e293b', color: 'white', border: '1px solid #475569', padding: '0.4rem', borderRadius: '0.25rem', width: '100%', outline: 'none', boxSizing: 'border-box' }}
-                                                                        />
-                                                                    </td>
-                                                                    <td style={{ padding: '0.75rem 0.5rem' }}>
-                                                                        <select 
-                                                                            value={editVehicleType} 
-                                                                            onChange={(e) => setEditVehicleType(e.target.value)}
-                                                                            style={{ background: '#1e293b', color: 'white', border: '1px solid #475569', padding: '0.4rem', borderRadius: '0.25rem', width: '100%', outline: 'none', boxSizing: 'border-box' }}
-                                                                        >
-                                                                            <option value="car">🚗 Car</option>
-                                                                            <option value="motorcycle">🏍️ Motorcycle</option>
-                                                                            <option value="tricycle">🛺 Tricycle</option>
-                                                                            <option value="bus">🚌 Bus</option>
-                                                                            <option value="truck">🚚 Truck</option>
-                                                                            <option value="van">🚐 Van</option>
-                                                                        </select>
-                                                                    </td>
-                                                                    <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
-                                                                        <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
-                                                                            <button 
-                                                                                onClick={() => handleSaveVehicleEdit(v.id)}
-                                                                                disabled={vehicleLoading}
-                                                                                style={{ padding: '0.4rem 0.75rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
-                                                                            >
-                                                                                {vehicleLoading ? 'Saving...' : '💾 Save'}
-                                                                            </button>
-                                                                            <button 
-                                                                                onClick={() => setEditingVehicleId(null)}
-                                                                                style={{ padding: '0.4rem 0.75rem', background: '#64748b', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
-                                                                            >
-                                                                                Cancel
-                                                                            </button>
-                                                                        </div>
-                                                                    </td>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <td style={{ padding: '0.75rem 0.5rem', fontWeight: 'bold' }}>{v.name || v.id}</td>
-                                                                    <td style={{ padding: '0.75rem 0.5rem' }}>{v.plate_number || <span style={{ color: '#64748b' }}>--</span>}</td>
-                                                                    <td style={{ padding: '0.75rem 0.5rem' }}>{v.driver_name || <span style={{ color: '#64748b' }}>--</span>}</td>
-                                                                    <td style={{ padding: '0.75rem 0.5rem', textTransform: 'capitalize' }}>
-                                                                        {getVehicleEmoji(v.vehicle_type)} {v.vehicle_type || 'car'}
-                                                                    </td>
-                                                                    <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
-                                                                        <button 
-                                                                            onClick={() => handleStartEditVehicle(v)}
-                                                                            style={{ padding: '0.4rem 0.85rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
-                                                                        >
-                                                                            ✏️ Edit
-                                                                        </button>
-                                                                    </td>
-                                                                </>
-                                                            )}
-                                                        </tr>
-                                                    ))
-                                                )}
-                                            </tbody>
-                                        </table>
+                                    {/* 1. Selector Dropdown */}
+                                    <div className="form-group" style={{ marginBottom: '2rem' }}>
+                                        <label style={{ fontSize: '0.95rem', fontWeight: '600', color: '#f8fafc', marginBottom: '0.5rem', display: 'block' }}>
+                                            Select Vehicle to Customize
+                                        </label>
+                                        <select 
+                                            value={editingVehicleId || ''} 
+                                            onChange={(e) => {
+                                                const vId = e.target.value;
+                                                if (!vId) {
+                                                    setEditingVehicleId(null);
+                                                } else {
+                                                    const selectedV = billingVehicles.find(v => v.id === vId);
+                                                    if (selectedV) {
+                                                        handleStartEditVehicle(selectedV);
+                                                    }
+                                                }
+                                            }}
+                                            style={{ 
+                                                background: '#1e293b', 
+                                                color: 'white', 
+                                                border: '1px solid #475569', 
+                                                padding: '0.75rem', 
+                                                borderRadius: '0.375rem', 
+                                                width: '100%', 
+                                                outline: 'none',
+                                                fontSize: '1rem',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <option value="">-- Choose a vehicle from your fleet --</option>
+                                            {billingVehicles.map(v => (
+                                                <option key={v.id} value={v.id}>
+                                                    {getVehicleEmoji(v.vehicle_type)} {v.name || v.id} ({v.plate_number || 'No Plate'}) — {v.id}
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
+
+                                    {/* 2. Edit Details Card (Only shown when a vehicle is selected) */}
+                                    {editingVehicleId ? (
+                                        <div className="glass-panel edit-vehicle-card animate-fade-in" style={{
+                                            background: 'rgba(30, 41, 59, 0.4)',
+                                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                                            borderRadius: '0.75rem',
+                                            padding: '1.5rem',
+                                            marginTop: '1rem',
+                                            boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '0.75rem' }}>
+                                                <h4 style={{ margin: 0, fontSize: '1.1rem', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                    🔧 Edit Details: {editName || editingVehicleId}
+                                                </h4>
+                                                <span style={{ fontSize: '0.8rem', color: '#64748b', fontFamily: 'monospace' }}>
+                                                    IMEI: {editingVehicleId}
+                                                </span>
+                                            </div>
+
+                                            {vehicleSuccess && <div className="status-alert success" style={{ marginBottom: '1rem' }}>{vehicleSuccess}</div>}
+                                            {vehicleError && <div className="status-alert error" style={{ marginBottom: '1rem' }}>{vehicleError}</div>}
+
+                                            <form onSubmit={(e) => { e.preventDefault(); handleSaveVehicleEdit(editingVehicleId); }}>
+                                                <div className="form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
+                                                    
+                                                    {/* Vehicle Name */}
+                                                    <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                                        <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Vehicle Name / Display Name</label>
+                                                        <input 
+                                                            type="text" 
+                                                            value={editName} 
+                                                            onChange={(e) => setEditName(e.target.value)}
+                                                            placeholder="e.g. Delivery Van 01"
+                                                            style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none' }}
+                                                            required
+                                                        />
+                                                    </div>
+
+                                                    {/* License Plate */}
+                                                    <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                                        <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>License Plate Number</label>
+                                                        <input 
+                                                            type="text" 
+                                                            value={editPlateNumber} 
+                                                            onChange={(e) => setEditPlateNumber(e.target.value)}
+                                                            placeholder="e.g. LA-123-ENG"
+                                                            style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none' }}
+                                                        />
+                                                    </div>
+
+                                                    {/* Driver Name */}
+                                                    <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                                        <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Assigned Driver Name</label>
+                                                        <input 
+                                                            type="text" 
+                                                            value={editDriverName} 
+                                                            onChange={(e) => setEditDriverName(e.target.value)}
+                                                            placeholder="e.g. John Doe"
+                                                            style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none' }}
+                                                        />
+                                                    </div>
+
+                                                    {/* Vehicle Type */}
+                                                    <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                                        <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Vehicle Category / Icon</label>
+                                                        <select 
+                                                            value={editVehicleType} 
+                                                            onChange={(e) => setEditVehicleType(e.target.value)}
+                                                            style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none', cursor: 'pointer' }}
+                                                        >
+                                                            <option value="car">🚗 Car</option>
+                                                            <option value="motorcycle">🏍️ Motorcycle</option>
+                                                            <option value="tricycle">🛺 Tricycle</option>
+                                                            <option value="bus">🚌 Bus</option>
+                                                            <option value="truck">🚚 Truck</option>
+                                                            <option value="van">🚐 Van</option>
+                                                        </select>
+                                                    </div>
+
+                                                </div>
+
+                                                <div style={{ display: 'flex', gap: '1rem', marginTop: '1.75rem', justifyContent: 'flex-end' }}>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => setEditingVehicleId(null)}
+                                                        style={{ padding: '0.65rem 1.25rem', background: '#334155', color: '#f8fafc', border: 'none', borderRadius: '0.375rem', fontWeight: 'bold', cursor: 'pointer' }}
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button 
+                                                        type="submit"
+                                                        disabled={vehicleLoading}
+                                                        style={{ 
+                                                            padding: '0.65rem 1.5rem', 
+                                                            background: 'linear-gradient(135deg, #3b82f6, #2563eb)', 
+                                                            color: 'white', 
+                                                            border: 'none', 
+                                                            borderRadius: '0.375rem', 
+                                                            fontWeight: 'bold', 
+                                                            cursor: 'pointer',
+                                                            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.2)'
+                                                        }}
+                                                    >
+                                                        {vehicleLoading ? 'Saving Changes...' : '💾 Save Configurations'}
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    ) : (
+                                        <div className="glass-panel" style={{
+                                            background: 'rgba(30, 41, 59, 0.2)',
+                                            border: '1px dashed rgba(255, 255, 255, 0.1)',
+                                            borderRadius: '0.75rem',
+                                            padding: '3rem 1.5rem',
+                                            textAlign: 'center',
+                                            color: '#64748b',
+                                            marginTop: '1rem'
+                                        }}>
+                                            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🚗</div>
+                                            <p style={{ margin: 0 }}>Please select a vehicle from the dropdown above to edit its settings.</p>
+                                        </div>
+                                    )}
+
                                 </div>
                             </div>
                         )}

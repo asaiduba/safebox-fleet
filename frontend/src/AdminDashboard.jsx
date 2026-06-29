@@ -213,18 +213,13 @@ const AdminDashboard = ({ user, onLogout, onBackToClient, onImpersonate }) => {
         if (!window.confirm(confirmMsg)) return;
 
         try {
-            const token = localStorage.getItem('token');
-            await axios.delete(`${API_BASE}/api/admin/devices/${deviceId}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            await axios.delete(`${API_BASE}/api/admin/devices/${deviceId}`);
             
             // Refresh local list
             setDevices(prev => prev.filter(d => d.id !== deviceId));
             
             // Refresh metrics
-            const metricsRes = await axios.get(`${API_BASE}/api/admin/metrics`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const metricsRes = await axios.get(`${API_BASE}/api/admin/metrics`);
             setMetrics(metricsRes.data);
             alert(`Device "${deviceId}" has been deleted from whitelist database.`);
         } catch (err) {
