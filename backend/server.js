@@ -797,7 +797,7 @@ mqttClient.on('message', (topic, message) => {
 
       // Verify the vehicle exists and find its owner
       const vehicle = db.prepare(`
-        SELECT v.owner_id, v.name, v.lat, v.lng, v.odometer_km, v.curfew_enabled, v.curfew_start, v.curfew_end, v.curfew_days, v.curfew_allow_override, v.curfew_holiday_mode, v.override_status, v.override_expires, v.cloud_locked, v.subscription_status, u.subscription_status AS user_subscription_status
+        SELECT v.owner_id, v.name, v.lat, v.lng, v.odometer_km, v.curfew_enabled, v.curfew_start, v.curfew_end, v.curfew_days, v.curfew_allow_override, v.curfew_holiday_mode, v.override_status, v.override_expires, v.cloud_locked, v.ble_beacon_id, v.ble_beacon_rssi_threshold, v.subscription_status, u.subscription_status AS user_subscription_status
         FROM vehicles v
         LEFT JOIN users u ON v.owner_id = u.id
         WHERE v.id = ?
@@ -813,85 +813,93 @@ mqttClient.on('message', (topic, message) => {
         return;
       }
 
-      // Curfew enforcement check (Operating Hours Policy)
+      // Curfew lock state calculation
+      let curfewLocked = false;
       if (vehicle.curfew_enabled === 1) {
         const now = new Date();
         const isAllowed = isWithinAllowedHours(now, vehicle.curfew_start, vehicle.curfew_end, vehicle.curfew_days, vehicle.curfew_holiday_mode);
         if (!isAllowed) {
-          // Curfew is active! Check if there is an active approved override
           let hasOverride = false;
           if (vehicle.override_status === 'APPROVED_MIDNIGHT' || vehicle.override_status === 'APPROVED_ONCE') {
             if (Date.now() < vehicle.override_expires) {
               hasOverride = true;
             }
           }
+          if (!hasOverride) {
+            curfewLocked = true;
+          }
+        }
+      }
 
-          if (hasOverride) {
-            // Override active: clear any block starts if they exist and let it run
-            if (payload.locked) {
-              console.log(`[Curfew Override] Override active for ${payload.deviceId}. Unblocking.`);
-              mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'ALLOW_START' }));
-              mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'UNLOCK' }));
-              payload.locked = false;
-            }
-            // If it is APPROVED_ONCE and has started moving, expire the override
-            if (vehicle.override_status === 'APPROVED_ONCE' && payload.speed > 0) {
-              console.log(`[Curfew Override] Vehicle ${payload.deviceId} has started. Expiring APPROVED_ONCE override.`);
-              db.prepare("UPDATE vehicles SET override_status = 'NONE', override_expires = 0 WHERE id = ?").run(payload.deviceId);
-            }
-          } else {
-            // No active override! Block start if stopped (speed === 0), do not lock if running (speed > 0)
-            if (payload.speed === 0) {
-              if (!payload.locked) {
-                console.log(`[Curfew Policy] Vehicle ${payload.deviceId} is stopped outside operating hours. Enforcing BLOCK_START.`);
-                mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'BLOCK_START' }));
-                mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
-                payload.locked = true;
-              }
-            } else {
-              // It is running outside allowed hours. We send a warning alert, but we don't cut the engine!
-              if (!global.curfewRunningAlerts) global.curfewRunningAlerts = new Map();
-              const lastAlertTime = global.curfewRunningAlerts.get(payload.deviceId);
-              if (!lastAlertTime || (Date.now() - lastAlertTime > 300000)) { // 5 min cooldown
-                const alertMsg = `Warning: Vehicle ${payload.deviceId} is running outside authorized hours!`;
-                
-                io.to(`user_${ownerId}`).emit('notification', {
-                  id: Date.now() + 10,
-                  type: 'CURFEW_VIOLATION',
-                  severity: 'warning',
-                  message: alertMsg,
-                  timestamp: Date.now(),
-                  is_read: false
-                });
-                
-                global.curfewRunningAlerts.set(payload.deviceId, Date.now());
-              }
-            }
+      // BLE Proximity check (driver presence)
+      const bleBeacons = [];
+      if (payload.rawBleList) {
+        payload.rawBleList.split(';').forEach(pair => {
+          const [mac, rssi] = pair.split(':');
+          if (mac && rssi) {
+            bleBeacons.push({ mac: mac.trim(), rssi: parseInt(rssi.trim()) });
           }
-        } else {
-          // Inside allowed hours: Ensure vehicle is unblocked if it has an override status
-          if (vehicle.override_status !== 'NONE') {
-            // Clear override status since we are back in regular operating hours
-            db.prepare("UPDATE vehicles SET override_status = 'NONE', override_expires = 0 WHERE id = ?").run(payload.deviceId);
-          }
-          
-          // Auto-correction: If we are inside operating hours and the device reports being locked
-          // but there is no remote manual lock active (cloud_locked === 0), auto-unblock the device.
-          if (payload.locked && vehicle.cloud_locked === 0) {
-            console.log(`[Curfew Policy] Vehicle ${payload.deviceId} is locked during allowed hours with no cloud lock. Auto-unlocking.`);
-            mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'ALLOW_START' }));
-            mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'UNLOCK' }));
-            payload.locked = false;
-          }
+        });
+      }
 
-          // Re-enforce Remote Lock / Suspension: If the vehicle should be locked (cloud_locked === 1)
-          // but the device reports being unlocked (locked === false)
-          if (!payload.locked && vehicle.cloud_locked === 1) {
-            console.log(`[Security Policy] Vehicle ${payload.deviceId} is cloud-locked/suspended but device is unlocked. Re-enforcing lock.`);
-            mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'BLOCK_START' }));
-            mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
-            payload.locked = true;
+      let driverPresent = false;
+      if (vehicle.ble_beacon_id) {
+        const normalizedBeaconId = vehicle.ble_beacon_id.replace(/:/g, '').toUpperCase();
+        const matchedTag = bleBeacons.find(b => b.mac.replace(/:/g, '').toUpperCase() === normalizedBeaconId);
+        if (matchedTag && matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold) {
+          driverPresent = true;
+        }
+      } else {
+        driverPresent = true;
+      }
+
+      const shouldBeLocked = (vehicle.cloud_locked === 1 || curfewLocked || !driverPresent);
+
+      // Enforce the calculated security policy state
+      if (shouldBeLocked) {
+        // Enforce lock (if stationary and currently unlocked)
+        if (payload.speed === 0 && !payload.locked) {
+          console.log(`[Security Policy] Enforcing LOCK for vehicle ${payload.deviceId}. Reason: cloud_locked=${vehicle.cloud_locked}, curfew=${curfewLocked}, driverAbsent=${!driverPresent}`);
+          mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'BLOCK_START' }));
+          mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
+          payload.locked = true;
+        }
+        
+        // Warn if running outside allowed hours
+        if (curfewLocked && payload.speed > 0) {
+          if (!global.curfewRunningAlerts) global.curfewRunningAlerts = new Map();
+          const lastAlertTime = global.curfewRunningAlerts.get(payload.deviceId);
+          if (!lastAlertTime || (Date.now() - lastAlertTime > 300000)) { // 5 min cooldown
+            const alertMsg = `Warning: Vehicle ${payload.deviceId} is running outside authorized hours!`;
+            io.to(`user_${ownerId}`).emit('notification', {
+              id: Date.now() + 10,
+              type: 'CURFEW_VIOLATION',
+              severity: 'warning',
+              message: alertMsg,
+              timestamp: Date.now(),
+              is_read: false
+            });
+            global.curfewRunningAlerts.set(payload.deviceId, Date.now());
           }
+        }
+
+        // Curfew override tracking
+        if (curfewLocked && vehicle.override_status === 'APPROVED_ONCE' && payload.speed > 0) {
+          console.log(`[Curfew Override] Vehicle ${payload.deviceId} has started. Expiring APPROVED_ONCE override.`);
+          db.prepare("UPDATE vehicles SET override_status = 'NONE', override_expires = 0 WHERE id = ?").run(payload.deviceId);
+        }
+      } else {
+        // Clear curfew override if back inside allowed hours
+        if (vehicle.override_status !== 'NONE' && !curfewLocked) {
+          db.prepare("UPDATE vehicles SET override_status = 'NONE', override_expires = 0 WHERE id = ?").run(payload.deviceId);
+        }
+        
+        // Auto-unlock: If the device is currently locked but security policy says it should be unlocked
+        if (payload.locked) {
+          console.log(`[Security Policy] Auto-unlocking vehicle ${payload.deviceId} (Inside hours, driver present, no cloud lock).`);
+          mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'ALLOW_START' }));
+          mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'UNLOCK' }));
+          payload.locked = false;
         }
       }
 
@@ -1404,7 +1412,8 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   // Proximity check (driver presence)
   let driverPresent = false;
   if (vehicle.ble_beacon_id) {
-    const matchedTag = bleBeacons.find(b => b.mac === vehicle.ble_beacon_id);
+    const normalizedBeaconId = vehicle.ble_beacon_id.replace(/:/g, '').toUpperCase();
+    const matchedTag = bleBeacons.find(b => b.mac.replace(/:/g, '').toUpperCase() === normalizedBeaconId);
     if (matchedTag && matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold) {
       driverPresent = true;
     }
@@ -2075,6 +2084,24 @@ app.post('/api/telematics-webhook', (req, res) => {
 
       console.log(`[Webhook Bridge] Resolved deviceId/IMEI: ${deviceId}`);
       
+      // Extract BLE Beacons if present from Traccar AVL elements
+      let rawBleList = '';
+      const bleParts = [];
+      for (let b = 1; b <= 4; b++) {
+        const idKey = `io${383 + b * 2}`; // io385, io387, io389, io391
+        const rssiKey = `io${384 + b * 2}`; // io386, io388, io390, io392
+        const altIdKey = `beacon${b}Id`;
+        const altRssiKey = `beacon${b}Rssi`;
+        const mac = pos.attributes?.[idKey] || pos.attributes?.[altIdKey];
+        const rssi = pos.attributes?.[rssiKey] || pos.attributes?.[altRssiKey];
+        if (mac && rssi !== undefined) {
+          bleParts.push(`${mac}:${rssi}`);
+        }
+      }
+      if (bleParts.length > 0) {
+        rawBleList = bleParts.join(';');
+      }
+
       // Normalize the payload to match the SafeBox MQTT status schema
       const normalizedPayload = {
         deviceId: deviceId,
@@ -2083,7 +2110,8 @@ app.post('/api/telematics-webhook', (req, res) => {
         speed: pos.speed ? Math.round(pos.speed * 1.852) : 0, // Knots to km/h conversion
         battery: pos.attributes?.batteryLevel || pos.attributes?.battery || 100,
         fuel: pos.attributes?.fuel || 100,
-        locked: pos.attributes?.ignition === false // If ignition is false, engine start is blocked/locked
+        locked: pos.attributes?.ignition === false, // If ignition is false, engine start is blocked/locked
+        rawBleList: rawBleList
       };
 
       // Publish to MQTT broker (HiveMQ / EMQX)
