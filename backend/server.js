@@ -2102,13 +2102,30 @@ app.post('/api/telematics-webhook', (req, res) => {
         rawBleList = bleParts.join(';');
       }
 
+      // Convert battery voltage (Volts or millivolts) to percentage if needed
+      let batteryPct = 100;
+      if (pos.attributes?.batteryLevel !== undefined) {
+        batteryPct = pos.attributes.batteryLevel;
+      } else if (pos.attributes?.battery !== undefined) {
+        const val = pos.attributes.battery;
+        if (val > 100) {
+          // sent in millivolts (e.g. 3985 mV)
+          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3600) / 600) * 100)));
+        } else if (val > 1.0 && val < 6.0) {
+          // sent in Volts (e.g. 3.985 V)
+          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3.6) / 0.6) * 100)));
+        } else {
+          batteryPct = val;
+        }
+      }
+
       // Normalize the payload to match the SafeBox MQTT status schema
       const normalizedPayload = {
         deviceId: deviceId,
         lat: pos.latitude || 0,
         lng: pos.longitude || 0,
         speed: pos.speed ? Math.round(pos.speed * 1.852) : 0, // Knots to km/h conversion
-        battery: pos.attributes?.batteryLevel || pos.attributes?.battery || 100,
+        battery: batteryPct,
         fuel: pos.attributes?.fuel || 100,
         locked: pos.attributes?.ignition === false, // If ignition is false, engine start is blocked/locked
         rawBleList: rawBleList
