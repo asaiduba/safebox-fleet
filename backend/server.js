@@ -2109,11 +2109,11 @@ app.post('/api/telematics-webhook', (req, res) => {
       } else if (pos.attributes?.battery !== undefined) {
         const val = pos.attributes.battery;
         if (val > 100) {
-          // sent in millivolts (e.g. 3985 mV)
-          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3600) / 600) * 100)));
+          // sent in millivolts (e.g. 3787 mV)
+          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3600) / 230) * 100)));
         } else if (val > 1.0 && val < 6.0) {
-          // sent in Volts (e.g. 3.985 V)
-          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3.6) / 0.6) * 100)));
+          // sent in Volts (e.g. 3.787 V)
+          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3.6) / 0.23) * 100)));
         } else {
           batteryPct = val;
         }
