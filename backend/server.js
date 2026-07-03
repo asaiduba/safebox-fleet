@@ -936,7 +936,11 @@ mqttClient.on('message', (topic, message) => {
       let matchedRssi = null;
       if (vehicle.ble_beacon_id) {
         const normalizedBeaconId = vehicle.ble_beacon_id.replace(/:/g, '').toUpperCase();
-        const matchedTag = bleBeacons.find(b => b.mac.replace(/:/g, '').toUpperCase() === normalizedBeaconId);
+        const matchedTag = bleBeacons.find(b => {
+          const cleanMac = b.mac.replace(/:/g, '').toUpperCase().replace(/^0+/, '');
+          const cleanDb = normalizedBeaconId.replace(/^0+/, '');
+          return cleanMac === cleanDb || cleanMac.endsWith(cleanDb) || cleanDb.endsWith(cleanMac);
+        });
         if (matchedTag) {
           matchedRssi = matchedTag.rssi;
           if (matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold) {
@@ -1578,7 +1582,11 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   let driverPresent = false;
   if (vehicle.ble_beacon_id) {
     const normalizedBeaconId = vehicle.ble_beacon_id.replace(/:/g, '').toUpperCase();
-    const matchedTag = bleBeacons.find(b => b.mac.replace(/:/g, '').toUpperCase() === normalizedBeaconId);
+    const matchedTag = bleBeacons.find(b => {
+      const cleanMac = b.mac.replace(/:/g, '').toUpperCase().replace(/^0+/, '');
+      const cleanDb = normalizedBeaconId.replace(/^0+/, '');
+      return cleanMac === cleanDb || cleanMac.endsWith(cleanDb) || cleanDb.endsWith(cleanMac);
+    });
     if (matchedTag && matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold) {
       driverPresent = true;
     }
