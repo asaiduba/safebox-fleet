@@ -2257,6 +2257,8 @@ app.post('/api/telematics-webhook', (req, res) => {
       // Extract BLE Beacons if present from Traccar AVL elements
       let rawBleList = '';
       const bleParts = [];
+      
+      // 1. Check standard Beacon List AVL attributes (io385/io386, etc.)
       for (let b = 1; b <= 4; b++) {
         const idKey = `io${383 + b * 2}`; // io385, io387, io389, io391
         const rssiKey = `io${384 + b * 2}`; // io386, io388, io390, io392
@@ -2268,6 +2270,22 @@ app.post('/api/telematics-webhook', (req, res) => {
           bleParts.push(`${mac}:${rssi}`);
         }
       }
+      
+      // 2. Check BLE Custom AVL attributes (io331/io332, io463/io464, io468/io469, io473/io474)
+      const customPairs = [
+        ['io331', 'io332'], // BLE 1 Custom 1 & 2
+        ['io463', 'io464'], // BLE 2 Custom 1 & 2
+        ['io468', 'io469'], // BLE 3 Custom 1 & 2
+        ['io473', 'io474']  // BLE 4 Custom 1 & 2
+      ];
+      for (const [idKey, rssiKey] of customPairs) {
+        const mac = pos.attributes?.[idKey];
+        const rssi = pos.attributes?.[rssiKey];
+        if (mac && rssi !== undefined) {
+          bleParts.push(`${mac}:${rssi}`);
+        }
+      }
+
       if (bleParts.length > 0) {
         rawBleList = bleParts.join(';');
       }
