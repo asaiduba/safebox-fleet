@@ -40,7 +40,14 @@ const formatCurrencyValue = (nairaAmount, currencyCode) => {
     return `${symbol}${convertedVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
+export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUpdate }) {
+    const estimateDistance = (rssi) => {
+        if (!rssi) return null;
+        const txPower = -59; // Measured RSSI at 1 meter for Teltonika EYE Beacon
+        const n = 2.5; // Path loss exponent
+        const distance = Math.pow(10, (txPower - rssi) / (10 * n));
+        return parseFloat(distance.toFixed(1));
+    };
     const API_BASE = import.meta.env.VITE_API_URL || '';
 
     // Form States
@@ -2100,7 +2107,69 @@ export default function SettingsPanel({ user, onBack, onProfileUpdate }) {
                                             </div>
                                         </div>
 
-                                        <button 
+                                        {bleBeaconId && bleBeaconId.trim().length > 0 && (() => {
+                                            const liveVehicle = vehicles.find(v => v.id === bleVehicleId);
+                                            const liveRssi = liveVehicle?.beaconRssi;
+                                            const distanceMeters = liveRssi ? estimateDistance(liveRssi) : null;
+                                            return (
+                                                <div style={{
+                                                    marginTop: '1.5rem',
+                                                    background: '#0f172a',
+                                                    padding: '1.25rem',
+                                                    borderRadius: '0.5rem',
+                                                    border: '1px solid #334155',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    gap: '0.75rem'
+                                                }}>
+                                                    <h4 style={{ color: '#f8fafc', margin: 0, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        📡 Live Beacon Proximity Status
+                                                     </h4>
+                                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                                         <div style={{ background: '#1e293b', padding: '0.75rem', borderRadius: '0.375rem', border: '1px solid #475569' }}>
+                                                             <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '0.25rem' }}>SIGNAL STRENGTH</span>
+                                                             <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: liveRssi ? '#3b82f6' : '#94a3b8' }}>
+                                                                 {liveRssi ? `${liveRssi} dBm` : 'No Signal / Offline'}
+                                                             </span>
+                                                         </div>
+                                                         <div style={{ background: '#1e293b', padding: '0.75rem', borderRadius: '0.375rem', border: '1px solid #475569' }}>
+                                                             <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '0.25rem' }}>ESTIMATED DISTANCE</span>
+                                                             <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: distanceMeters ? '#10b981' : '#94a3b8' }}>
+                                                                 {distanceMeters !== null ? `~${distanceMeters} meters` : 'Unknown'}
+                                                             </span>
+                                                         </div>
+                                                     </div>
+
+                                                     <div style={{
+                                                         display: 'flex',
+                                                         alignItems: 'center',
+                                                         gap: '0.5rem',
+                                                         background: liveRssi ? (liveRssi >= bleBeaconRssiThreshold ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)') : 'rgba(148, 163, 184, 0.1)',
+                                                         padding: '0.75rem',
+                                                         borderRadius: '0.375rem',
+                                                         border: liveRssi ? (liveRssi >= bleBeaconRssiThreshold ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)') : '1px solid rgba(148, 163, 184, 0.3)',
+                                                         marginTop: '0.25rem'
+                                                     }}>
+                                                         <div style={{
+                                                             width: '10px',
+                                                             height: '10px',
+                                                             borderRadius: '50%',
+                                                             background: liveRssi ? (liveRssi >= bleBeaconRssiThreshold ? '#10b981' : '#ef4444') : '#94a3b8',
+                                                             boxShadow: liveRssi && liveRssi >= bleBeaconRssiThreshold ? '0 0 8px #10b981' : 'none'
+                                                         }} />
+                                                         <span style={{ fontSize: '0.85rem', fontWeight: '600', color: liveRssi ? (liveRssi >= bleBeaconRssiThreshold ? '#10b981' : '#ef4444') : '#94a3b8' }}>
+                                                             {liveRssi ? (
+                                                                 liveRssi >= bleBeaconRssiThreshold ? 'KEYFOB DETECTED (Engine Unlocked / DOUT1 Active)' : 'KEYFOB OUT OF RANGE (Engine Immobilized / DOUT1 Inactive)'
+                                                             ) : (
+                                                                 'Waiting for beacon signal update...'
+                                                             )}
+                                                         </span>
+                                                     </div>
+                                                 </div>
+                                             );
+                                         })()}
+
+                                         <button 
                                             type="submit" 
                                             disabled={bleLoading}
                                             className="submit-btn"

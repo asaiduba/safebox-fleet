@@ -771,6 +771,7 @@ mqttClient.on('connect', () => {
   console.log('✅ Connected to Public MQTT Broker');
   mqttClient.subscribe('/device/+/status'); // Subscribe to all device statuses
   mqttClient.subscribe('/device/+/alert');  // Subscribe to all device alerts
+  mqttClient.subscribe('/device/+/command'); // Subscribe to all device commands
 });
 
 mqttClient.on('error', (err) => {
@@ -785,12 +786,101 @@ mqttClient.on('offline', () => {
   console.warn('⚠️ MQTT Broker Offline — telemetry paused');
 });
 
-// MQTT Publish Event (Handle Telemetry & Alerts)
+// Initialize global cache for Traccar Device IDs mapping to IMEIs
+global.traccarDeviceIds = global.traccarDeviceIds || new Map();
+
+// Helper to send custom commands (e.g. setdigout) to Teltonika trackers via Traccar API
+const sendTraccarCommand = async (imei, commandText) => {
+  const traccarUrl = process.env.TRACCAR_URL || 'https://traccar-production-e4f0.up.railway.app';
+  const traccarUser = process.env.TRACCAR_USER || 'admin@safebox.com';
+  const traccarPass = process.env.TRACCAR_PASS || 'adminpassword';
+
+  if (!traccarUrl || !traccarUser || !traccarPass) {
+    console.log('[Traccar Command] Traccar API credentials not configured. Skipping command forward.');
+    return;
+  }
+
+  let traccarId = global.traccarDeviceIds.get(imei);
+  const auth = 'Basic ' + Buffer.from(`${traccarUser}:${traccarPass}`).toString('base64');
+
+  if (!traccarId) {
+    console.log(`[Traccar Command] Traccar ID not cached for IMEI ${imei}. Querying Traccar API...`);
+    try {
+      const res = await fetch(`${traccarUrl}/api/devices?uniqueId=${imei}`, {
+        headers: { 'Authorization': auth }
+      });
+      if (res.status === 200) {
+        const devices = await res.json();
+        if (devices && devices.length > 0) {
+          traccarId = devices[0].id;
+          global.traccarDeviceIds.set(imei, traccarId);
+          console.log(`[Traccar Command] Found and cached Traccar ID ${traccarId} for IMEI ${imei}`);
+        }
+      }
+    } catch (err) {
+      console.error(`[Traccar Command] Failed to fetch device ID for IMEI ${imei}:`, err.message);
+      return;
+    }
+  }
+
+  if (!traccarId) {
+    console.warn(`[Traccar Command] Device with IMEI ${imei} not found in Traccar. Cannot send command.`);
+    return;
+  }
+
+  console.log(`[Traccar Command] Sending custom command "${commandText}" to Traccar Device ${traccarId} (IMEI ${imei})`);
+  try {
+    const res = await fetch(`${traccarUrl}/api/commands/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': auth
+      },
+      body: JSON.stringify({
+        deviceId: traccarId,
+        type: 'custom',
+        attributes: {
+          data: commandText
+        }
+      })
+    });
+    if (res.status === 200 || res.status === 202) {
+      console.log(`[Traccar Command] Command "${commandText}" successfully sent to Traccar device ${traccarId}`);
+    } else {
+      const errText = await res.text();
+      console.error(`[Traccar Command] Traccar rejected command. Status: ${res.status}, Response: ${errText}`);
+    }
+  } catch (err) {
+    console.error(`[Traccar Command] Error calling Traccar send command API:`, err.message);
+  }
+};
+
+// MQTT Publish Event (Handle Telemetry, Alerts & Commands)
 mqttClient.on('message', (topic, message) => {
   const payloadStr = message.toString();
   console.log(`Received MQTT: ${topic}`);
 
-  // 1. Handle Telemetry
+  // 1. Intercept Commands and forward them to Traccar REST API (setdigout 1 / setdigout 0)
+  if (topic.startsWith('/device/') && topic.endsWith('/command')) {
+    try {
+      const parts = topic.split('/');
+      const deviceId = parts[2];
+      const payload = JSON.parse(payloadStr);
+      const cmd = payload.command;
+      console.log(`[Command Bridge] Intercepted command ${cmd} for device ${deviceId}`);
+      
+      if (cmd === 'BLOCK_START' || cmd === 'LOCK') {
+        sendTraccarCommand(deviceId, 'setdigout 0');
+      } else if (cmd === 'ALLOW_START' || cmd === 'UNLOCK') {
+        sendTraccarCommand(deviceId, 'setdigout 1');
+      }
+    } catch (err) {
+      console.error('[Command Bridge] Error parsing or forwarding command', err);
+    }
+    return;
+  }
+
+  // 2. Handle Telemetry
   if (topic.startsWith('/device/') && topic.endsWith('/status')) {
     try {
       const payload = JSON.parse(payloadStr);
@@ -843,14 +933,80 @@ mqttClient.on('message', (topic, message) => {
       }
 
       let driverPresent = false;
+      let matchedRssi = null;
       if (vehicle.ble_beacon_id) {
         const normalizedBeaconId = vehicle.ble_beacon_id.replace(/:/g, '').toUpperCase();
         const matchedTag = bleBeacons.find(b => b.mac.replace(/:/g, '').toUpperCase() === normalizedBeaconId);
-        if (matchedTag && matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold) {
-          driverPresent = true;
+        if (matchedTag) {
+          matchedRssi = matchedTag.rssi;
+          if (matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold) {
+            driverPresent = true;
+          }
         }
       } else {
         driverPresent = true;
+      }
+
+      // Expose BLE properties directly in the payload so they are broadcast to user screens
+      payload.beaconRssi = matchedRssi;
+      payload.driverPresent = driverPresent;
+
+      // 🚨 Alert calculation: Unauthorized Movement (Started/Moving without beacon)
+      if (!driverPresent && (payload.locked === false || payload.speed > 2)) {
+        const alertType = 'UNAUTHORIZED_MOVEMENT';
+        const alertMsg = `Critical Alert: Unauthorized movement detected on vehicle "${vehicle.name || payload.deviceId}" without the authorized BLE Beacon keyfob!`;
+        
+        const alertCooldownKey = `${payload.deviceId}_${alertType}`;
+        if (!global.alertCooldowns) global.alertCooldowns = new Map();
+        if (!global.alertCooldowns.has(alertCooldownKey) || Date.now() - global.alertCooldowns.get(alertCooldownKey) > 5 * 60 * 1000) {
+          global.alertCooldowns.set(alertCooldownKey, Date.now());
+          try {
+            db.prepare(`
+              INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp, status)
+              VALUES (?, ?, ?, ?, 'UNREAD')
+            `).run(payload.deviceId, alertType, alertMsg, Date.now());
+
+            mqttClient.publish(`/device/${payload.deviceId}/alert`, JSON.stringify({
+              deviceId: payload.deviceId,
+              type: alertType,
+              message: alertMsg,
+              timestamp: Date.now()
+            }));
+            console.log(`[Alert Engine] Dispatched UNAUTHORIZED_MOVEMENT alert for ${payload.deviceId}`);
+          } catch (err) {
+            console.error('[Alert Engine] Failed to record unauthorized movement alert:', err.message);
+          }
+        }
+      }
+
+      // 🚨 Alert calculation: Harsh Driving Behavior
+      if (payload.harshAccel || payload.harshBrake) {
+        const alertType = payload.harshAccel ? 'HARSH_ACCEL' : 'HARSH_BRAKE';
+        const alertMsg = payload.harshAccel 
+          ? `Driver Behavior Alert: Harsh acceleration detected on vehicle "${vehicle.name || payload.deviceId}"!` 
+          : `Driver Behavior Alert: Harsh braking detected on vehicle "${vehicle.name || payload.deviceId}"!`;
+
+        const alertCooldownKey = `${payload.deviceId}_${alertType}`;
+        if (!global.alertCooldowns) global.alertCooldowns = new Map();
+        if (!global.alertCooldowns.has(alertCooldownKey) || Date.now() - global.alertCooldowns.get(alertCooldownKey) > 1 * 60 * 1000) {
+          global.alertCooldowns.set(alertCooldownKey, Date.now());
+          try {
+            db.prepare(`
+              INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp, status)
+              VALUES (?, ?, ?, ?, 'UNREAD')
+            `).run(payload.deviceId, alertType, alertMsg, Date.now());
+
+            mqttClient.publish(`/device/${payload.deviceId}/alert`, JSON.stringify({
+              deviceId: payload.deviceId,
+              type: alertType,
+              message: alertMsg,
+              timestamp: Date.now()
+            }));
+            console.log(`[Alert Engine] Dispatched harsh driving alert for ${payload.deviceId}: ${alertType}`);
+          } catch (err) {
+            console.error('[Alert Engine] Failed to record harsh driving alert:', err.message);
+          }
+        }
       }
 
       const shouldBeLocked = (vehicle.cloud_locked === 1 || curfewLocked || !driverPresent);
@@ -2091,6 +2247,11 @@ app.post('/api/telematics-webhook', (req, res) => {
         deviceId = data.device.uniqueId;
       }
 
+      // Cache Traccar internal ID mapped to IMEI for commands forwarding
+      if (global.traccarDeviceIds) {
+        global.traccarDeviceIds.set(deviceId, pos.deviceId);
+      }
+
       console.log(`[Webhook Bridge] Resolved deviceId/IMEI: ${deviceId}`);
       
       // Extract BLE Beacons if present from Traccar AVL elements
@@ -2128,6 +2289,10 @@ app.post('/api/telematics-webhook', (req, res) => {
         }
       }
 
+      // Extract harsh driving indicators from Traccar attributes
+      const isHarshAccel = pos.attributes?.harshAcceleration === true || pos.attributes?.io253 !== undefined;
+      const isHarshBrake = pos.attributes?.harshBraking === true || pos.attributes?.io254 !== undefined;
+
       // Normalize the payload to match the SafeBox MQTT status schema
       const normalizedPayload = {
         deviceId: deviceId,
@@ -2138,7 +2303,9 @@ app.post('/api/telematics-webhook', (req, res) => {
         fuel: pos.attributes?.fuel || 100,
         locked: pos.attributes?.ignition === false, // If ignition is false, engine start is blocked/locked
         rawBleList: rawBleList,
-        gpsValid: pos.valid !== false // Boolean: true if GPS fix is valid
+        gpsValid: pos.valid !== false, // Boolean: true if GPS fix is valid
+        harshAccel: isHarshAccel,
+        harshBrake: isHarshBrake
       };
 
       // Publish to MQTT broker (HiveMQ / EMQX)

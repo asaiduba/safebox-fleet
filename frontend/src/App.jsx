@@ -708,6 +708,7 @@ function App() {
             {user && showSettings && (
                 <SettingsPanel
                     user={user}
+                    vehicles={vehicles}
                     onBack={() => setShowSettings(false)}
                     onProfileUpdate={(updatedUser) => {
                         setUser(updatedUser);
