@@ -3728,7 +3728,7 @@ app.get('/api/payments/status', (req, res) => {
 
   try {
     const history = db.prepare('SELECT * FROM payments WHERE user_id = ? ORDER BY timestamp DESC LIMIT 20').all(userId);
-    const vehicleBilling = db.prepare('SELECT id, name, plate_number, subscription_status, grace_period_expires, next_billing_date, curfew_enabled, curfew_start, curfew_end, cloud_locked FROM vehicles WHERE owner_id = ?').all(userId);
+    const vehicleBilling = db.prepare('SELECT id, name, plate_number, subscription_status, grace_period_expires, next_billing_date, curfew_enabled, curfew_start, curfew_end, cloud_locked, ble_beacon_id, ble_beacon_rssi_threshold FROM vehicles WHERE owner_id = ?').all(userId);
 
     res.json({
       pricePerVehicle: PLAN_PRICE_PER_VEHICLE,
