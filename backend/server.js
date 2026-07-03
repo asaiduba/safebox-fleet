@@ -903,16 +903,25 @@ mqttClient.on('message', (topic, message) => {
         }
       }
 
-      // Calculate distance delta and update odometer
+      // Calculate distance delta and update odometer (only if GPS is valid)
       let newOdometer = vehicle.odometer_km || 0;
-      if (vehicle.lat !== null && vehicle.lng !== null && vehicle.lat !== 0 && vehicle.lng !== 0 &&
-          payload.lat !== null && payload.lng !== null && payload.lat !== 0 && payload.lng !== 0) {
+      const isGpsValid = payload.gpsValid !== false && payload.lat !== null && payload.lng !== null && payload.lat !== 0 && payload.lng !== 0;
+      if (isGpsValid && vehicle.lat !== null && vehicle.lng !== null && vehicle.lat !== 0 && vehicle.lng !== 0) {
         const delta = getDistanceFromLatLonInKm(vehicle.lat, vehicle.lng, payload.lat, payload.lng);
         // Filter out GPS jumps (e.g. > 2km in 3 seconds)
         if (delta > 0 && delta <= 2) {
           newOdometer += delta;
         }
       }
+
+      const finalLat = isGpsValid ? payload.lat : (vehicle.lat || 0);
+      const finalLng = isGpsValid ? payload.lng : (vehicle.lng || 0);
+      const finalSpeed = isGpsValid ? (payload.speed || 0) : 0;
+
+      // Update the payload so that Socket.IO and shared tracking receive the correct filtered coordinates
+      payload.lat = finalLat;
+      payload.lng = finalLng;
+      payload.speed = finalSpeed;
 
       // Update last_seen, battery_level, fuel_level, and is_locked in DB.
       // IMPORTANT: We do NOT update cloud_locked here — it is a web-only command
@@ -921,7 +930,7 @@ mqttClient.on('message', (topic, message) => {
       // every time the device sends a telemetry packet (every 2 seconds).
       try {
         const stmt = db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ? WHERE id = ?');
-        stmt.run(Date.now(), payload.battery || 100, payload.fuel || 100, payload.locked ? 1 : 0, payload.lat || 0, payload.lng || 0, newOdometer, payload.deviceId);
+        stmt.run(Date.now(), payload.battery || 100, payload.fuel || 100, payload.locked ? 1 : 0, finalLat, finalLng, newOdometer, payload.deviceId);
 
         // Insert into vehicle_history
         const historyStmt = db.prepare(`
@@ -931,11 +940,11 @@ mqttClient.on('message', (topic, message) => {
         historyStmt.run(
           payload.deviceId,
           Date.now(),
-          payload.speed || 0,
+          finalSpeed,
           payload.battery || 100,
           payload.fuel || 100,
-          payload.lat || 0,
-          payload.lng || 0
+          finalLat,
+          finalLng
         );
 
         // --- Maintenance Alerts Notification Check ---
@@ -2128,7 +2137,8 @@ app.post('/api/telematics-webhook', (req, res) => {
         battery: batteryPct,
         fuel: pos.attributes?.fuel || 100,
         locked: pos.attributes?.ignition === false, // If ignition is false, engine start is blocked/locked
-        rawBleList: rawBleList
+        rawBleList: rawBleList,
+        gpsValid: pos.valid !== false // Boolean: true if GPS fix is valid
       };
 
       // Publish to MQTT broker (HiveMQ / EMQX)
