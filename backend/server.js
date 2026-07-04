@@ -932,20 +932,32 @@ mqttClient.on('message', (topic, message) => {
         });
       }
 
+      // --- BLE DIAGNOSTIC: log what was received and what we try to match ---
+      if (bleBeacons.length > 0 || payload.rawBleList) {
+        console.log(`[BLE MQTT] Device ${payload.deviceId} → rawBleList: "${payload.rawBleList}", parsed beacons: ${JSON.stringify(bleBeacons)}`);
+      }
+
       let driverPresent = false;
       let matchedRssi = null;
       if (vehicle.ble_beacon_id) {
         const normalizedBeaconId = vehicle.ble_beacon_id.replace(/:/g, '').toUpperCase();
+        console.log(`[BLE MQTT] Trying to match beacons against configured ID: "${normalizedBeaconId}" (threshold: ${vehicle.ble_beacon_rssi_threshold} dBm)`);
         const matchedTag = bleBeacons.find(b => {
           const cleanMac = b.mac.replace(/:/g, '').toUpperCase().replace(/^0+/, '');
           const cleanDb = normalizedBeaconId.replace(/^0+/, '');
-          return cleanMac === cleanDb || cleanMac.endsWith(cleanDb) || cleanDb.endsWith(cleanMac);
+          const isMatch = cleanMac === cleanDb || cleanMac.endsWith(cleanDb) || cleanDb.endsWith(cleanMac);
+          console.log(`[BLE MQTT]   comparing cleanMac="${cleanMac}" vs cleanDb="${cleanDb}" → ${isMatch ? '✅ MATCH' : '❌ no match'}`);
+          return isMatch;
         });
         if (matchedTag) {
           matchedRssi = matchedTag.rssi;
-          if (matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold) {
+          const aboveThreshold = matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold;
+          console.log(`[BLE MQTT] ✅ Beacon matched! RSSI=${matchedRssi} dBm, threshold=${vehicle.ble_beacon_rssi_threshold}, driverPresent=${aboveThreshold}`);
+          if (aboveThreshold) {
             driverPresent = true;
           }
+        } else {
+          console.log(`[BLE MQTT] ❌ No beacon matched configured ID "${vehicle.ble_beacon_id}" among ${bleBeacons.length} received beacon(s).`);
         }
       } else {
         driverPresent = true;
@@ -2267,11 +2279,19 @@ app.post('/api/telematics-webhook', (req, res) => {
 
       console.log(`[Webhook Bridge] Resolved deviceId/IMEI: ${deviceId}`);
       
+      // --- BLE DIAGNOSTIC: dump ALL attributes received for this position ---
+      const hasBleKeys = pos.attributes && Object.keys(pos.attributes).some(k =>
+        k.startsWith('tag') || k.startsWith('beacon') || k.includes('Ble') || k.includes('ble')
+      );
+      if (hasBleKeys) {
+        console.log(`[BLE] RAW attributes for ${deviceId}:`, JSON.stringify(pos.attributes));
+      }
+
       // Extract BLE Beacons if present from Traccar AVL elements
       let rawBleList = '';
       const bleParts = [];
       
-      // 1. Check standard/alternative Beacon List attributes (io385/io386, beacon1Id/beacon1Rssi, beacon1Instance/beacon1Rssi, tag1Mac/tag1Rssi, tag1Id/tag1Rssi)
+      // 1. Check standard/alternative Beacon List attributes
       for (let b = 1; b <= 4; b++) {
         const idKey = `io${383 + b * 2}`;
         const rssiKey = `io${384 + b * 2}`;
@@ -2293,27 +2313,37 @@ app.post('/api/telematics-webhook', (req, res) => {
                      pos.attributes?.[altRssiKey];
 
         if (mac && rssi !== undefined) {
+          console.log(`[BLE] Beacon slot ${b} parsed → MAC: ${mac}, RSSI: ${rssi}`);
           bleParts.push(`${mac}:${rssi}`);
         }
       }
       
       // 2. Check BLE Custom AVL attributes (io331/io332, io463/io464, io468/io469, io473/io474)
       const customPairs = [
-        ['io331', 'io332'], // BLE 1 Custom 1 & 2
-        ['io463', 'io464'], // BLE 2 Custom 1 & 2
-        ['io468', 'io469'], // BLE 3 Custom 1 & 2
-        ['io473', 'io474']  // BLE 4 Custom 1 & 2
+        ['io331', 'io332'],
+        ['io463', 'io464'],
+        ['io468', 'io469'],
+        ['io473', 'io474']
       ];
       for (const [idKey, rssiKey] of customPairs) {
         const mac = pos.attributes?.[idKey];
         const rssi = pos.attributes?.[rssiKey];
         if (mac && rssi !== undefined) {
+          console.log(`[BLE] Custom AVL pair ${idKey}/${rssiKey} parsed → MAC: ${mac}, RSSI: ${rssi}`);
           bleParts.push(`${mac}:${rssi}`);
         }
       }
 
       if (bleParts.length > 0) {
         rawBleList = bleParts.join(';');
+        console.log(`[BLE] rawBleList assembled for ${deviceId}: "${rawBleList}"`);
+      } else {
+        // Only log if position had no BLE keys at all (reduces noise)
+        if (!hasBleKeys) {
+          // silent - no BLE in this position packet
+        } else {
+          console.log(`[BLE] ⚠️  BLE keys found in attributes but NO mac+rssi pairs matched for ${deviceId}`);
+        }
       }
 
       // Convert battery voltage (Volts or millivolts) to percentage if needed
