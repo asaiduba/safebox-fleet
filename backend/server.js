@@ -1089,8 +1089,8 @@ mqttClient.on('message', (topic, message) => {
       // If we let the device overwrite it, the dashboard lock button would revert
       // every time the device sends a telemetry packet (every 2 seconds).
       try {
-        const stmt = db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ? WHERE id = ?');
-        stmt.run(Date.now(), payload.battery || 100, payload.fuel || 100, payload.locked ? 1 : 0, finalLat, finalLng, newOdometer, payload.deviceId);
+        const stmt = db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ?, beacon_rssi = ?, driver_present = ? WHERE id = ?');
+        stmt.run(Date.now(), payload.battery || 100, payload.fuel || 100, payload.locked ? 1 : 0, finalLat, finalLng, newOdometer, matchedRssi, driverPresent ? 1 : 0, payload.deviceId);
 
         // Insert into vehicle_history
         const historyStmt = db.prepare(`
@@ -2116,16 +2116,21 @@ app.get('/api/vehicles', (req, res) => {
     const vehicles = db.prepare('SELECT * FROM vehicles WHERE owner_id = ?').all(userId);
 
     const processed = vehicles.map(v => {
+      const base = {
+        ...v,
+        beaconRssi: v.beacon_rssi,
+        driverPresent: v.driver_present !== 0
+      };
       if (isUserSuspended || v.subscription_status === 'SUSPENDED') {
         return {
-          ...v,
+          ...base,
           lat: 0.0,
           lng: 0.0,
           speed: 0,
           odometer_km: 0
         };
       }
-      return v;
+      return base;
     });
 
     res.json(processed);
@@ -3767,11 +3772,17 @@ app.get('/api/payments/status', (req, res) => {
 
   try {
     const history = db.prepare('SELECT * FROM payments WHERE user_id = ? ORDER BY timestamp DESC LIMIT 20').all(userId);
-    const vehicleBilling = db.prepare('SELECT id, name, plate_number, subscription_status, grace_period_expires, next_billing_date, curfew_enabled, curfew_start, curfew_end, cloud_locked, ble_beacon_id, ble_beacon_rssi_threshold FROM vehicles WHERE owner_id = ?').all(userId);
+    const vehicleBilling = db.prepare('SELECT id, name, plate_number, subscription_status, grace_period_expires, next_billing_date, curfew_enabled, curfew_start, curfew_end, cloud_locked, ble_beacon_id, ble_beacon_rssi_threshold, beacon_rssi, driver_present FROM vehicles WHERE owner_id = ?').all(userId);
+
+    const mappedVehicles = vehicleBilling.map(v => ({
+      ...v,
+      beaconRssi: v.beacon_rssi,
+      driverPresent: v.driver_present !== 0
+    }));
 
     res.json({
       pricePerVehicle: PLAN_PRICE_PER_VEHICLE,
-      vehicles: vehicleBilling,
+      vehicles: mappedVehicles,
       history
     });
   } catch (err) {

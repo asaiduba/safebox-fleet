@@ -200,6 +200,12 @@ function initDb() {
         db.exec("ALTER TABLE vehicles ADD COLUMN ble_beacon_rssi_threshold INTEGER DEFAULT -80");
     } catch (e) {}
     try {
+        db.exec("ALTER TABLE vehicles ADD COLUMN beacon_rssi INTEGER");
+    } catch (e) {}
+    try {
+        db.exec("ALTER TABLE vehicles ADD COLUMN driver_present INTEGER DEFAULT 1");
+    } catch (e) {}
+    try {
         db.exec("ALTER TABLE vehicles ADD COLUMN device_type TEXT DEFAULT 'mokosmart'");
     } catch (e) {}
     try {
