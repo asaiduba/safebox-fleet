@@ -1067,32 +1067,32 @@ mqttClient.on('message', (topic, message) => {
 
       // Enforce the calculated security policy state
       if (shouldBeLocked) {
-        // ─── SAFETY: never immobilize a moving vehicle ──────────────────────────
-        // The lock command is only sent when ALL conditions are met:
-        //  1. Speed is 0 (vehicle is stationary right now)
-        //  2. Vehicle has NOT been moving in the last 5 minutes
-        //  3. 60-second cooldown has elapsed (prevents ACK-loop)
-        //
-        // This prevents the engine being cut mid-ride due to BLE RSSI fluctuation.
+        // ─── SAFETY & IMMEDIATE LOCK ENGINE ──────────────────────────────────────
+        // Rule:
+        //  1. If ACC (ignition) is ON, NEVER lock under any circumstances (keep rider safe).
+        //  2. If ACC is OFF and speed is 0, lock IMMEDIATELY (it is parked).
+        //  3. We still respect the 60-second command cooldown to avoid command loops.
+        const accOn = payload.ignition === true;
+        const isParked = (payload.speed === 0 && !accOn);
+
         if (!global.lockCooldowns) global.lockCooldowns = new Map();
         const lastLockTime = global.lockCooldowns.get(payload.deviceId) || 0;
         const lockCooldownOk = (Date.now() - lastLockTime) > 60000;
-        const safeToLock = payload.speed === 0 && !wasMovingRecently;
 
-        if (safeToLock && !payload.locked && lockCooldownOk) {
+        if (isParked && !payload.locked && lockCooldownOk) {
           global.lockCooldowns.set(payload.deviceId, Date.now());
-          console.log(`[Security Policy] Enforcing LOCK for vehicle ${payload.deviceId}. Reason: cloud_locked=${vehicle.cloud_locked}, curfew=${curfewLocked}, driverAbsent=${!driverPresent}`);
+          console.log(`[Security Policy] Enforcing IMMEDIATE LOCK for parked vehicle ${payload.deviceId}. Reason: cloud_locked=${vehicle.cloud_locked}, curfew=${curfewLocked}, driverAbsent=${!driverPresent}`);
           mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'BLOCK_START' }));
           mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
           payload.locked = true;
-        } else if (!safeToLock && payload.speed > 0) {
-          // Vehicle is moving — NEVER send a lock command, just log it.
-          console.log(`[Security Policy] ⚠️  Lock deferred for ${payload.deviceId} — vehicle is moving at ${payload.speed} km/h. Will lock when stationary.`);
-        } else if (wasMovingRecently) {
-          console.log(`[Security Policy] ⚠️  Lock deferred for ${payload.deviceId} — moving grace period active (last moved ${Math.round((Date.now()-lastMoving)/1000)}s ago).`);
-          payload.locked = true; // consider locked in state, don't send command yet
+        } else if (accOn) {
+          // Ignition/ACC is ON — NEVER immobilize.
+          console.log(`[Security Policy] 🛡️  Lock deferred for ${payload.deviceId} — ACC is ON. Vehicle is running safely.`);
+        } else if (!isParked && payload.speed > 0) {
+          // Vehicle is moving with ACC off (e.g. towing or rolling) — defer lock for safety.
+          console.log(`[Security Policy] ⚠️  Lock deferred for ${payload.deviceId} — vehicle is moving at ${payload.speed} km/h with ACC OFF.`);
         } else {
-          payload.locked = true; // cooldown active, command already sent recently
+          payload.locked = true; // either already locked or lock cooldown active
         }
         
         // Warn if running outside allowed hours
@@ -2437,6 +2437,7 @@ app.post('/api/telematics-webhook', (req, res) => {
       const isHarshBrake = pos.attributes?.harshBraking === true || pos.attributes?.io254 !== undefined;
 
       // Normalize the payload to match the SafeBox MQTT status schema
+      const ignitionOn = pos.attributes?.ignition === true || pos.attributes?.io239 === 1 || pos.attributes?.io239 === '1';
       const normalizedPayload = {
         deviceId: deviceId,
         lat: pos.latitude || 0,
@@ -2444,7 +2445,8 @@ app.post('/api/telematics-webhook', (req, res) => {
         speed: pos.speed ? Math.round(pos.speed * 1.852) : 0, // Knots to km/h conversion
         battery: batteryPct,
         fuel: pos.attributes?.fuel || 100,
-        locked: pos.attributes?.ignition === false, // If ignition is false, engine start is blocked/locked
+        locked: !ignitionOn, // Default state to locked if ignition is off
+        ignition: ignitionOn, // Explicit ACC state
         rawBleList: rawBleList,
         gpsValid: pos.valid !== false, // Boolean: true if GPS fix is valid
         harshAccel: isHarshAccel,
