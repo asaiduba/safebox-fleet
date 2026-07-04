@@ -2400,6 +2400,24 @@ app.post('/api/telematics-webhook', (req, res) => {
   }
 });
 
+// Debug Route: Dump live BLE state for all vehicles (secret-protected, temporary diagnostic)
+app.get('/api/admin/ble-debug', (req, res) => {
+  const adminSecret = process.env.SUPERADMIN_SECRET || 'safebox_superadmin_secret_key';
+  if (req.query.secret !== adminSecret) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  try {
+    const vehicles = db.prepare(`
+      SELECT id, name, owner_id, ble_beacon_id, ble_beacon_rssi_threshold, beacon_rssi, driver_present, last_seen
+      FROM vehicles
+    `).all();
+    res.json({ vehicles });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // Admin Route: Whitelist/Authorize new tracker IMEIs (SafeBox Super Admin functionality)
 app.post('/api/admin/authorize-device', (req, res) => {
   const { id, secret } = req.body;
