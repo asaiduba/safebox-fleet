@@ -921,7 +921,27 @@ mqttClient.on('message', (topic, message) => {
         }
       }
 
-      // BLE Proximity check (driver presence)
+      // ─── BLE Proximity check (driver presence) ────────────────────────────────
+      // Safety design: BLE RSSI fluctuates by ±15 dBm. A single missed/weak
+      // reading must NOT immediately declare the driver absent, because that could
+      // immobilize the engine while the vehicle is moving.
+      //
+      // Strategy:
+      //  1. "Last-seen" grace period: beacon must be absent for 3 consecutive
+      //     minutes (3 missed 60-second readings) before driver is declared absent.
+      //  2. "Moving" grace period: if the vehicle moved in the last 5 minutes,
+      //     never lock — rider is on the bike regardless of beacon state.
+
+      if (!global.lastBeaconSeen) global.lastBeaconSeen   = new Map();
+      if (!global.lastMovingTime) global.lastMovingTime   = new Map();
+
+      // Track last time this vehicle was seen moving
+      if (payload.speed > 0) {
+        global.lastMovingTime.set(payload.deviceId, Date.now());
+      }
+      const lastMoving = global.lastMovingTime.get(payload.deviceId) || 0;
+      const wasMovingRecently = (Date.now() - lastMoving) < 5 * 60 * 1000; // 5-minute window
+
       const bleBeacons = [];
       if (payload.rawBleList) {
         payload.rawBleList.split(';').forEach(pair => {
@@ -954,10 +974,28 @@ mqttClient.on('message', (topic, message) => {
           const aboveThreshold = matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold;
           console.log(`[BLE MQTT] ✅ Beacon matched! RSSI=${matchedRssi} dBm, threshold=${vehicle.ble_beacon_rssi_threshold}, driverPresent=${aboveThreshold}`);
           if (aboveThreshold) {
+            // Beacon visible and above threshold → update last-seen timestamp
+            global.lastBeaconSeen.set(payload.deviceId, Date.now());
             driverPresent = true;
           }
         } else {
           console.log(`[BLE MQTT] ❌ No beacon matched configured ID "${vehicle.ble_beacon_id}" among ${bleBeacons.length} received beacon(s).`);
+        }
+
+        // GRACE PERIOD: if beacon was visible within the last 3 minutes, still
+        // treat the driver as present (covers RSSI fluctuation and missed scans).
+        const lastSeen = global.lastBeaconSeen.get(payload.deviceId) || 0;
+        const beaconSeenRecently = (Date.now() - lastSeen) < 3 * 60 * 1000; // 3-minute window
+        if (!driverPresent && beaconSeenRecently) {
+          console.log(`[BLE MQTT] ⏱️  Beacon not in current packet but was seen ${Math.round((Date.now()-lastSeen)/1000)}s ago — grace period active, treating driver as present.`);
+          driverPresent = true;
+        }
+
+        // MOVING GRACE: if the vehicle moved in the last 5 minutes, driver is present
+        // regardless of beacon state — never risk cutting the engine mid-ride.
+        if (!driverPresent && wasMovingRecently) {
+          console.log(`[BLE MQTT] 🚗 Vehicle was moving ${Math.round((Date.now()-lastMoving)/1000)}s ago — moving grace period active, treating driver as present.`);
+          driverPresent = true;
         }
       } else {
         driverPresent = true;
@@ -1029,21 +1067,32 @@ mqttClient.on('message', (topic, message) => {
 
       // Enforce the calculated security policy state
       if (shouldBeLocked) {
-        // Enforce lock (if stationary and currently unlocked)
-        // Use a 60-second cooldown so that command ACKs returned by the tracker
-        // do not re-trigger this block and create an infinite LOCK command loop.
+        // ─── SAFETY: never immobilize a moving vehicle ──────────────────────────
+        // The lock command is only sent when ALL conditions are met:
+        //  1. Speed is 0 (vehicle is stationary right now)
+        //  2. Vehicle has NOT been moving in the last 5 minutes
+        //  3. 60-second cooldown has elapsed (prevents ACK-loop)
+        //
+        // This prevents the engine being cut mid-ride due to BLE RSSI fluctuation.
         if (!global.lockCooldowns) global.lockCooldowns = new Map();
         const lastLockTime = global.lockCooldowns.get(payload.deviceId) || 0;
-        const lockCooldownOk = (Date.now() - lastLockTime) > 60000; // 60-second cooldown
+        const lockCooldownOk = (Date.now() - lastLockTime) > 60000;
+        const safeToLock = payload.speed === 0 && !wasMovingRecently;
 
-        if (payload.speed === 0 && !payload.locked && lockCooldownOk) {
+        if (safeToLock && !payload.locked && lockCooldownOk) {
           global.lockCooldowns.set(payload.deviceId, Date.now());
           console.log(`[Security Policy] Enforcing LOCK for vehicle ${payload.deviceId}. Reason: cloud_locked=${vehicle.cloud_locked}, curfew=${curfewLocked}, driverAbsent=${!driverPresent}`);
           mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'BLOCK_START' }));
           mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
           payload.locked = true;
-        } else if (!lockCooldownOk) {
-          payload.locked = true; // still consider it locked, just don't re-send command
+        } else if (!safeToLock && payload.speed > 0) {
+          // Vehicle is moving — NEVER send a lock command, just log it.
+          console.log(`[Security Policy] ⚠️  Lock deferred for ${payload.deviceId} — vehicle is moving at ${payload.speed} km/h. Will lock when stationary.`);
+        } else if (wasMovingRecently) {
+          console.log(`[Security Policy] ⚠️  Lock deferred for ${payload.deviceId} — moving grace period active (last moved ${Math.round((Date.now()-lastMoving)/1000)}s ago).`);
+          payload.locked = true; // consider locked in state, don't send command yet
+        } else {
+          payload.locked = true; // cooldown active, command already sent recently
         }
         
         // Warn if running outside allowed hours
