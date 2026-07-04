@@ -222,7 +222,11 @@ function App() {
                 subscription_status: v.subscription_status || 'ACTIVE',
                 grace_period_expires: v.grace_period_expires || null,
                 next_billing_date: v.next_billing_date || null,
-                lastUpdate: v.last_seen ? new Date(v.last_seen) : null
+                lastUpdate: v.last_seen ? new Date(v.last_seen) : null,
+                // Persist the last known beacon state from the DB so the BLE card
+                // shows signal immediately on load without waiting for a Socket.IO packet.
+                beaconRssi: v.beacon_rssi ?? v.beaconRssi ?? null,
+                driverPresent: v.driver_present !== undefined ? v.driver_present !== 0 : true
             })));
         } catch (err) {
             console.error("Failed to fetch vehicles", err);
@@ -537,11 +541,19 @@ function App() {
                 const index = prev.findIndex(v => v.id === data.payload.deviceId);
                 if (index > -1) {
                     const newVehicles = [...prev];
-                    // Preserve cloudLocked from the existing state — it is web-only and
-                    // must NOT be overwritten by device telemetry. The device reports its
-                    // physical lock state in `locked`, but `cloudLocked` is only
-                    // changed when the user presses LOCK/UNLOCK on the dashboard.
+                    // Preserve cloudLocked — it is web-only and must NOT be overwritten by device telemetry.
                     const { cloudLocked: _ignore, ...telemetry } = data.payload;
+
+                    // Preserve beaconRssi and driverPresent — most telemetry packets have NO beacon
+                    // data and carry beaconRssi=null. We must not let those null values erase a
+                    // valid signal that arrived in a recent beacon-bearing packet.
+                    if (telemetry.beaconRssi === null || telemetry.beaconRssi === undefined) {
+                        delete telemetry.beaconRssi;
+                    }
+                    if (telemetry.driverPresent === null || telemetry.driverPresent === undefined) {
+                        delete telemetry.driverPresent;
+                    }
+
                     newVehicles[index] = {
                         ...newVehicles[index],
                         ...telemetry,
