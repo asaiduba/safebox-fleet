@@ -2266,14 +2266,27 @@ app.post('/api/telematics-webhook', (req, res) => {
       let rawBleList = '';
       const bleParts = [];
       
-      // 1. Check standard Beacon List AVL attributes (io385/io386, etc.)
+      // 1. Check standard/alternative Beacon List attributes (io385/io386, beacon1Id/beacon1Rssi, beacon1Instance/beacon1Rssi, tag1Mac/tag1Rssi, tag1Id/tag1Rssi)
       for (let b = 1; b <= 4; b++) {
-        const idKey = `io${383 + b * 2}`; // io385, io387, io389, io391
-        const rssiKey = `io${384 + b * 2}`; // io386, io388, io390, io392
+        const idKey = `io${383 + b * 2}`;
+        const rssiKey = `io${384 + b * 2}`;
         const altIdKey = `beacon${b}Id`;
         const altRssiKey = `beacon${b}Rssi`;
-        const mac = pos.attributes?.[idKey] || pos.attributes?.[altIdKey];
-        const rssi = pos.attributes?.[rssiKey] || pos.attributes?.[altRssiKey];
+        const instanceKey = `beacon${b}Instance`;
+        const tagMacKey = `tag${b}Mac`;
+        const tagIdKey = `tag${b}Id`;
+        const tagRssiKey = `tag${b}Rssi`;
+
+        const mac = pos.attributes?.[idKey] || 
+                    pos.attributes?.[tagMacKey] || 
+                    pos.attributes?.[instanceKey] || 
+                    pos.attributes?.[altIdKey] || 
+                    pos.attributes?.[tagIdKey];
+                    
+        const rssi = pos.attributes?.[rssiKey] || 
+                     pos.attributes?.[tagRssiKey] || 
+                     pos.attributes?.[altRssiKey];
+
         if (mac && rssi !== undefined) {
           bleParts.push(`${mac}:${rssi}`);
         }
