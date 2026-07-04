@@ -1030,11 +1030,20 @@ mqttClient.on('message', (topic, message) => {
       // Enforce the calculated security policy state
       if (shouldBeLocked) {
         // Enforce lock (if stationary and currently unlocked)
-        if (payload.speed === 0 && !payload.locked) {
+        // Use a 60-second cooldown so that command ACKs returned by the tracker
+        // do not re-trigger this block and create an infinite LOCK command loop.
+        if (!global.lockCooldowns) global.lockCooldowns = new Map();
+        const lastLockTime = global.lockCooldowns.get(payload.deviceId) || 0;
+        const lockCooldownOk = (Date.now() - lastLockTime) > 60000; // 60-second cooldown
+
+        if (payload.speed === 0 && !payload.locked && lockCooldownOk) {
+          global.lockCooldowns.set(payload.deviceId, Date.now());
           console.log(`[Security Policy] Enforcing LOCK for vehicle ${payload.deviceId}. Reason: cloud_locked=${vehicle.cloud_locked}, curfew=${curfewLocked}, driverAbsent=${!driverPresent}`);
           mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'BLOCK_START' }));
           mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
           payload.locked = true;
+        } else if (!lockCooldownOk) {
+          payload.locked = true; // still consider it locked, just don't re-send command
         }
         
         // Warn if running outside allowed hours
@@ -2261,6 +2270,17 @@ app.post('/api/telematics-webhook', (req, res) => {
 
     for (const pos of positionsToProcess) {
       if (!pos.deviceId) continue;
+
+      // ─── SKIP command-response packets (Teltonika AVL type:6) ───────────────
+      // When the server sends a command (e.g. setdigout 0), the tracker responds
+      // with an ACK packet.  Traccar forwards it here with attributes.type=6 and
+      // attributes.result="DOUT1:Already set to 0".  These packets contain NO
+      // GPS or BLE data, so processing them would (a) falsely clear beaconRssi,
+      // and (b) cause an infinite LOCK → ACK → LOCK loop.
+      if (pos.attributes?.type === 6 || typeof pos.attributes?.result === 'string') {
+        console.log(`[Webhook Bridge] Skipping command-response packet for device ${pos.deviceId} (result: "${pos.attributes?.result}")`);
+        continue;
+      }
 
       // Resolve the internal ID to the 15-digit IMEI (uniqueId)
       let deviceId = pos.deviceId.toString();
