@@ -30,3 +30,11 @@ output.log
 .vscode/
 .idea/
 scratch/
+
+# Ignore LaTeX auxiliary files, documents, and assets
+*.aux
+*.out
+*.tex
+*.docx
+*.jpg
+Teltonika config/
