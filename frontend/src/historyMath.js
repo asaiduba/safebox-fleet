@@ -17,6 +17,50 @@ function deg2rad(deg) {
     return deg * (Math.PI / 180);
 }
 
+// Calculate perpendicular distance from a point to a line segment
+function getPerpendicularDistance(point, lineStart, lineEnd) {
+    const doubleArea = Math.abs(
+        (lineEnd.lat - lineStart.lat) * (lineStart.lng - point.lng) -
+        (lineStart.lat - point.lat) * (lineEnd.lng - lineStart.lng)
+    );
+    const lineLength = Math.sqrt(
+        Math.pow(lineEnd.lat - lineStart.lat, 2) +
+        Math.pow(lineEnd.lng - lineStart.lng, 2)
+    );
+    if (lineLength === 0) {
+        return Math.sqrt(
+            Math.pow(point.lat - lineStart.lat, 2) +
+            Math.pow(point.lng - lineStart.lng, 2)
+        );
+    }
+    return doubleArea / lineLength;
+}
+
+// Ramer-Douglas-Peucker path simplification
+export function simplifyPath(points, epsilon = 0.00012) { // ~12 meters deviation limit
+    if (points.length < 3) return points;
+
+    let maxDist = 0;
+    let index = 0;
+    const end = points.length - 1;
+
+    for (let i = 1; i < end; i++) {
+        const dist = getPerpendicularDistance(points[i], points[0], points[end]);
+        if (dist > maxDist) {
+            index = i;
+            maxDist = dist;
+        }
+    }
+
+    if (maxDist > epsilon) {
+        const results1 = simplifyPath(points.slice(0, index + 1), epsilon);
+        const results2 = simplifyPath(points.slice(index), epsilon);
+        return results1.slice(0, results1.length - 1).concat(results2);
+    } else {
+        return [points[0], points[end]];
+    }
+}
+
 // Compile stats from vehicle history logs
 export function compileTripStats(logs) {
     if (!logs || logs.length < 2) {
@@ -39,16 +83,32 @@ export function compileTripStats(logs) {
     // Filter valid GPS coordinates
     const validLogs = logs.filter(log => log.lat && log.lng && log.lat !== 0 && log.lng !== 0);
 
+    let lastAdded = null;
+
     for (let i = 0; i < validLogs.length; i++) {
         const log = validLogs[i];
-        path.push({
+        const currentPoint = {
             lat: log.lat,
             lng: log.lng,
             speed: log.speed || 0,
             battery: log.battery_level !== undefined ? log.battery_level : 100,
             fuel: log.fuel_level !== undefined ? log.fuel_level : 100,
             timestamp: log.timestamp
-        });
+        };
+
+        // Filter out stationary GPS drift (if within 10 meters and not moving, skip point unless it's first or last)
+        let shouldAdd = true;
+        if (lastAdded) {
+            const distFromLast = getDistanceFromLatLonInKm(lastAdded.lat, lastAdded.lng, currentPoint.lat, currentPoint.lng);
+            if (distFromLast < 0.01 && currentPoint.speed <= 2 && lastAdded.speed <= 2 && i < validLogs.length - 1) {
+                shouldAdd = false;
+            }
+        }
+
+        if (shouldAdd) {
+            path.push(currentPoint);
+            lastAdded = currentPoint;
+        }
 
         // 1. Calculate Distance
         if (i > 0) {
@@ -76,14 +136,18 @@ export function compileTripStats(logs) {
 
     const avgSpeed = movingPointsCount > 0 ? Math.round(movingSpeedsSum / movingPointsCount) : 0;
 
+    // Apply Ramer-Douglas-Peucker path simplification to smooth out line spikes
+    const smoothedPath = path.length > 2 ? simplifyPath(path, 0.00012) : path;
+
     return {
         totalDistance: parseFloat(totalDistance.toFixed(2)),
         movingTime,
         idleTime,
         avgSpeed,
-        path
+        path: smoothedPath
     };
 }
+
 
 // Formats milliseconds into readable "1h 45m" format
 export function formatDuration(ms) {

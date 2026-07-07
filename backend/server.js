@@ -1005,33 +1005,21 @@ mqttClient.on('message', (topic, message) => {
       payload.beaconRssi = matchedRssi;
       payload.driverPresent = driverPresent;
 
-      // 🚨 Alert calculation: Unauthorized Movement (Started/Moving without beacon)
-      if (!driverPresent && (payload.locked === false || payload.speed > 2)) {
-        const alertType = 'UNAUTHORIZED_MOVEMENT';
-        const alertMsg = `Critical Alert: Unauthorized movement detected on vehicle "${vehicle.name || payload.deviceId}" without the authorized BLE Beacon keyfob!`;
-        
-        const alertCooldownKey = `${payload.deviceId}_${alertType}`;
-        if (!global.alertCooldowns) global.alertCooldowns = new Map();
-        if (!global.alertCooldowns.has(alertCooldownKey) || Date.now() - global.alertCooldowns.get(alertCooldownKey) > 5 * 60 * 1000) {
-          global.alertCooldowns.set(alertCooldownKey, Date.now());
-          try {
-            db.prepare(`
-              INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp, status)
-              VALUES (?, ?, ?, ?, 'UNREAD')
-            `).run(payload.deviceId, alertType, alertMsg, Date.now());
+      const shouldBeLocked = (vehicle.cloud_locked === 1 || curfewLocked || !driverPresent);
+      const isLocked = shouldBeLocked ? 1 : 0;
 
-            mqttClient.publish(`/device/${payload.deviceId}/alert`, JSON.stringify({
-              deviceId: payload.deviceId,
-              type: alertType,
-              message: alertMsg,
-              timestamp: Date.now()
-            }));
-            console.log(`[Alert Engine] Dispatched UNAUTHORIZED_MOVEMENT alert for ${payload.deviceId}`);
-          } catch (err) {
-            console.error('[Alert Engine] Failed to record unauthorized movement alert:', err.message);
-          }
-        }
-      }
+      // Evaluate unified security alerts (Hotwire, Towing, and Unauthorized Movement)
+      evaluateSecurityAlerts(
+        payload.deviceId, 
+        vehicle, 
+        payload.ignition === true ? 1 : 0, 
+        payload.speed || 0, 
+        driverPresent, 
+        curfewLocked, 
+        isLocked, 
+        Date.now(), 
+        ownerId
+      );
 
       // 🚨 Alert calculation: Harsh Driving Behavior
       if (payload.harshAccel || payload.harshBrake) {
@@ -1062,8 +1050,6 @@ mqttClient.on('message', (topic, message) => {
           }
         }
       }
-
-      const shouldBeLocked = (vehicle.cloud_locked === 1 || curfewLocked || !driverPresent);
 
       // Enforce the calculated security policy state
       if (shouldBeLocked) {
@@ -1403,12 +1389,9 @@ mqttClient.on('message', (topic, message) => {
             }
 
             if (isOutside) {
-              // OUTSIDE
-              const lastAlert = global.alertCooldowns.get(alertKey);
-              const geoNow = Date.now();
-
-              // Alert only if never alerted or > 60 seconds ago
-              if (!lastAlert || (geoNow - lastAlert > 60000)) {
+              // OUTSIDE - Alert only once upon transition from inside to outside
+              if (!global.alertCooldowns.has(alertKey)) {
+                const geoNow = Date.now();
                 const breachMsg = `Vehicle ${payload.deviceId} has left the safe zone!`;
                 io.to(`user_${ownerId}`).emit('geofence-alert', {
                   vehicleId: payload.deviceId,
@@ -1425,7 +1408,7 @@ mqttClient.on('message', (topic, message) => {
                   is_read: false
                 });
                 console.log(`Geofence Breach: ${payload.deviceId}`);
-                global.alertCooldowns.set(alertKey, geoNow);
+                global.alertCooldowns.set(alertKey, true); // Mark as alerted outside
 
                 // Persist to vehicle_alerts
                 try {
@@ -1435,7 +1418,7 @@ mqttClient.on('message', (topic, message) => {
                 } catch (e) { /* ignore */ }
               }
             } else {
-              // INSIDE - Reset cooldown so we alert immediately if they leave again
+              // INSIDE - Clear the alerted state so it can alert again next time it leaves
               if (global.alertCooldowns.has(alertKey)) {
                 global.alertCooldowns.delete(alertKey);
                 console.log(`Vehicle ${payload.deviceId} re-entered safe zone ${geo.id}`);
@@ -1620,6 +1603,127 @@ function calculateGT06CRC(data) {
   return reflect(crc, 16) ^ 0xFFFF;
 }
 
+// Unified Security Alert Evaluator (For direct TCP and Traccar/MQTT)
+function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresent, curfewLocked, isLocked, nowMs, ownerId) {
+  if (!global.alertCooldowns) global.alertCooldowns = new Map();
+
+  // 1. Hotwiring / Unauthorized Startup Detection Alert (ACC ON while locked)
+  if (ignition === 1 && isLocked === 1) {
+    const hotwireKey = `${deviceId}-hotwire`;
+    const lastHotwire = global.alertCooldowns.get(hotwireKey);
+    if (!lastHotwire || (nowMs - lastHotwire > 300000)) { // 5 min cooldown
+      let cause = "cloud locked";
+      if (curfewLocked) cause = "curfew locked";
+      else if (!driverPresent) cause = "driver beacon absent";
+
+      const alertMsg = `Critical Security: Hotwiring / Unauthorized startup detected on vehicle "${vehicle.name || deviceId}"! ACC turned ON while vehicle is ${cause}.`;
+      console.warn(`[SECURITY ALERT] ${alertMsg}`);
+
+      try {
+        db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
+          deviceId, 'THEFT_HOTWIRE', alertMsg, nowMs
+        );
+      } catch (e) {}
+
+      io.to(`user_${ownerId}`).emit('notification', {
+        id: nowMs + 10,
+        type: 'THEFT',
+        severity: 'error',
+        message: alertMsg,
+        timestamp: nowMs,
+        is_read: false
+      });
+      io.to(`user_${ownerId}`).emit('device-alert', {
+        vehicleId: deviceId,
+        type: 'DEVICE_TAMPERING',
+        message: alertMsg,
+        timestamp: nowMs
+      });
+
+      global.alertCooldowns.set(hotwireKey, nowMs);
+    }
+  }
+
+  // 2. Towing / Unauthorized Movement Detection Alert (ACC OFF but moving while locked)
+  if (ignition === 0 && speed > 2 && isLocked === 1) {
+    const towingKey = `${deviceId}-towing`;
+    const lastTowing = global.alertCooldowns.get(towingKey);
+    if (!lastTowing || (nowMs - lastTowing > 300000)) { // 5 min cooldown
+      let cause = "cloud locked";
+      if (curfewLocked) cause = "curfew locked";
+      else if (!driverPresent) cause = "driver beacon absent";
+
+      const alertMsg = `Critical Alert: Towing / Unauthorized movement detected on vehicle "${vehicle.name || deviceId}"! Vehicle moving (${speed} km/h) with ignition OFF while ${cause}.`;
+      console.warn(`[SECURITY ALERT] ${alertMsg}`);
+
+      try {
+        db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
+          deviceId, 'THEFT_TOWING', alertMsg, nowMs
+        );
+      } catch (e) {}
+
+      io.to(`user_${ownerId}`).emit('notification', {
+        id: nowMs + 11,
+        type: 'THEFT',
+        severity: 'error',
+        message: alertMsg,
+        timestamp: nowMs,
+        is_read: false
+      });
+      io.to(`user_${ownerId}`).emit('device-alert', {
+        vehicleId: deviceId,
+        type: 'DEVICE_TAMPERING',
+        message: alertMsg,
+        timestamp: nowMs
+      });
+
+      global.alertCooldowns.set(towingKey, nowMs);
+    }
+  }
+
+  // 3. Unauthorized Movement Alert (Any movement or ACC turned on without authorized beacon)
+  if (!driverPresent && (ignition === 1 || speed > 2)) {
+    const alertType = 'UNAUTHORIZED_MOVEMENT';
+    const alertMsg = `Critical Alert: Unauthorized movement detected on vehicle "${vehicle.name || deviceId}" without the authorized BLE Beacon keyfob!`;
+    const alertCooldownKey = `${deviceId}_${alertType}`;
+
+    if (!global.alertCooldowns.has(alertCooldownKey) || nowMs - global.alertCooldowns.get(alertCooldownKey) > 300000) {
+      global.alertCooldowns.set(alertCooldownKey, nowMs);
+      try {
+        db.prepare(`
+          INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp, status)
+          VALUES (?, ?, ?, ?, 'UNREAD')
+        `).run(deviceId, alertType, alertMsg, nowMs);
+
+        mqttClient.publish(`/device/${deviceId}/alert`, JSON.stringify({
+          deviceId,
+          type: alertType,
+          message: alertMsg,
+          timestamp: nowMs
+        }));
+
+        io.to(`user_${ownerId}`).emit('notification', {
+          id: nowMs + 12,
+          type: 'THEFT',
+          severity: 'error',
+          message: alertMsg,
+          timestamp: nowMs,
+          is_read: false
+        });
+        io.to(`user_${ownerId}`).emit('device-alert', {
+          vehicleId: deviceId,
+          type: 'UNAUTHORIZED_MOVEMENT',
+          message: alertMsg,
+          timestamp: nowMs
+        });
+        console.log(`[Alert Engine] Dispatched UNAUTHORIZED_MOVEMENT alert for ${deviceId}`);
+      } catch (err) {
+        console.error('[Alert Engine] Failed to record unauthorized movement alert:', err.message);
+      }
+    }
+  }
+}
+
 function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignition, rawBleList = '') {
   const nowMs = Date.now();
   const vehicle = db.prepare(`
@@ -1648,8 +1752,19 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
     });
   }
 
+  if (!global.lastBeaconSeen) global.lastBeaconSeen = new Map();
+  if (!global.lastMovingTime) global.lastMovingTime = new Map();
+
+  // Track last time this vehicle was seen moving
+  if (speed > 0) {
+    global.lastMovingTime.set(deviceId, nowMs);
+  }
+  const lastMoving = global.lastMovingTime.get(deviceId) || 0;
+  const wasMovingRecently = (nowMs - lastMoving) < 5 * 60 * 1000; // 5-minute window
+
   // Proximity check (driver presence)
   let driverPresent = false;
+  let matchedRssi = null;
   if (vehicle.ble_beacon_id) {
     const normalizedBeaconId = vehicle.ble_beacon_id.replace(/:/g, '').toUpperCase();
     const matchedTag = bleBeacons.find(b => {
@@ -1657,7 +1772,24 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
       const cleanDb = normalizedBeaconId.replace(/^0+/, '');
       return cleanMac === cleanDb || cleanMac.endsWith(cleanDb) || cleanDb.endsWith(cleanMac);
     });
-    if (matchedTag && matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold) {
+    if (matchedTag) {
+      matchedRssi = matchedTag.rssi;
+      const aboveThreshold = matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold;
+      if (aboveThreshold) {
+        global.lastBeaconSeen.set(deviceId, nowMs);
+        driverPresent = true;
+      }
+    }
+
+    // GRACE PERIOD: 3-minute window
+    const lastSeen = global.lastBeaconSeen.get(deviceId) || 0;
+    const beaconSeenRecently = (nowMs - lastSeen) < 3 * 60 * 1000;
+    if (!driverPresent && beaconSeenRecently) {
+      driverPresent = true;
+    }
+
+    // MOVING GRACE: 5-minute window
+    if (!driverPresent && wasMovingRecently) {
       driverPresent = true;
     }
   } else {
@@ -1685,73 +1817,9 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   const shouldBeLocked = (vehicle.cloud_locked === 1 || curfewLocked || !driverPresent);
   const isLocked = shouldBeLocked ? 1 : 0;
 
-  // Hotwiring Detection Alert
-  if (ignition === 1 && vehicle.cloud_locked === 1) {
-    if (!global.alertCooldowns) global.alertCooldowns = new Map();
-    const hotwireKey = `${deviceId}-hotwire`;
-    const lastHotwire = global.alertCooldowns.get(hotwireKey);
-    if (!lastHotwire || (nowMs - lastHotwire > 300000)) {
-      const alertMsg = `Critical Security: Hotwiring / Ignition Bypass detected on vehicle ${vehicle.name || deviceId}! ACC turned ON while vehicle is cloud locked.`;
-      console.warn(`[SECURITY ALERT] ${alertMsg}`);
-      
-      try {
-        db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
-          deviceId, 'THEFT_HOTWIRE', alertMsg, nowMs
-        );
-      } catch (e) {}
+  // Evaluate security alerts (Hotwire, Towing, and Unauthorized Movement)
+  evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresent, curfewLocked, isLocked, nowMs, ownerId);
 
-      io.to(`user_${ownerId}`).emit('notification', {
-        id: nowMs + 10,
-        type: 'THEFT',
-        severity: 'error',
-        message: alertMsg,
-        timestamp: nowMs,
-        is_read: false
-      });
-      io.to(`user_${ownerId}`).emit('device-alert', {
-        vehicleId: deviceId,
-        type: 'DEVICE_TAMPERING',
-        message: alertMsg,
-        timestamp: nowMs
-      });
-
-      global.alertCooldowns.set(hotwireKey, nowMs);
-    }
-  }
-
-  // Towing Detection Alert
-  if (ignition === 0 && speed > 2) {
-    if (!global.alertCooldowns) global.alertCooldowns = new Map();
-    const towingKey = `${deviceId}-towing`;
-    const lastTowing = global.alertCooldowns.get(towingKey);
-    if (!lastTowing || (nowMs - lastTowing > 300000)) {
-      const alertMsg = `Critical Alert: Towing / Unauthorized vehicle movement detected on vehicle ${vehicle.name || deviceId}! Vehicle moving (${speed} km/h) with ignition OFF.`;
-      console.warn(`[SECURITY ALERT] ${alertMsg}`);
-
-      try {
-        db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
-          deviceId, 'THEFT_TOWING', alertMsg, nowMs
-        );
-      } catch (e) {}
-
-      io.to(`user_${ownerId}`).emit('notification', {
-        id: nowMs + 11,
-        type: 'THEFT',
-        severity: 'error',
-        message: alertMsg,
-        timestamp: nowMs,
-        is_read: false
-      });
-      io.to(`user_${ownerId}`).emit('device-alert', {
-        vehicleId: deviceId,
-        type: 'DEVICE_TAMPERING',
-        message: alertMsg,
-        timestamp: nowMs
-      });
-
-      global.alertCooldowns.set(towingKey, nowMs);
-    }
-  }
 
   // Odometer calculation
   let newOdometer = vehicle.odometer_km || 0;
@@ -2060,7 +2128,7 @@ const tcpServer = net.createServer((socket) => {
           let lastLat = null;
           let lastLng = null;
           let lastSpeed = null;
-          let lastIgnition = 1;
+          let lastIgnition = 0;
 
           for (let r = 0; r < numRecords; r++) {
             if (offset + 15 > packet.length) break;
@@ -2422,11 +2490,11 @@ app.post('/api/telematics-webhook', (req, res) => {
       } else if (pos.attributes?.battery !== undefined) {
         const val = pos.attributes.battery;
         if (val > 100) {
-          // sent in millivolts (e.g. 3787 mV)
-          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3600) / 230) * 100)));
+          // sent in millivolts (e.g. 3787 mV) - LiPo range 3.4V (0%) to 4.2V (100%)
+          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3400) / 800) * 100)));
         } else if (val > 1.0 && val < 6.0) {
-          // sent in Volts (e.g. 3.787 V)
-          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3.6) / 0.23) * 100)));
+          // sent in Volts (e.g. 3.787 V) - LiPo range 3.4V (0%) to 4.2V (100%)
+          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3.4) / 0.8) * 100)));
         } else {
           batteryPct = val;
         }
@@ -4121,13 +4189,13 @@ function calculateVehicleScore(vehicle) {
   const geofenceBreach = alertMap['GEOFENCE_BREACH'] || 0;
   const fuelTheft = alertMap['FUEL_THEFT'] || 0;
 
-  safetyScore -= (speeding * 5);        // -5 per speeding event
-  safetyScore -= (harshAccel * 10);     // -10 per harsh acceleration
-  safetyScore -= (harshBrake * 10);     // -10 per harsh braking
-  safetyScore -= (startBlocked * 15);   // -15 per blocked start attempt
-  safetyScore -= (curfewViolation * 15);// -15 per curfew violation
-  safetyScore -= (geofenceBreach * 10); // -10 per geofence breach
-  safetyScore -= (fuelTheft * 15);      // -15 per fuel theft event
+  safetyScore -= (speeding * 2);        // -2 per speeding event
+  safetyScore -= (harshAccel * 3);      // -3 per harsh acceleration
+  safetyScore -= (harshBrake * 3);      // -3 per harsh braking
+  safetyScore -= (startBlocked * 4);    // -4 per blocked start attempt
+  safetyScore -= (curfewViolation * 4); // -4 per curfew violation
+  safetyScore -= (geofenceBreach * 2);  // -2 per geofence breach
+  safetyScore -= (fuelTheft * 10);      // -10 per fuel theft event
 
   // --- EFFICIENCY SCORING (from vehicle_history, 7-day window) ---
   const history = db.prepare(`

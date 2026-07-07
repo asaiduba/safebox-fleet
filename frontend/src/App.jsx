@@ -156,6 +156,7 @@ function App() {
     const [showSettings, setShowSettings] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
     const [notifications, setNotifications] = useState(() => {
         const savedUser = localStorage.getItem('user');
         if (savedUser) {
@@ -335,6 +336,7 @@ function App() {
 
     const handleVehicleSelect = useCallback((vehicle) => {
         setSelectedVehicleId(vehicle.id);
+        setMobileSidebarOpen(false);
     }, []);
 
     const sendCommand = useCallback((deviceId, command) => {
@@ -908,6 +910,12 @@ function App() {
 
                     {/* Header */}
                     <header className="app-header">
+                        <button 
+                            className={`mobile-sidebar-toggle-btn ${mobileSidebarOpen ? 'open' : ''}`}
+                            onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+                        >
+                            ☰ Fleet
+                        </button>
                         <div className="header-left" onClick={() => setShowLanding(true)} style={{ cursor: 'pointer' }}>
                             <img src="/logo.png" alt="SafeBox Logo" className="header-logo" />
                             <h1>SafeBox Fleet</h1>
@@ -1010,7 +1018,7 @@ function App() {
                     )}
 
                     {/* Sidebar - Vehicle List */}
-                    <div className="sidebar">
+                    <div className={`sidebar ${mobileSidebarOpen ? 'open' : ''}`}>
                         <div className="sidebar-header-row">
                             <h3>Your Fleet</h3>
                             <button
@@ -1119,6 +1127,11 @@ function App() {
                             })}
                         </div>
                     </div>
+
+                    {/* Mobile Sidebar Overlay */}
+                    {mobileSidebarOpen && (
+                        <div className="sidebar-mobile-overlay" onClick={() => setMobileSidebarOpen(false)} />
+                    )}
 
                     {/* Map Area */}
                     <div className="map-container">

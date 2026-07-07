@@ -17,33 +17,33 @@ const GravityBackground = () => {
                 position: 'absolute',
                 top: '20%',
                 left: '20%',
-                width: '350px',
-                height: '350px',
-                background: 'radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, rgba(0,0,0,0) 70%)',
+                width: '480px',
+                height: '480px',
+                background: 'radial-gradient(circle, rgba(59, 130, 246, 0.28) 0%, rgba(0,0,0,0) 70%)',
                 borderRadius: '50%',
-                filter: 'blur(40px)',
+                filter: 'blur(80px)',
                 animation: 'floatOrb 15s ease-in-out infinite alternate'
             }} />
             <div style={{
                 position: 'absolute',
                 bottom: '15%',
                 right: '15%',
-                width: '450px',
-                height: '450px',
-                background: 'radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(0,0,0,0) 70%)',
+                width: '580px',
+                height: '580px',
+                background: 'radial-gradient(circle, rgba(99, 102, 241, 0.28) 0%, rgba(0,0,0,0) 70%)',
                 borderRadius: '50%',
-                filter: 'blur(50px)',
+                filter: 'blur(90px)',
                 animation: 'floatOrb2 20s ease-in-out infinite alternate'
             }} />
             <div style={{
                 position: 'absolute',
                 top: '50%',
                 left: '70%',
-                width: '250px',
-                height: '250px',
-                background: 'radial-gradient(circle, rgba(236, 72, 153, 0.08) 0%, rgba(0,0,0,0) 70%)',
+                width: '380px',
+                height: '380px',
+                background: 'radial-gradient(circle, rgba(236, 72, 153, 0.16) 0%, rgba(0,0,0,0) 70%)',
                 borderRadius: '50%',
-                filter: 'blur(30px)',
+                filter: 'blur(60px)',
                 animation: 'floatOrb 25s ease-in-out infinite alternate'
             }} />
 

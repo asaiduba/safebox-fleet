@@ -11,6 +11,8 @@ export default function LandingPage({ onGetStarted, user, onBackToDashboard }) {
         onGetStarted();
     };
 
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
     return (
         <div className="landing-page">
             {/* Header */}
@@ -19,16 +21,27 @@ export default function LandingPage({ onGetStarted, user, onBackToDashboard }) {
                     <img src="/logo.png" alt="SafeBox" className="logo" />
                     <span className="brand-name">SafeBox Fleet</span>
                 </div>
-                <nav className="landing-nav">
-                    <a href="#features">Features</a>
-                    <a href="#pricing">Pricing</a>
-                    <a href="#about">About Us</a>
+                
+                <button 
+                    className={`mobile-menu-toggle-btn ${mobileMenuOpen ? 'open' : ''}`}
+                    onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                    aria-label="Toggle navigation menu"
+                >
+                    <span className="hamburger-bar"></span>
+                    <span className="hamburger-bar"></span>
+                    <span className="hamburger-bar"></span>
+                </button>
+
+                <nav className={`landing-nav ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+                    <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
+                    <a href="#pricing" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
+                    <a href="#about" onClick={() => setMobileMenuOpen(false)}>About Us</a>
                     {user ? (
-                        <button className="login-btn" onClick={onBackToDashboard}>
+                        <button className="login-btn" onClick={() => { setMobileMenuOpen(false); onBackToDashboard(); }}>
                             Logged in as {user.username}
                         </button>
                     ) : (
-                        <button className="login-btn" onClick={handleLogin}>Login</button>
+                        <button className="login-btn" onClick={() => { setMobileMenuOpen(false); handleLogin(); }}>Login</button>
                     )}
                 </nav>
             </header>

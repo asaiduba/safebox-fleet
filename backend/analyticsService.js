@@ -99,11 +99,11 @@ function calculateDriverScore(vehicleId, startTime, endTime) {
     const geofence = alertMap['GEOFENCE_BREACH'] || 0;
     const theft = alertMap['THEFT'] || 0;
 
-    score -= (speeding * 5);
-    score -= (curfew * 15);
-    score -= (startBlocked * 15);
-    score -= (geofence * 10);
-    score -= (theft * 20);
+    score -= (speeding * 2);
+    score -= (curfew * 4);
+    score -= (startBlocked * 4);
+    score -= (geofence * 2);
+    score -= (theft * 10);
 
     // 2. Excess Idle Deductions
     const idleSeconds = calculateIdleTime(vehicleId, startTime, endTime);

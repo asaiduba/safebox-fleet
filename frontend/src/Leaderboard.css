@@ -448,3 +448,68 @@
     font-weight: 500;
     margin-top: 0.1rem;
 }
+
+/* Responsive Overrides for Leaderboard Panel */
+@media (max-width: 768px) {
+    .leaderboard-container {
+        padding: 1rem;
+        gap: 1.25rem;
+    }
+
+    .leaderboard-table-container {
+        padding: 0.75rem;
+        border-radius: 0.75rem;
+    }
+
+    .leaderboard-table th {
+        padding: 0.75rem 0.5rem;
+        font-size: 0.65rem;
+    }
+
+    .leaderboard-table td {
+        padding: 0.8rem 0.5rem;
+        font-size: 0.85rem;
+    }
+
+    .score-bar-container {
+        width: 70px; /* Squeeze bar on small screens */
+    }
+
+    .breakdown-row td {
+        padding: 0.75rem 0.5rem !important;
+    }
+
+    .breakdown-grid {
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        gap: 0.5rem;
+    }
+
+    .breakdown-card {
+        padding: 0.6rem 0.35rem;
+    }
+
+    .breakdown-count {
+        font-size: 1.15rem;
+    }
+
+    .efficiency-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 0.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Hide safety bar entirely to save precious space on very small screens, keeping only numbers */
+    .score-bar-container {
+        display: none;
+    }
+
+    .leaderboard-table td {
+        font-size: 0.75rem;
+    }
+    
+    .alert-pill {
+        padding: 0.15rem 0.4rem;
+        font-size: 0.65rem;
+    }
+}
