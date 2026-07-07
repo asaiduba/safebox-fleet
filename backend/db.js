@@ -343,9 +343,16 @@ function initDb() {
             type TEXT NOT NULL,
             message TEXT,
             timestamp INTEGER,
+            status TEXT DEFAULT 'UNREAD',
             FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
         )
     `);
+
+    try {
+        db.exec("ALTER TABLE vehicle_alerts ADD COLUMN status TEXT DEFAULT 'UNREAD'");
+    } catch (e) {
+        // Column already exists
+    }
 
     // 12. Create Fuel Settings Table
     db.exec(`

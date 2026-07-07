@@ -1620,7 +1620,7 @@ function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresen
       console.warn(`[SECURITY ALERT] ${alertMsg}`);
 
       try {
-        db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
+        db.prepare("INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp, status) VALUES (?, ?, ?, ?, 'UNREAD')").run(
           deviceId, 'THEFT_HOTWIRE', alertMsg, nowMs
         );
       } catch (e) {}
@@ -1657,7 +1657,7 @@ function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresen
       console.warn(`[SECURITY ALERT] ${alertMsg}`);
 
       try {
-        db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
+        db.prepare("INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp, status) VALUES (?, ?, ?, ?, 'UNREAD')").run(
           deviceId, 'THEFT_TOWING', alertMsg, nowMs
         );
       } catch (e) {}
@@ -5100,3 +5100,99 @@ function isPointInPolygon(point, polygon) {
 
 // Global fuel level tracking for dynamic fuel theft detection
 if (!global.fuelTracker) global.fuelTracker = new Map();
+
+// ─── DAILY DATABASE TELEMETRY & ALERTS PRUNING (P1) ──────────────────────
+function pruneOldTelemetryHistory() {
+  console.log('[Maintenance] Starting database pruning task...');
+  try {
+    const ninetyDaysAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
+    const historyResult = db.prepare('DELETE FROM vehicle_history WHERE timestamp < ?').run(ninetyDaysAgo);
+    const alertsResult = db.prepare('DELETE FROM vehicle_alerts WHERE timestamp < ?').run(ninetyDaysAgo);
+    console.log(`[Maintenance] Pruning complete. Removed ${historyResult.changes} telemetry logs and ${alertsResult.changes} alert records older than 90 days.`);
+  } catch (err) {
+    console.error('[Maintenance] Database pruning failed:', err.message);
+  }
+}
+// Run once on startup, then every 24 hours
+setTimeout(pruneOldTelemetryHistory, 5000);
+setInterval(pruneOldTelemetryHistory, 24 * 60 * 60 * 1000);
+
+// ─── PERIODIC IN-MEMORY STATE MAP CLEANUP (P1) ──────────────────────────
+function cleanInMemoryStateMaps() {
+  const now = Date.now();
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  
+  const mapsToClean = [
+    { map: global.alertCooldowns, maxAge: 2 * 3600 * 1000 }, // 2 hours cooldown cache
+    { map: global.lastBeaconSeen, maxAge: oneDayMs },
+    { map: global.lastMovingTime, maxAge: oneDayMs },
+    { map: global.lockCooldowns, maxAge: oneDayMs },
+    { map: global.fuelTracker, maxAge: oneDayMs }
+  ];
+  
+  mapsToClean.forEach(({ map, maxAge }) => {
+    if (map instanceof Map) {
+      for (const [key, value] of map.entries()) {
+        const timestamp = typeof value === 'number' ? value : (value?.timestamp || now);
+        if (now - timestamp > maxAge) {
+          map.delete(key);
+        }
+      }
+    }
+  });
+  console.log('[Maintenance] Stale in-memory tracking state maps cleaned.');
+}
+// Clean maps every 1 hour
+setInterval(cleanInMemoryStateMaps, 60 * 60 * 1000);
+
+// ─── GRACEFUL SHUTDOWN HANDLERS (P1) ────────────────────────────────────
+function handleGracefulShutdown(signal) {
+  console.log(`[Shutdown] Received ${signal}. Starting graceful shutdown...`);
+  
+  // Close the TCP telematics server first
+  if (typeof tcpServer !== 'undefined' && tcpServer && typeof tcpServer.close === 'function') {
+    try {
+      tcpServer.close(() => {
+        console.log('[Shutdown] TCP telematics server closed.');
+      });
+    } catch (e) {
+      console.error('[Shutdown] Error closing TCP server:', e.message);
+    }
+  }
+
+  // Close the Express HTTP/Socket.io server
+  server.close(() => {
+    console.log('[Shutdown] Express HTTP server stopped.');
+    
+    // Disconnect MQTT client if connected
+    if (typeof mqttClient !== 'undefined' && mqttClient && typeof mqttClient.end === 'function') {
+      mqttClient.end(false, () => {
+        console.log('[Shutdown] MQTT client disconnected.');
+        closeDbAndExit();
+      });
+    } else {
+      closeDbAndExit();
+    }
+  });
+
+  // Helper to cleanly close SQLite db and exit
+  function closeDbAndExit() {
+    try {
+      db.close();
+      console.log('[Shutdown] Database connection closed.');
+    } catch (dbErr) {
+      console.error('[Shutdown] Error closing database:', dbErr.message);
+    }
+    console.log('[Shutdown] SafeBox server shutdown complete.');
+    process.exit(0);
+  }
+
+  // Force exit after 10 seconds if shutdown hangs
+  setTimeout(() => {
+    console.error('[Shutdown] Graceful shutdown timed out. Forcing exit.');
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGTERM', () => handleGracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => handleGracefulShutdown('SIGINT'));
