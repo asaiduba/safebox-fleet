@@ -136,8 +136,8 @@ export function compileTripStats(logs) {
 
     const avgSpeed = movingPointsCount > 0 ? Math.round(movingSpeedsSum / movingPointsCount) : 0;
 
-    // Apply Ramer-Douglas-Peucker path simplification to smooth out line spikes
-    const smoothedPath = path.length > 2 ? simplifyPath(path, 0.00012) : path;
+    // Keep all intermediate points during movement to ensure buttery smooth route replay
+    const smoothedPath = path;
 
     return {
         totalDistance: parseFloat(totalDistance.toFixed(2)),

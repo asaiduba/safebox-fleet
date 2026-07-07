@@ -1195,25 +1195,35 @@ function App() {
                             )}
 
                             {/* Animated Trip Playhead Marker */}
-                            {playIndex !== -1 && playbackPath[playIndex] && (
-                                <Marker
-                                    position={[playbackPath[playIndex].lat, playbackPath[playIndex].lng]}
-                                    icon={new L.DivIcon({
-                                        html: '<div class="playback-marker">🚗</div>',
-                                        iconSize: [30, 30],
-                                        iconAnchor: [15, 15],
-                                        className: ''
-                                    })}
-                                >
-                                    <Popup>
-                                        <strong>Active Playback</strong><br />
-                                        Speed: {playbackPath[playIndex].speed} km/h<br />
-                                        Battery: {playbackPath[playIndex].battery}%<br />
-                                        Fuel: {playbackPath[playIndex].fuel || '--'}%<br />
-                                        Time: {new Date(playbackPath[playIndex].timestamp).toLocaleTimeString()}
-                                    </Popup>
-                                </Marker>
-                            )}
+                            {playIndex !== -1 && playbackPath[playIndex] && (() => {
+                                const selVeh = vehicles.find(v => v.id === selectedVehicleId);
+                                const vehType = (selVeh?.vehicle_type || 'car').toLowerCase();
+                                let emoji = '🚗';
+                                if (vehType.includes('bike') || vehType.includes('motorcycle') || vehType.includes('scooter')) {
+                                    emoji = '🏍️';
+                                } else if (vehType.includes('van') || vehType.includes('truck') || vehType.includes('cargo')) {
+                                    emoji = '🚐';
+                                }
+                                return (
+                                    <Marker
+                                        position={[playbackPath[playIndex].lat, playbackPath[playIndex].lng]}
+                                        icon={new L.DivIcon({
+                                            html: `<div class="playback-marker">${emoji}</div>`,
+                                            iconSize: [30, 30],
+                                            iconAnchor: [15, 15],
+                                            className: ''
+                                        })}
+                                    >
+                                        <Popup>
+                                            <strong>Active Playback</strong><br />
+                                            Speed: {playbackPath[playIndex].speed} km/h<br />
+                                            Battery: {playbackPath[playIndex].battery}%<br />
+                                            Fuel: {playbackPath[playIndex].fuel || '--'}%<br />
+                                            Time: {new Date(playbackPath[playIndex].timestamp).toLocaleTimeString()}
+                                        </Popup>
+                                    </Marker>
+                                );
+                            })()}
 
                             <MapClickHandler onClick={(e) => {
                                 if (geofenceMode && selectedVehicleId) {
