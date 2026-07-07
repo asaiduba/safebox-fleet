@@ -430,13 +430,17 @@ function initDb() {
         const bcrypt = require('bcrypt');
         
         if (!adminExists) {
-            const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
-            const hashedAdminPassword = bcrypt.hashSync(adminPassword, 12);
-            db.prepare(`
-                INSERT INTO users (username, password, role, email, phone, is_verified, plan_id, subscription_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `).run('admin', hashedAdminPassword, 'admin', 'admin@safebox.com', '+234800000000', 1, 'ENTERPRISE', 'ACTIVE');
-            console.log(`🛡️ Seeded default Super Admin user: admin / ${adminPassword === 'admin' ? 'admin (default)' : 'configured secure password'}`);
+            const adminPassword = process.env.ADMIN_PASSWORD;
+            if (!adminPassword) {
+                console.warn('⚠️  ADMIN_PASSWORD env var not set. Skipping admin user creation. Set ADMIN_PASSWORD to create the Super Admin account.');
+            } else {
+                const hashedAdminPassword = bcrypt.hashSync(adminPassword, 12);
+                db.prepare(`
+                    INSERT INTO users (username, password, role, email, phone, is_verified, plan_id, subscription_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                `).run('admin', hashedAdminPassword, 'admin', 'admin@safebox.com', '+234800000000', 1, 'ENTERPRISE', 'ACTIVE');
+                console.log('🛡️ Seeded Super Admin user with secure password from ADMIN_PASSWORD env var.');
+            }
         } else if (process.env.ADMIN_PASSWORD) {
             // Only update the password if the environment variable is explicitly configured
             const adminPassword = process.env.ADMIN_PASSWORD;

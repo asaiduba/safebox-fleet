@@ -2363,7 +2363,17 @@ app.put('/api/vehicles/:id', authMiddleware, (req, res) => {
 });
 
 // HTTP-to-MQTT Webhook Bridge for Traccar (Ingesting SinoTrack, Teltonika, etc.)
+// SECURITY: Protected by shared secret to prevent unauthorized telemetry injection
 app.post('/api/telematics-webhook', (req, res) => {
+  // Validate webhook secret (sent as Authorization header or query param)
+  const webhookSecret = process.env.WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const providedSecret = req.headers['x-webhook-secret'] || req.query.secret;
+    if (providedSecret !== webhookSecret) {
+      return res.status(403).json({ error: 'Unauthorized webhook request.' });
+    }
+  }
+
   try {
     const data = req.body;
     console.log('[Webhook Bridge] Received Traccar payload:', JSON.stringify(data));
@@ -2539,12 +2549,8 @@ app.post('/api/telematics-webhook', (req, res) => {
   }
 });
 
-// Debug Route: Dump live BLE state for all vehicles (secret-protected, temporary diagnostic)
-app.get('/api/admin/ble-debug', (req, res) => {
-  const adminSecret = process.env.SUPERADMIN_SECRET || 'safebox_superadmin_secret_key';
-  if (req.query.secret !== adminSecret) {
-    return res.status(403).json({ error: 'Unauthorized' });
-  }
+// Debug Route: Dump live BLE state for all vehicles (Admin-only, JWT protected)
+app.get('/api/admin/ble-debug', authMiddleware, adminMiddleware, (req, res) => {
   try {
     const vehicles = db.prepare(`
       SELECT id, name, owner_id, ble_beacon_id, ble_beacon_rssi_threshold, beacon_rssi, driver_present, last_seen
@@ -2557,18 +2563,12 @@ app.get('/api/admin/ble-debug', (req, res) => {
 });
 
 
-// Admin Route: Whitelist/Authorize new tracker IMEIs (SafeBox Super Admin functionality)
-app.post('/api/admin/authorize-device', (req, res) => {
-  const { id, secret } = req.body;
-  const adminSecret = process.env.SUPERADMIN_SECRET || 'safebox_superadmin_secret_key';
+// Admin Route: Whitelist/Authorize new tracker IMEIs (Admin-only, JWT protected)
+app.post('/api/admin/authorize-device', authMiddleware, adminMiddleware, (req, res) => {
+  const { id } = req.body;
 
   if (!id) {
     return res.status(400).json({ error: 'Device ID/IMEI is required.' });
-  }
-
-  // Simple token/secret check for secure API access
-  if (secret !== adminSecret) {
-    return res.status(403).json({ error: 'Unauthorized. Invalid Super Admin secret.' });
   }
 
   try {
