@@ -184,6 +184,7 @@ function App() {
     const [alerts, setAlerts] = useState([]);
     const [sandboxData, setSandboxData] = useState(null);
     const [pendingOverrides, setPendingOverrides] = useState([]);
+    const [socketConnected, setSocketConnected] = useState(true);
     const mapRef = useRef(null);
 
     // Derive selected vehicle from vehicles array
@@ -529,10 +530,17 @@ function App() {
 
         socket.on('connect', () => {
             console.log('Connected to backend');
+            setSocketConnected(true);
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from backend');
+            setSocketConnected(false);
         });
 
         socket.on('connect_error', (err) => {
             console.error('Socket connection error:', err.message);
+            setSocketConnected(false);
             if (err.message.includes('Authentication error')) {
                 handleLogout();
             }
@@ -839,6 +847,45 @@ function App() {
             {/* Main Dashboard */}
             {user && !showLanding && !showAnalytics && (
                 <div className={`app-container ${user.impersonating ? 'impersonating-active' : ''}`}>
+                    <style>{`
+                        @keyframes sb-pulse {
+                            0% { opacity: 0.3; }
+                            50% { opacity: 1; }
+                            100% { opacity: 0.3; }
+                        }
+                    `}</style>
+                    {!socketConnected && (
+                        <div style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            backgroundColor: 'rgba(239, 68, 68, 0.93)',
+                            backdropFilter: 'blur(4px)',
+                            color: 'white',
+                            padding: '0.6rem 1rem',
+                            textAlign: 'center',
+                            fontWeight: 'bold',
+                            fontSize: '0.85rem',
+                            zIndex: 99999,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.6rem',
+                            boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+                            letterSpacing: '0.025em'
+                        }}>
+                            <span style={{ 
+                                display: 'inline-block', 
+                                width: '8px', 
+                                height: '8px', 
+                                borderRadius: '50%', 
+                                backgroundColor: 'white', 
+                                animation: 'sb-pulse 1.2s infinite ease-in-out' 
+                            }} />
+                            Connection lost. Attempting to reconnect to live telemetry engine...
+                        </div>
+                    )}
                     {user.impersonating && (
                         <div className="impersonation-warning-banner">
                             <div className="banner-text">
@@ -916,9 +963,21 @@ function App() {
                         >
                             ☰ Fleet
                         </button>
-                        <div className="header-left" onClick={() => setShowLanding(true)} style={{ cursor: 'pointer' }}>
+                        <div className="header-left" onClick={() => setShowLanding(true)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <img src="/logo.png" alt="SafeBox Logo" className="header-logo" />
-                            <h1>SafeBox Fleet</h1>
+                            <h1 style={{ margin: 0 }}>SafeBox Fleet</h1>
+                            <div 
+                                style={{
+                                    width: '10px',
+                                    height: '10px',
+                                    borderRadius: '50%',
+                                    backgroundColor: socketConnected ? '#10b981' : '#ef4444',
+                                    boxShadow: socketConnected ? '0 0 8px #10b981' : '0 0 8px #ef4444',
+                                    transition: 'all 0.3s ease',
+                                    marginLeft: '0.25rem'
+                                }}
+                                title={socketConnected ? "Telemetry stream: Connected" : "Telemetry stream: Disconnected"}
+                            />
                         </div>
                         <div className="user-info">
                             {user.role === 'company' && user.subscription_status !== 'SUSPENDED' && (
