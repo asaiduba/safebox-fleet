@@ -1556,49 +1556,52 @@ body {
 
 /* --- Light/Dark Unified Theme Overrides --- */
 
-/* Map Leaflet Popup Theme Adapting */
+/* Map Leaflet Popup - Always White (Light Card style) */
 .leaflet-popup-content-wrapper {
-  background: #1e293b !important;
-  color: #f8fafc !important;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
   border-radius: 0.75rem !important;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3) !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15) !important;
 }
 
 .leaflet-popup-tip {
-  background: #1e293b !important;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
 }
 
 .info-window h3 {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
-  color: #f8fafc;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+  color: #0f172a !important;
+}
+
+.info-window h4 {
+  color: #0f172a !important;
+  margin: 0.5rem 0 0.25rem 0;
 }
 
 .info-window p {
-  color: #cbd5e1;
+  color: #475569 !important;
 }
 
-/* Light Theme overrides */
-body.light-theme .leaflet-popup-content-wrapper {
-  background: #ffffff !important;
-  color: #0f172a !important;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+/* Group Filter Select Class */
+.group-select {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: white;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
 }
 
-body.light-theme .leaflet-popup-tip {
-  background: #ffffff !important;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-body.light-theme .info-window h3 {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+body.light-theme .group-select {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.12);
   color: #0f172a;
-}
-
-body.light-theme .info-window p {
-  color: #475569;
 }
 
 body.light-theme .app-header h1 {
@@ -1744,4 +1747,62 @@ body.light-theme .sidebar::-webkit-scrollbar-thumb {
 }
 body.light-theme .sidebar::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
+}
+
+/* Vehicle card light theme readability overrides */
+body.light-theme .vehicle-card {
+  color: var(--text-primary);
+  border-color: rgba(0, 0, 0, 0.06);
+  border-top-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+body.light-theme .vehicle-card:hover {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme .vehicle-card.selected {
+  background: rgba(37, 99, 235, 0.06);
+  border-color: rgba(37, 99, 235, 0.3);
+  border-top-color: rgba(37, 99, 235, 0.45);
+}
+
+body.light-theme .vehicle-name {
+  color: var(--text-primary);
+}
+
+body.light-theme .plate-badge {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #334155;
+}
+
+body.light-theme .driver-badge {
+  background: rgba(37, 99, 235, 0.06);
+  border-color: rgba(37, 99, 235, 0.15);
+  color: #1d4ed8;
+}
+
+body.light-theme .filter-pill {
+  color: #475569;
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .filter-pill:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #0f172a;
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+body.light-theme .filter-pill.active {
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+  border-color: rgba(37, 99, 235, 0.25);
+}
+
+body.light-theme .last-seen-text {
+  color: #475569 !important;
 }

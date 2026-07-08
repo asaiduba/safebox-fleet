@@ -368,12 +368,23 @@ function App() {
 
     // Leaflet doesn't need API loading
 
-    // Helper to check if device is online (seen in last 5 minutes)
     // Helper to check if device is online (seen in last 60 seconds)
     const isOnline = (lastUpdate) => {
         if (!lastUpdate) return false;
         const diff = new Date() - new Date(lastUpdate);
         return diff < 60000; // 1 minute
+    };
+
+    // Helper to format last seen timestamp cleanly
+    const formatLastSeen = (lastUpdate) => {
+        if (!lastUpdate) return 'Never';
+        const diffMs = new Date() - new Date(lastUpdate);
+        const diffMins = Math.floor(diffMs / 60000);
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return `${diffHours}h ago`;
+        return new Date(lastUpdate).toLocaleString();
     };
 
     // Helper to fetch, logout, login, resolve override, and delete vehicles
@@ -1444,17 +1455,7 @@ function App() {
                                 <select
                                     value={activeGroupFilter}
                                     onChange={(e) => setActiveGroupFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
-                                    style={{
-                                        width: '100%',
-                                        background: 'rgba(255,255,255,0.05)',
-                                        border: '1px solid rgba(255,255,255,0.12)',
-                                        borderRadius: '8px',
-                                        color: 'white',
-                                        padding: '0.4rem 0.6rem',
-                                        fontSize: '0.75rem',
-                                        cursor: 'pointer',
-                                        outline: 'none',
-                                    }}
+                                    className="group-select"
                                 >
                                     <option value="all">🚘 All Groups</option>
                                     {groups.map(g => (
@@ -1529,10 +1530,13 @@ function App() {
                                             </span>
                                         </div>
 
-                                        <div className="vehicle-details-mini" style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem' }}>
-                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', color: '#22c55e' }}><BatteryIcon size={12} /> {v.battery}%</span>
-                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', color: '#e67e22' }}><FuelIcon size={12} /> {v.fuel || '--'}%</span>
-                                            {v.speed > 0 && online && <span style={{ color: '#22c55e', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}><ZapIcon size={12} /> {v.speed} km/h</span>}
+                                        <div className="vehicle-details-mini" style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                                            <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', color: '#22c55e' }}><BatteryIcon size={12} /> {v.battery}%</span>
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', color: '#e67e22' }}><FuelIcon size={12} /> {v.fuel || '--'}%</span>
+                                                {v.speed > 0 && online && <span style={{ color: '#22c55e', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}><ZapIcon size={12} /> {v.speed} km/h</span>}
+                                            </div>
+                                            <span className="last-seen-text" style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Seen: {formatLastSeen(v.lastUpdate)}</span>
                                         </div>
                                     </div>
                                 );
@@ -1791,6 +1795,7 @@ function App() {
                                                     <p>Speed: {selectedVehicle.speed} km/h</p>
                                                     <p>Battery: {selectedVehicle.battery}%</p>
                                                     <p>Fuel: {selectedVehicle.fuel || '--'}%</p>
+                                                    <p>Last Seen: {formatLastSeen(selectedVehicle.lastUpdate)}</p>
                                                     <div className="controls">
                                                         <button
                                                             className="lock-btn"
