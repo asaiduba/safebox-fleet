@@ -1,5 +1,6 @@
 import React from 'react';
 import './NotificationsPanel.css';
+import { ShieldIcon, ZapIcon, FuelIcon, BatteryIcon, AlertTriangleIcon, XIcon } from './settings/Icons';
 
 const getSeverity = (notif) => {
     if (notif.severity) return notif.severity;
@@ -19,23 +20,18 @@ const getSeverity = (notif) => {
         return 'critical';
     }
 
-    // Warning (Orange): Insurance Expiring, Maintenance Due, Weak Signal, Geofence Breach
+    // Warning (Orange): Speeding, Curfew Breach, Low Battery/Fuel
     if (
-        msg.includes('expire') || 
-        msg.includes('maintenance') || 
-        msg.includes('due') || 
-        msg.includes('signal') || 
-        msg.includes('breach') || 
-        msg.includes('left') || 
-        type.includes('geofence') || 
-        type.includes('battery') || 
-        type.includes('fuel') || 
-        type.includes('speed')
+        msg.includes('speed') || 
+        msg.includes('curfew') || 
+        msg.includes('low') || 
+        type.includes('speed') || 
+        type.includes('curfew') || 
+        type.includes('low')
     ) {
         return 'warning';
     }
 
-    // Info (Blue): Trip Completed, Service Recorded
     return 'info';
 };
 
@@ -48,7 +44,7 @@ const NotificationsPanel = ({ notifications, onClose, onMarkRead, onMarkAllRead,
                     {notifications.some(n => !n.is_read) && (
                         <button className="mark-all-btn" onClick={onMarkAllRead}>Mark all read</button>
                     )}
-                    <button className="close-btn" onClick={onClose}>×</button>
+                    <button className="close-btn" onClick={onClose} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><XIcon size={16} /></button>
                 </div>
             </div>
             <div className="notifications-list">
@@ -63,13 +59,13 @@ const NotificationsPanel = ({ notifications, onClose, onMarkRead, onMarkAllRead,
                                 className={`notification-item ${notif.is_read ? 'read' : 'unread'} severity-${severity}`}
                                 onClick={() => onMarkRead(notif.id)}
                             >
-                                <div className={`notif-icon icon-${severity}`}>
-                                    {notif.type === 'GEOFENCE' && '🛡️'}
-                                    {notif.type === 'SPEED' && '🚀'}
-                                    {notif.type === 'FUEL' && '⛽'}
-                                    {notif.type === 'BATTERY' && '🔋'}
-                                    {severity === 'critical' && '🚨'}
-                                    {!['GEOFENCE', 'SPEED', 'FUEL', 'BATTERY'].includes(notif.type) && severity !== 'critical' && '⚠️'}
+                                <div className={`notif-icon icon-${severity}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    {notif.type === 'GEOFENCE' && <ShieldIcon size={14} />}
+                                    {notif.type === 'SPEED' && <ZapIcon size={14} />}
+                                    {notif.type === 'FUEL' && <FuelIcon size={14} />}
+                                    {notif.type === 'BATTERY' && <BatteryIcon size={14} />}
+                                    {severity === 'critical' && !['GEOFENCE', 'SPEED', 'FUEL', 'BATTERY'].includes(notif.type) && <AlertTriangleIcon size={14} />}
+                                    {!['GEOFENCE', 'SPEED', 'FUEL', 'BATTERY'].includes(notif.type) && severity !== 'critical' && <AlertTriangleIcon size={14} />}
                                 </div>
                                 <div className="notif-content">
                                     <p className="notif-message">{notif.message}</p>

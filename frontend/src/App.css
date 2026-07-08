@@ -579,6 +579,20 @@ body {
   .sidebar.open {
     transform: translateX(0);
   }
+
+  .user-name-role {
+    display: none !important;
+  }
+
+  .app-header .btn-text {
+    display: none !important;
+  }
+
+  .analytics-btn, .settings-btn {
+    padding: 0.5rem !important;
+    gap: 0 !important;
+    margin-right: 0.5rem !important;
+  }
 }
 
 /* --- Mobile Header: prevent overflow on small screens --- */

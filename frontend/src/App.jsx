@@ -1,5 +1,5 @@
 const API_BASE = import.meta.env.VITE_API_URL || '';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import io from 'socket.io-client';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, Polyline, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -8,16 +8,53 @@ import axios from 'axios';
 import './App.css';
 import Auth from './Auth';
 import LandingPage from './LandingPage';
-import AnalyticsDashboard from './AnalyticsDashboard';
-import SettingsPanel from './SettingsPanel';
-import ReportsPanel from './ReportsPanel';
 import HistoryDrawer from './HistoryDrawer';
 import AddVehicleModal from './AddVehicleModal';
-import Leaderboard from './Leaderboard';
 import NotificationsPanel from './NotificationsPanel';
-import SupportDashboard from './SupportDashboard';
-import AdminDashboard from './AdminDashboard';
 import SharedTracker from './SharedTracker';
+
+// Lazy load heavy overlays/sub-dashboards
+const AnalyticsDashboard = lazy(() => import('./AnalyticsDashboard'));
+const SettingsPanel = lazy(() => import('./SettingsPanel'));
+const ReportsPanel = lazy(() => import('./ReportsPanel'));
+const SupportDashboard = lazy(() => import('./SupportDashboard'));
+const AdminDashboard = lazy(() => import('./AdminDashboard'));
+
+const LoadingOverlay = ({ message = "Loading component..." }) => (
+    <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        background: 'rgba(15, 23, 42, 0.85)',
+        backdropFilter: 'blur(12px)',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 9999,
+        color: 'white',
+        fontFamily: 'system-ui, sans-serif'
+    }}>
+        <div style={{
+            width: '50px',
+            height: '50px',
+            border: '3px solid rgba(255, 255, 255, 0.1)',
+            borderTop: '3px solid #3b82f6',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            marginBottom: '1.25rem'
+        }} />
+        <h2 style={{ fontSize: '1.2rem', fontWeight: '600', letterSpacing: '0.02em', margin: 0 }}>{message}</h2>
+        <style>{`
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+        `}</style>
+    </div>
+);
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
@@ -37,7 +74,9 @@ import {
     ShareIcon,
     HistoryIcon,
     TrashIcon,
-    LogOutIcon
+    LogOutIcon,
+    ShieldIcon,
+    XIcon
 } from './settings/Icons';
 
 // Fix Leaflet default icon issue
@@ -774,15 +813,17 @@ function App() {
     if (isAdminRoute && user && user.role === 'admin') {
         return (
             <ErrorBoundary>
-                <AdminDashboard
-                    user={user}
-                    onLogout={handleLogout}
-                    onBackToClient={() => {
-                        window.history.pushState({}, '', '/');
-                        setIsAdminRoute(false);
-                    }}
-                    onImpersonate={handleImpersonate}
-                />
+                <Suspense fallback={<LoadingOverlay message="Loading Admin Dashboard..." />}>
+                    <AdminDashboard
+                        user={user}
+                        onLogout={handleLogout}
+                        onBackToClient={() => {
+                            window.history.pushState({}, '', '/');
+                            setIsAdminRoute(false);
+                        }}
+                        onImpersonate={handleImpersonate}
+                    />
+                </Suspense>
             </ErrorBoundary>
         );
     }
@@ -790,12 +831,14 @@ function App() {
     if (isSupportRoute) {
         return (
             <ErrorBoundary>
-                <SupportDashboard
-                    onBack={() => {
-                        window.history.pushState({}, '', '/');
-                        setIsSupportRoute(false);
-                    }}
-                />
+                <Suspense fallback={<LoadingOverlay message="Loading Support Panel..." />}>
+                    <SupportDashboard
+                        onBack={() => {
+                            window.history.pushState({}, '', '/');
+                            setIsSupportRoute(false);
+                        }}
+                    />
+                </Suspense>
             </ErrorBoundary>
         );
     }
@@ -827,33 +870,39 @@ function App() {
 
             {/* Analytics Dashboard Overlay */}
             {user && showAnalytics && user.subscription_status !== 'SUSPENDED' && (
-                <AnalyticsDashboard
-                    onBack={() => setShowAnalytics(false)}
-                    onOpenReports={() => setShowReports(true)}
-                />
+                <Suspense fallback={<LoadingOverlay message="Loading Analytics Engine..." />}>
+                    <AnalyticsDashboard
+                        onBack={() => setShowAnalytics(false)}
+                        onOpenReports={() => setShowReports(true)}
+                    />
+                </Suspense>
             )}
 
             {/* Settings Overlay */}
             {user && showSettings && (
-                <SettingsPanel
-                    user={user}
-                    vehicles={vehicles}
-                    groups={groups}
-                    onGroupsChanged={fetchGroups}
-                    onBack={() => setShowSettings(false)}
-                    onProfileUpdate={(updatedUser) => {
-                        setUser(updatedUser);
-                        localStorage.setItem('user', JSON.stringify(updatedUser));
-                    }}
-                />
+                <Suspense fallback={<LoadingOverlay message="Loading Settings Panels..." />}>
+                    <SettingsPanel
+                        user={user}
+                        vehicles={vehicles}
+                        groups={groups}
+                        onGroupsChanged={fetchGroups}
+                        onBack={() => setShowSettings(false)}
+                        onProfileUpdate={(updatedUser) => {
+                            setUser(updatedUser);
+                            localStorage.setItem('user', JSON.stringify(updatedUser));
+                        }}
+                    />
+                </Suspense>
             )}
 
             {/* Reports Overlay */}
             {user && showReports && user.subscription_status !== 'SUSPENDED' && (
-                <ReportsPanel
-                    vehicles={vehicles}
-                    onClose={() => setShowReports(false)}
-                />
+                <Suspense fallback={<LoadingOverlay message="Loading Reports Center..." />}>
+                    <ReportsPanel
+                        vehicles={vehicles}
+                        onClose={() => setShowReports(false)}
+                    />
+                </Suspense>
             )}
 
 
@@ -1108,7 +1157,7 @@ function App() {
                                         gap: '0.4rem'
                                     }}
                                 >
-                                    <TrendingUpIcon size={16} /> Analytics
+                                    <TrendingUpIcon size={16} /> <span className="btn-text">Analytics</span>
                                 </button>
                             )}
 
@@ -1169,12 +1218,12 @@ function App() {
                                     alignItems: 'center',
                                     gap: '0.4rem'
                                 }}
-                            >
-                                <SettingsIcon size={16} /> Settings
+                             >
+                                <SettingsIcon size={16} /> <span className="btn-text">Settings</span>
                             </button>
-                            <span>{user.username} ({user.role})</span>
+                            <span className="user-name-role">{user.username} ({user.role})</span>
                             <button onClick={handleLogout} className="logout-btn" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                <LogOutIcon size={14} /> Logout
+                                <LogOutIcon size={14} /> <span className="btn-text">Logout</span>
                             </button>
                         </div>
                     </header>
@@ -1717,14 +1766,14 @@ function App() {
                                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                                                                 {geofences.map(g => (
                                                                     <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem' }}>
-                                                                        <span>
-                                                                            {g.type === 'polygon' ? '🔷 Polygon' : `⭕ Circle (${g.radius || 500}m)`}
+                                                                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                                                            <ShieldIcon size={12} /> {g.type === 'polygon' ? 'Polygon' : `Circle (${g.radius || 500}m)`}
                                                                         </span>
                                                                         <button
                                                                             onClick={() => handleDeleteGeofence(g.id)}
-                                                                            style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.1rem 0.3rem', borderRadius: '0.2rem', cursor: 'pointer' }}
+                                                                            style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.2rem', borderRadius: '0.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                                                         >
-                                                                            ×
+                                                                            <XIcon size={10} />
                                                                         </button>
                                                                     </div>
                                                                 ))}

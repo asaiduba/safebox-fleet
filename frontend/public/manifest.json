@@ -1,0 +1,22 @@
+{
+  "short_name": "SafeBox Fleet",
+  "name": "SafeBox Fleet Management",
+  "description": "IoT Vehicle Tracking and Fleet Security Platform",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "display": "standalone",
+  "orientation": "portrait"
+}
