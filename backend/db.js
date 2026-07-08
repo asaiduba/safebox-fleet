@@ -414,6 +414,36 @@ function initDb() {
         )
     `);
 
+    // 16. Create Push Subscriptions Table (NEW)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            endpoint TEXT UNIQUE NOT NULL,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    `);
+
+    // Schema Migration: Add notification preference columns to users table
+    try {
+        db.exec("ALTER TABLE users ADD COLUMN notify_email INTEGER DEFAULT 1");
+    } catch (e) {}
+    try {
+        db.exec("ALTER TABLE users ADD COLUMN notify_sms INTEGER DEFAULT 1");
+    } catch (e) {}
+    try {
+        db.exec("ALTER TABLE users ADD COLUMN notify_push INTEGER DEFAULT 1");
+    } catch (e) {}
+    try {
+        db.exec("ALTER TABLE users ADD COLUMN alert_email TEXT");
+    } catch (e) {}
+    try {
+        db.exec("ALTER TABLE users ADD COLUMN alert_phone TEXT");
+    } catch (e) {}
+
     // Schema Migration: Add polygon geofence columns to geofences table
     try {
         db.exec("ALTER TABLE geofences ADD COLUMN type TEXT DEFAULT 'circle'");

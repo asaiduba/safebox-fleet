@@ -69,6 +69,7 @@ io.use((socket, next) => {
 
 // --- SECURITY: JWT Secret & Middleware Imports ---
 const { authMiddleware, adminMiddleware, getRequestUserId, JWT_SECRET } = require('./middleware/auth');
+const { saveAndNotifyAlert, dispatchAlertNotification } = require('./utils/notifications');
 
 // Middleware
 app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
@@ -84,6 +85,7 @@ const adminRouter = require('./routes/admin');
 const paymentsRouter = require('./routes/payments');
 const analyticsRouter = require('./routes/analytics');
 const reportsRouter = require('./routes/reports');
+const notificationsRouter = require('./routes/notifications');
 
 // Mount route middleware
 app.use('/api', authRouter);
@@ -93,6 +95,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/reports', reportsRouter);
+app.use('/api/notifications', notificationsRouter);
 
 // MQTT Broker Setup — Private HiveMQ Cloud (TLS + Credentials)
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.emqx.io'; // fallback for local dev only
@@ -371,22 +374,14 @@ mqttClient.on('message', (topic, message) => {
         if (!global.alertCooldowns) global.alertCooldowns = new Map();
         if (!global.alertCooldowns.has(alertCooldownKey) || Date.now() - global.alertCooldowns.get(alertCooldownKey) > 1 * 60 * 1000) {
           global.alertCooldowns.set(alertCooldownKey, Date.now());
-          try {
-            db.prepare(`
-              INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp, status)
-              VALUES (?, ?, ?, ?, 'UNREAD')
-            `).run(payload.deviceId, alertType, alertMsg, Date.now());
-
-            mqttClient.publish(`/device/${payload.deviceId}/alert`, JSON.stringify({
-              deviceId: payload.deviceId,
-              type: alertType,
-              message: alertMsg,
-              timestamp: Date.now()
-            }));
-            console.log(`[Alert Engine] Dispatched harsh driving alert for ${payload.deviceId}: ${alertType}`);
-          } catch (err) {
-            console.error('[Alert Engine] Failed to record harsh driving alert:', err.message);
-          }
+          saveAndNotifyAlert(payload.deviceId, alertType, alertMsg, Date.now());
+          mqttClient.publish(`/device/${payload.deviceId}/alert`, JSON.stringify({
+            deviceId: payload.deviceId,
+            type: alertType,
+            message: alertMsg,
+            timestamp: Date.now()
+          }));
+          console.log(`[Alert Engine] Dispatched harsh driving alert for ${payload.deviceId}: ${alertType}`);
         }
       }
 
@@ -539,9 +534,7 @@ mqttClient.on('message', (topic, message) => {
               const alertMsg = `Maintenance Alert: ${reminder.type} is due on ${vehicle.name || payload.deviceId}! Current Odometer: ${Math.round(newOdometer)} km (${limitStr}).`;
 
               // 3. Persist alert
-              db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
-                payload.deviceId, 'MAINTENANCE_DUE', alertMsg, Date.now()
-              );
+              saveAndNotifyAlert(payload.deviceId, 'MAINTENANCE_DUE', alertMsg, Date.now());
 
               // 4. Emit WebSocket notifications
               io.to(`user_${ownerId}`).emit('notification', {
@@ -597,11 +590,7 @@ mqttClient.on('message', (topic, message) => {
             global.alertCooldowns.set(speedKey, now);
 
             // Persist to vehicle_alerts
-            try {
-              db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
-                payload.deviceId, 'SPEEDING', alertMsg, now
-              );
-            } catch (e) { /* ignore */ }
+            saveAndNotifyAlert(payload.deviceId, 'SPEEDING', alertMsg, now);
           }
         }
 
@@ -629,11 +618,7 @@ mqttClient.on('message', (topic, message) => {
             global.alertCooldowns.set(battKey, now);
 
             // Persist to vehicle_alerts
-            try {
-              db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
-                payload.deviceId, 'LOW_BATTERY', alertMsg, now
-              );
-            } catch (e) { /* ignore */ }
+            saveAndNotifyAlert(payload.deviceId, 'LOW_BATTERY', alertMsg, now);
           }
         }
 
@@ -661,11 +646,7 @@ mqttClient.on('message', (topic, message) => {
             global.alertCooldowns.set(fuelKey, now);
 
             // Persist to vehicle_alerts
-            try {
-              db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
-                payload.deviceId, 'LOW_FUEL', alertMsg, now
-              );
-            } catch (e) { /* ignore */ }
+            saveAndNotifyAlert(payload.deviceId, 'LOW_FUEL', alertMsg, now);
           }
         }
 
@@ -693,11 +674,7 @@ mqttClient.on('message', (topic, message) => {
                 timestamp: now
               });
               global.alertCooldowns.set(theftKey, now);
-              try {
-                db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
-                  payload.deviceId, 'FUEL_THEFT', theftMsg, now
-                );
-              } catch (e) { /* ignore */ }
+              saveAndNotifyAlert(payload.deviceId, 'FUEL_THEFT', theftMsg, now);
             }
           }
         }
@@ -750,11 +727,7 @@ mqttClient.on('message', (topic, message) => {
                 global.alertCooldowns.set(alertKey, true); // Mark as alerted outside
 
                 // Persist to vehicle_alerts
-                try {
-                  db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
-                    payload.deviceId, 'GEOFENCE_BREACH', breachMsg, geoNow
-                  );
-                } catch (e) { /* ignore */ }
+                saveAndNotifyAlert(payload.deviceId, 'GEOFENCE_BREACH', breachMsg, geoNow);
               }
             } else {
               // INSIDE - Clear the alerted state so it can alert again next time it leaves
@@ -894,14 +867,8 @@ mqttClient.on('message', (topic, message) => {
         timestamp: now
       });
 
-      // Persist alert to vehicle_alerts table for safety scoring
-      try {
-        db.prepare('INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp) VALUES (?, ?, ?, ?)').run(
-          deviceId, notifType, alertMsg, now
-        );
-      } catch (dbErr) {
-        console.error('Failed to persist alert to vehicle_alerts:', dbErr.message);
-      }
+      // Persist alert to vehicle_alerts table for safety scoring and trigger notifications
+      saveAndNotifyAlert(deviceId, notifType, alertMsg, now);
 
       console.log(`Alert processed for ${deviceId}: ${notifType}`);
     } catch (e) {
@@ -958,11 +925,7 @@ function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresen
       const alertMsg = `Critical Security: Hotwiring / Unauthorized startup detected on vehicle "${vehicle.name || deviceId}"! ACC turned ON while vehicle is ${cause}.`;
       console.warn(`[SECURITY ALERT] ${alertMsg}`);
 
-      try {
-        db.prepare("INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp, status) VALUES (?, ?, ?, ?, 'UNREAD')").run(
-          deviceId, 'THEFT_HOTWIRE', alertMsg, nowMs
-        );
-      } catch (e) {}
+      saveAndNotifyAlert(deviceId, 'THEFT_HOTWIRE', alertMsg, nowMs);
 
       io.to(`user_${ownerId}`).emit('notification', {
         id: nowMs + 10,
@@ -995,11 +958,7 @@ function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresen
       const alertMsg = `Critical Alert: Towing / Unauthorized movement detected on vehicle "${vehicle.name || deviceId}"! Vehicle moving (${speed} km/h) with ignition OFF while ${cause}.`;
       console.warn(`[SECURITY ALERT] ${alertMsg}`);
 
-      try {
-        db.prepare("INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp, status) VALUES (?, ?, ?, ?, 'UNREAD')").run(
-          deviceId, 'THEFT_TOWING', alertMsg, nowMs
-        );
-      } catch (e) {}
+      saveAndNotifyAlert(deviceId, 'THEFT_TOWING', alertMsg, nowMs);
 
       io.to(`user_${ownerId}`).emit('notification', {
         id: nowMs + 11,
@@ -1029,10 +988,7 @@ function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresen
     if (!global.alertCooldowns.has(alertCooldownKey) || nowMs - global.alertCooldowns.get(alertCooldownKey) > 300000) {
       global.alertCooldowns.set(alertCooldownKey, nowMs);
       try {
-        db.prepare(`
-          INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp, status)
-          VALUES (?, ?, ?, ?, 'UNREAD')
-        `).run(deviceId, alertType, alertMsg, nowMs);
+        saveAndNotifyAlert(deviceId, alertType, alertMsg, nowMs);
 
         mqttClient.publish(`/device/${deviceId}/alert`, JSON.stringify({
           deviceId,
