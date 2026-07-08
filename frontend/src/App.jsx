@@ -1611,6 +1611,8 @@ function App() {
                                                         >
                                                             <ShareIcon size={12} /> SHARE
                                                         </button>
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.4rem' }}>
                                                         <button
                                                             className="history-btn"
                                                             onClick={() => setShowHistory(true)}
