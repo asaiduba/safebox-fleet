@@ -7,6 +7,9 @@ import Leaderboard from './Leaderboard';
 import { BarChartIcon, TrendingUpIcon } from './settings/Icons';
 
 const AnalyticsDashboard = ({ onBack, onOpenReports }) => {
+    const user = JSON.parse(localStorage.getItem('user')) || {};
+    const companyDisplay = user.company_name || user.username;
+
     const [stats, setStats] = useState(null);
     const [history, setHistory] = useState([]);
     const [vehicles, setVehicles] = useState([]);
@@ -15,25 +18,25 @@ const AnalyticsDashboard = ({ onBack, onOpenReports }) => {
     const [activeTab, setActiveTab] = useState('insights');
 
     const fetchStats = useCallback(async () => {
+        if (!user.id) return;
         try {
-            const user = JSON.parse(localStorage.getItem('user'));
             const res = await axios.get(`${API_BASE}/api/analytics/stats?userId=${user.id}&role=${user.role}`);
             setStats(res.data);
         } catch (err) {
             console.error("Failed to fetch stats", err);
         }
-    }, []);
+    }, [user.id, user.role]);
 
     const fetchVehicles = useCallback(async () => {
+        if (!user.id) return;
         try {
-            const user = JSON.parse(localStorage.getItem('user'));
             const res = await axios.get(`${API_BASE}/api/vehicles?userId=${user.id}&role=${user.role}`);
             setVehicles(res.data);
             if (res.data.length > 0) setSelectedVehicleId(res.data[0].id);
         } catch (err) {
             console.error("Failed to fetch vehicles", err);
         }
-    }, []);
+    }, [user.id, user.role]);
 
     const fetchHistory = useCallback(async (vehicleId) => {
         try {
@@ -129,7 +132,24 @@ const AnalyticsDashboard = ({ onBack, onOpenReports }) => {
         <div className="analytics-container">
             <header className="analytics-header">
                 <div className="header-title">
-                    <h1>Business Analytics</h1>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <h1 style={{ margin: 0 }}>Business Analytics</h1>
+                        {companyDisplay && (
+                            <span className="analytics-company-badge" style={{
+                                fontSize: '0.75rem',
+                                background: 'rgba(59, 130, 246, 0.12)',
+                                color: '#3b82f6',
+                                border: '1px solid rgba(59, 130, 246, 0.25)',
+                                padding: '3px 8px',
+                                borderRadius: '4px',
+                                fontWeight: '700',
+                                letterSpacing: '0.05em',
+                                textTransform: 'uppercase'
+                            }}>
+                                {companyDisplay}
+                            </span>
+                        )}
+                    </div>
                     <span className="subtitle">Fleet Performance & Insights</span>
                 </div>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>

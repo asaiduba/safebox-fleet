@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
 const { db } = require('../db');
 const { authMiddleware, getRequestUserId } = require('../middleware/auth');
 const reportsService = require('../reportsService');
@@ -148,6 +149,40 @@ router.get('/history', authMiddleware, (req, res) => {
   } catch (err) {
     console.error('Fetch reports history error:', err);
     res.status(500).json({ error: 'Failed to fetch reports history' });
+  }
+});
+
+// DELETE Delete Report from Archive History
+router.delete('/history/:id', authMiddleware, (req, res) => {
+  const userId = getRequestUserId(req);
+  const reportId = req.params.id;
+
+  try {
+    const report = db.prepare('SELECT generated_by, file_path FROM report_history WHERE report_id = ?').get(reportId);
+    if (!report) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+    if (report.generated_by !== userId) {
+      return res.status(403).json({ error: 'Unauthorized to delete this report' });
+    }
+
+    // Delete database entry
+    db.prepare('DELETE FROM report_history WHERE report_id = ?').run(reportId);
+
+    // Delete the file from the filesystem if it exists
+    if (report.file_path) {
+      const filename = path.basename(report.file_path);
+      const fs = require('fs');
+      const absoluteFilePath = path.join(__dirname, '..', 'public', 'reports', filename);
+      if (fs.existsSync(absoluteFilePath)) {
+        fs.unlinkSync(absoluteFilePath);
+      }
+    }
+
+    res.json({ message: 'Report removed from archive successfully' });
+  } catch (err) {
+    console.error('Delete report from history failed:', err);
+    res.status(500).json({ error: 'Failed to delete report from history archive' });
   }
 });
 

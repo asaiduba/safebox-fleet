@@ -26,10 +26,11 @@ import {
     FuelIcon,
     KeyIcon,
     CarIcon,
-    SettingsIcon
+    SettingsIcon,
+    LogOutIcon
 } from './settings/Icons';
 
-export default function SettingsPanel({ user, vehicles = [], groups = [], onGroupsChanged = () => {}, onBack, onProfileUpdate }) {
+export default function SettingsPanel({ user, vehicles = [], groups = [], onGroupsChanged = () => {}, onBack, onProfileUpdate, onLogout, theme, onThemeToggle }) {
     const API_BASE = import.meta.env.VITE_API_URL || '';
 
     // Form States
@@ -953,89 +954,124 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
 
                 <div className="settings-layout">
                     <aside className="settings-sidebar">
-                        <button 
-                            type="button" 
-                            className={`sidebar-tab ${activeTab === 'general' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('general')}
-                        >
-                            <UserIcon size={18} /> General Settings
-                        </button>
-                        <button 
-                            type="button" 
-                            className={`sidebar-tab ${activeTab === 'notifications' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('notifications')}
-                        >
-                            <BellIcon size={18} /> Notifications Preferences
-                        </button>
-                        <button 
-                            type="button" 
-                            className={`sidebar-tab ${activeTab === 'thresholds' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('thresholds')}
-                            disabled={user?.subscription_status === 'SUSPENDED'}
-                            style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                        >
-                            {user.role === 'company' ? (
-                                <>
-                                    <ShieldIcon size={18} /> Safety & Curfew
-                                </>
-                            ) : (
-                                <>
-                                    <ClockIcon size={18} /> Curfew Settings
-                                </>
-                            )}
-                        </button>
-                        <button 
-                            type="button" 
-                            className={`sidebar-tab ${activeTab === 'billing' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('billing')}
-                        >
-                            <CreditCardIcon size={18} /> Fleet Billing
-                        </button>
-                        <button 
-                            type="button" 
-                            className={`sidebar-tab ${activeTab === 'maintenance' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('maintenance')}
-                            disabled={user?.subscription_status === 'SUSPENDED'}
-                            style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                        >
-                            <WrenchIcon size={18} /> Maintenance Alerts
-                        </button>
-                        <button 
-                            type="button" 
-                            className={`sidebar-tab ${activeTab === 'support' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('support')}
-                            disabled={user?.subscription_status === 'SUSPENDED'}
-                            style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                        >
-                            <MessageSquareIcon size={18} /> Support Mode
-                        </button>
-                        <button 
-                            type="button" 
-                            className={`sidebar-tab ${activeTab === 'fuel' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('fuel')}
-                            disabled={user?.subscription_status === 'SUSPENDED'}
-                            style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                        >
-                            <FuelIcon size={18} /> Based Fuel & Cost
-                        </button>
-                        <button 
-                            type="button" 
-                            className={`sidebar-tab ${activeTab === 'ble' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('ble')}
-                            disabled={user?.subscription_status === 'SUSPENDED'}
-                            style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                        >
-                            <KeyIcon size={18} /> BLE Keyless
-                        </button>
-                        <button 
-                            type="button" 
-                            className={`sidebar-tab ${activeTab === 'vehicles' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('vehicles')}
-                            disabled={user?.subscription_status === 'SUSPENDED'}
-                            style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                        >
-                            <CarIcon size={18} /> Manage Vehicles
-                        </button>
+                        <div className="sidebar-profile-info">
+                            <div className="profile-company-avatar">
+                                {user.company_name ? user.company_name.substring(0, 2).toUpperCase() : user.username.substring(0, 2).toUpperCase()}
+                            </div>
+                            <div className="profile-company-meta">
+                                <span className="profile-company-name" title={user.company_name || user.username}>
+                                    {user.company_name || user.username}
+                                </span>
+                                <span className="profile-company-role">{user.role?.toUpperCase()} PLAN</span>
+                            </div>
+                        </div>
+
+                        <div className="sidebar-scrollable-tabs">
+                            <button 
+                                type="button" 
+                                className={`sidebar-tab ${activeTab === 'general' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('general')}
+                            >
+                                <UserIcon size={18} /> General Settings
+                            </button>
+                            <button 
+                                type="button" 
+                                className={`sidebar-tab ${activeTab === 'notifications' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('notifications')}
+                            >
+                                <BellIcon size={18} /> Notifications Preferences
+                            </button>
+                            <button 
+                                type="button" 
+                                className={`sidebar-tab ${activeTab === 'thresholds' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('thresholds')}
+                                disabled={user?.subscription_status === 'SUSPENDED'}
+                                style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                            >
+                                {user.role === 'company' ? (
+                                    <>
+                                        <ShieldIcon size={18} /> Safety & Curfew
+                                    </>
+                                ) : (
+                                    <>
+                                        <ClockIcon size={18} /> Curfew Settings
+                                    </>
+                                )}
+                            </button>
+                            <button 
+                                type="button" 
+                                className={`sidebar-tab ${activeTab === 'billing' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('billing')}
+                            >
+                                <CreditCardIcon size={18} /> Fleet Billing
+                            </button>
+                            <button 
+                                type="button" 
+                                className={`sidebar-tab ${activeTab === 'maintenance' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('maintenance')}
+                                disabled={user?.subscription_status === 'SUSPENDED'}
+                                style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                            >
+                                <WrenchIcon size={18} /> Maintenance Alerts
+                            </button>
+                            <button 
+                                type="button" 
+                                className={`sidebar-tab ${activeTab === 'support' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('support')}
+                                disabled={user?.subscription_status === 'SUSPENDED'}
+                                style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                            >
+                                <MessageSquareIcon size={18} /> Support Mode
+                            </button>
+                            <button 
+                                type="button" 
+                                className={`sidebar-tab ${activeTab === 'fuel' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('fuel')}
+                                disabled={user?.subscription_status === 'SUSPENDED'}
+                                style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                            >
+                                <FuelIcon size={18} /> Based Fuel & Cost
+                            </button>
+                            <button 
+                                type="button" 
+                                className={`sidebar-tab ${activeTab === 'ble' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('ble')}
+                                disabled={user?.subscription_status === 'SUSPENDED'}
+                                style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                            >
+                                <KeyIcon size={18} /> BLE Keyless
+                            </button>
+                            <button 
+                                type="button" 
+                                className={`sidebar-tab ${activeTab === 'vehicles' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('vehicles')}
+                                disabled={user?.subscription_status === 'SUSPENDED'}
+                                style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                            >
+                                <CarIcon size={18} /> Manage Vehicles
+                            </button>
+                        </div>
+
+                        <div className="sidebar-footer-controls">
+                            <div className="theme-toggle-row">
+                                <span className="theme-toggle-label">{theme === 'light' ? '☀️ Light' : '🌙 Dark'}</span>
+                                <button 
+                                    type="button" 
+                                    className={`theme-switch-btn ${theme}`} 
+                                    onClick={onThemeToggle}
+                                    title="Toggle Theme"
+                                >
+                                    <div className="theme-switch-knob" />
+                                </button>
+                            </div>
+                            <button 
+                                type="button" 
+                                className="sidebar-logout-tab-btn" 
+                                onClick={onLogout}
+                            >
+                                <LogOutIcon size={16} /> Logout
+                            </button>
+                        </div>
                     </aside>
 
                     <div className="settings-content-wrapper">

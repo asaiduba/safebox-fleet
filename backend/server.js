@@ -787,9 +787,9 @@ mqttClient.on('message', (topic, message) => {
 
             if (isOutside) {
               // OUTSIDE - Alert only once upon transition from inside to outside
-              if (!global.alertCooldowns.has(alertKey)) {
+              if (global.alertCooldowns.get(alertKey) !== 'outside') {
                 const geoNow = Date.now();
-                const breachMsg = `Vehicle ${payload.deviceId} has left the safe zone!`;
+                const breachMsg = `Vehicle ${payload.deviceId} has left the safe zone "${geo.name || 'Geofence'}"!`;
                 io.to(`user_${ownerId}`).emit('geofence-alert', {
                   vehicleId: payload.deviceId,
                   message: breachMsg,
@@ -800,21 +800,41 @@ mqttClient.on('message', (topic, message) => {
                 io.to(`user_${ownerId}`).emit('notification', {
                   id: geoNow,
                   type: 'GEOFENCE',
-                  message: `Vehicle ${payload.deviceId} left safe zone`,
+                  message: breachMsg,
                   timestamp: geoNow,
                   is_read: false
                 });
                 console.log(`Geofence Breach: ${payload.deviceId}`);
-                global.alertCooldowns.set(alertKey, true); // Mark as alerted outside
+                global.alertCooldowns.set(alertKey, 'outside'); // Mark as alerted outside
 
                 // Persist to vehicle_alerts
                 saveAndNotifyAlert(payload.deviceId, 'GEOFENCE_BREACH', breachMsg, geoNow);
               }
             } else {
-              // INSIDE - Clear the alerted state so it can alert again next time it leaves
-              if (global.alertCooldowns.has(alertKey)) {
-                global.alertCooldowns.delete(alertKey);
+              // INSIDE - Alert only once upon transition from outside to inside
+              if (global.alertCooldowns.get(alertKey) === 'outside') {
+                const geoNow = Date.now();
+                const entryMsg = `Vehicle ${payload.deviceId} has entered the safe zone "${geo.name || 'Geofence'}"!`;
+                io.to(`user_${ownerId}`).emit('geofence-alert', {
+                  vehicleId: payload.deviceId,
+                  message: entryMsg,
+                  timestamp: geoNow
+                });
+
+                io.to(`user_${ownerId}`).emit('notification', {
+                  id: geoNow,
+                  type: 'GEOFENCE',
+                  message: entryMsg,
+                  timestamp: geoNow,
+                  is_read: false
+                });
                 console.log(`Vehicle ${payload.deviceId} re-entered safe zone ${geo.id}`);
+                global.alertCooldowns.set(alertKey, 'inside'); // Mark as inside
+
+                // Persist to vehicle_alerts
+                saveAndNotifyAlert(payload.deviceId, 'GEOFENCE_ENTRY', entryMsg, geoNow);
+              } else if (!global.alertCooldowns.has(alertKey)) {
+                global.alertCooldowns.set(alertKey, 'inside');
               }
             }
           });

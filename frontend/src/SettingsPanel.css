@@ -1340,6 +1340,175 @@ input:checked + .slider:before {
     line-height: 1.4;
 }
 
+/* Sidebar Profile Header */
+.sidebar-profile-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.25rem 0.5rem 1rem 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 0.75rem;
+}
+
+body.light-theme .sidebar-profile-info {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.profile-company-avatar {
+    width: 38px;
+    height: 38px;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    font-weight: 700;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 10px rgba(59, 130, 246, 0.25);
+    flex-shrink: 0;
+}
+
+.profile-company-meta {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.profile-company-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #f8fafc;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+body.light-theme .profile-company-name {
+    color: #0f172a;
+}
+
+.profile-company-role {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #60a5fa;
+    letter-spacing: 0.05em;
+}
+
+/* Sidebar Scrollable area */
+.sidebar-scrollable-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+}
+
+.sidebar-scrollable-tabs::-webkit-scrollbar {
+    width: 4px;
+}
+.sidebar-scrollable-tabs::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 2px;
+}
+.sidebar-scrollable-tabs::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* Sidebar Footer Controls */
+.sidebar-footer-controls {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 1rem;
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+body.light-theme .sidebar-footer-controls {
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Theme Toggle Switch Row */
+.theme-toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+}
+
+.theme-toggle-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #94a3b8;
+}
+
+body.light-theme .theme-toggle-label {
+    color: #64748b;
+}
+
+.theme-switch-btn {
+    position: relative;
+    width: 46px;
+    height: 24px;
+    background: #334155;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    outline: none;
+    padding: 0;
+}
+
+.theme-switch-btn.light {
+    background: #60a5fa;
+    border-color: rgba(96, 165, 250, 0.2);
+}
+
+.theme-switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    background: #f8fafc;
+    border-radius: 50%;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.theme-switch-btn.light .theme-switch-knob {
+    transform: translateX(22px);
+    background: #ffffff;
+    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
+}
+
+/* Logout Tab Button in Settings Sidebar */
+.sidebar-logout-tab-btn {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease;
+}
+
+.sidebar-logout-tab-btn:hover {
+    background: rgba(239, 68, 68, 0.16);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #f87171;
+    transform: translateY(-1px);
+}
+
 @media (max-width: 768px) {
     .settings-layout {
         flex-direction: column;

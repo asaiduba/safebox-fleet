@@ -52,6 +52,27 @@ try {
         console.log('ℹ️ No users in database, skipping dummy lookup.');
     }
 
+    // 5. Verify Report History Insert & Delete
+    console.log('⏳ Verifying report history insertion and deletion...');
+    const userIdForTest = dummyUser ? dummyUser.id : 1;
+    
+    // Insert test report
+    db.prepare(`
+      INSERT INTO report_history (generated_by, generated_at, report_type, file_path, name, period)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(userIdForTest, Date.now(), 'Full Fleet Report', '/reports/test.pdf', 'test.pdf', 'Last 7 Days');
+    
+    // Query it
+    const insertedReport = db.prepare('SELECT * FROM report_history WHERE name = ?').get('test.pdf');
+    assert.ok(insertedReport, 'report should be inserted successfully');
+    assert.strictEqual(insertedReport.generated_by, userIdForTest, 'report owner should match');
+    
+    // Delete it
+    db.prepare('DELETE FROM report_history WHERE report_id = ?').run(insertedReport.report_id);
+    const deletedReport = db.prepare('SELECT * FROM report_history WHERE report_id = ?').get(insertedReport.report_id);
+    assert.ok(!deletedReport, 'report should be deleted successfully');
+    console.log('✅ Report history operations verified.');
+
     console.log('\n🎉 ALL SCHEMA AND COMPILATION CHECKS PASSED SUCCESSFULLY! 🎉');
     process.exit(0);
 

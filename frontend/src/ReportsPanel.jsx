@@ -219,6 +219,21 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
         }
     };
 
+    // Delete Generated Report
+    const handleDeleteReport = async (reportId) => {
+        if (!window.confirm('Are you sure you want to permanently delete this report from the archive?')) return;
+        try {
+            const token = localStorage.getItem('token');
+            await axios.delete(`${API_BASE}/api/reports/history/${reportId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            loadHistory();
+        } catch (err) {
+            console.error('Failed to delete report:', err);
+            alert('Failed to delete report from history archive');
+        }
+    };
+
     // Toggle vehicle checklists
     const handleToggleVehicle = (id) => {
         const next = new Set(selectedVehicleIds);
@@ -569,7 +584,7 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
                                                     <td>{h.report_type}</td>
                                                     <td>{h.period}</td>
                                                     <td>{new Date(h.generated_at).toLocaleString()}</td>
-                                                    <td>
+                                                    <td style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                         <a 
                                                             href={`${API_BASE}${h.file_path}`} 
                                                             download 
@@ -579,6 +594,14 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
                                                         >
                                                             <DownloadIcon size={14} /> Download
                                                         </a>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteReport(h.report_id)}
+                                                            className="delete-report-btn"
+                                                            title="Delete report"
+                                                        >
+                                                            <XIcon size={14} />
+                                                        </button>
                                                     </td>
                                                 </tr>
                                             ))}

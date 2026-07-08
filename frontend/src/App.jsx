@@ -296,6 +296,18 @@ function App() {
     const [sandboxData, setSandboxData] = useState(null);
     const [pendingOverrides, setPendingOverrides] = useState([]);
     const [socketConnected, setSocketConnected] = useState(true);
+    const [theme, setTheme] = useState(() => {
+        return localStorage.getItem('theme') || 'dark';
+    });
+
+    useEffect(() => {
+        document.body.classList.toggle('light-theme', theme === 'light');
+        localStorage.setItem('theme', theme);
+    }, [theme]);
+
+    const toggleTheme = useCallback(() => {
+        setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+    }, []);
     const mapRef = useRef(null);
 
     // Vehicle Groups state
@@ -539,6 +551,28 @@ function App() {
         window.history.pushState({}, '', '/');
         setIsAdminRoute(false);
     }, []);
+
+    const triggerBrowserNotification = useCallback((title, body) => {
+        if (!("Notification" in window)) return;
+        if (Notification.permission === "granted") {
+            try {
+                new Notification(title, {
+                    body,
+                    icon: '/logo.png'
+                });
+            } catch (err) {
+                console.error("Failed to show browser notification:", err);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (user && "Notification" in window && Notification.permission === "default") {
+            Notification.requestPermission().then(permission => {
+                console.log("Notification permission state:", permission);
+            });
+        }
+    }, [user]);
 
     const handleVehicleSelect = useCallback((vehicle) => {
         setSelectedVehicleId(vehicle.id);
@@ -816,6 +850,22 @@ function App() {
 
         socket.on('notification', (data) => {
             setNotifications(prev => [data, ...prev]);
+
+            // Trigger browser push notification based on user preferences
+            let prefs = { batteryAlert: true, fuelAlert: true, geofenceAlert: true };
+            try {
+                const saved = localStorage.getItem(`settings_${user.id}`);
+                if (saved) prefs = JSON.parse(saved);
+            } catch (_) {}
+
+            let shouldAlert = false;
+            if (data.type === 'BATTERY' && prefs.batteryAlert) shouldAlert = true;
+            if ((data.type === 'FUEL' || data.type === 'FUEL_THEFT') && prefs.fuelAlert) shouldAlert = true;
+            if (data.type === 'GEOFENCE' && prefs.geofenceAlert) shouldAlert = true;
+
+            if (shouldAlert) {
+                triggerBrowserNotification(`SafeBox Alert - ${data.type}`, data.message);
+            }
         });
 
         socket.on('device-tampering', (data) => {
@@ -992,6 +1042,9 @@ function App() {
                             setUser(updatedUser);
                             localStorage.setItem('user', JSON.stringify(updatedUser));
                         }}
+                        onLogout={handleLogout}
+                        theme={theme}
+                        onThemeToggle={toggleTheme}
                     />
                 </Suspense>
             )}
@@ -1335,10 +1388,6 @@ function App() {
                                 }}
                              >
                                 <SettingsIcon size={16} /> <span className="btn-text">Settings</span>
-                            </button>
-                            <span className="user-name-role">{user.username} ({user.role})</span>
-                            <button onClick={handleLogout} className="logout-btn" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                <LogOutIcon size={14} /> <span className="btn-text">Logout</span>
                             </button>
                         </div>
                     </header>
