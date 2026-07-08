@@ -70,7 +70,8 @@
 }
 
 /* Form Layout */
-.settings-form {
+.settings-form,
+.settings-form-wrapper {
     flex: 1;
     overflow-y: auto;
     padding: 2rem;
@@ -80,17 +81,21 @@
 }
 
 /* Scrollbar Customization */
-.settings-form::-webkit-scrollbar {
+.settings-form::-webkit-scrollbar,
+.settings-form-wrapper::-webkit-scrollbar {
     width: 8px;
 }
-.settings-form::-webkit-scrollbar-track {
+.settings-form::-webkit-scrollbar-track,
+.settings-form-wrapper::-webkit-scrollbar-track {
     background: transparent;
 }
-.settings-form::-webkit-scrollbar-thumb {
+.settings-form::-webkit-scrollbar-thumb,
+.settings-form-wrapper::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 4px;
 }
-.settings-form::-webkit-scrollbar-thumb:hover {
+.settings-form::-webkit-scrollbar-thumb:hover,
+.settings-form-wrapper::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
 }
 

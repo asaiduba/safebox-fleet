@@ -21,6 +21,24 @@ import SharedTracker from './SharedTracker';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+import {
+    TrendingUpIcon,
+    SettingsIcon,
+    BellIcon,
+    PlusIcon,
+    LockIcon,
+    UnlockIcon,
+    PowerIcon,
+    ZapIcon,
+    UserIcon,
+    BatteryIcon,
+    FuelIcon,
+    MapPinIcon,
+    ShareIcon,
+    HistoryIcon,
+    TrashIcon,
+    LogOutIcon
+} from './settings/Icons';
 
 // Fix Leaflet default icon issue
 delete L.Icon.Default.prototype._getIconUrl;
@@ -1087,10 +1105,10 @@ function App() {
                                         fontWeight: 'bold',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '0.5rem'
+                                        gap: '0.4rem'
                                     }}
                                 >
-                                    Analytics 📊
+                                    <TrendingUpIcon size={16} /> Analytics
                                 </button>
                             )}
 
@@ -1113,8 +1131,8 @@ function App() {
                                     height: '38px'
                                 }}
                                 title="Notifications"
-                            >
-                                <span style={{ fontSize: '1.2rem' }}>🔔</span>
+                             >
+                                <BellIcon size={18} />
                                 {notifications.filter(n => !n.is_read).length > 0 && (
                                     <span 
                                         style={{
@@ -1149,13 +1167,15 @@ function App() {
                                     fontWeight: 'bold',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '0.5rem'
+                                    gap: '0.4rem'
                                 }}
-                            >
-                                Settings ⚙️
+                             >
+                                <SettingsIcon size={16} /> Settings
                             </button>
                             <span>{user.username} ({user.role})</span>
-                            <button onClick={handleLogout} className="logout-btn">Logout</button>
+                            <button onClick={handleLogout} className="logout-btn" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <LogOutIcon size={14} /> Logout
+                            </button>
                         </div>
                     </header>
 
@@ -1176,8 +1196,9 @@ function App() {
                             <button
                                 className="add-vehicle-trigger-btn"
                                 onClick={() => setShowAddVehicle(true)}
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}
                             >
-                                ➕ REGISTER
+                                <PlusIcon size={14} /> REGISTER
                             </button>
                         </div>
 
@@ -1277,16 +1298,16 @@ function App() {
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                                                     <span className="vehicle-name">{v.name}</span>
-                                                    <span title={v.cloudLocked ? "Web Locked" : "Web Unlocked"}>
-                                                        {v.cloudLocked ? '🌐🔒' : '🌐🔓'}
+                                                    <span title={v.cloudLocked ? "Web Locked" : "Web Unlocked"} style={{ display: 'flex', alignItems: 'center' }}>
+                                                        {v.cloudLocked ? <LockIcon size={14} style={{ color: '#ef4444' }} /> : <UnlockIcon size={14} style={{ color: '#10b981' }} />}
                                                     </span>
-                                                    <span title={v.locked ? "Engine Cut" : "Engine Running"}>
-                                                        {v.locked ? '🚫' : '⚡'}
+                                                    <span title={v.locked ? "Engine Cut" : "Engine Running"} style={{ display: 'flex', alignItems: 'center' }}>
+                                                        {v.locked ? <PowerIcon size={14} style={{ color: '#ef4444' }} /> : <ZapIcon size={14} style={{ color: '#10b981' }} />}
                                                     </span>
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.1rem' }}>
                                                     {v.plate_number && <span className="plate-badge">{getVehicleEmoji(v.vehicle_type)} {v.plate_number}</span>}
-                                                    {v.driver_name && <span className="driver-badge">👤 {v.driver_name}</span>}
+                                                    {v.driver_name && <span className="driver-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}><UserIcon size={12} /> {v.driver_name}</span>}
                                                 </div>
                                             </div>
 
@@ -1295,10 +1316,10 @@ function App() {
                                             </span>
                                         </div>
 
-                                        <div className="vehicle-details-mini">
-                                            <span>🔋 {v.battery}%</span>
-                                            <span>⛽ {v.fuel || '--'}%</span>
-                                            {v.speed > 0 && online && <span style={{ color: '#22c55e' }}>⚡ {v.speed} km/h</span>}
+                                        <div className="vehicle-details-mini" style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem' }}>
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}><BatteryIcon size={12} /> {v.battery}%</span>
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}><FuelIcon size={12} /> {v.fuel || '--'}%</span>
+                                            {v.speed > 0 && online && <span style={{ color: '#22c55e', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}><ZapIcon size={12} /> {v.speed} km/h</span>}
                                         </div>
                                     </div>
                                 );
@@ -1529,7 +1550,7 @@ function App() {
                                                 <div className="info-window" style={{ position: 'relative' }}>
                                                     {selectedVehicle.subscription_status === 'SUSPENDED' || selectedVehicle.subscription_status === 'EXPIRED' || user?.subscription_status === 'SUSPENDED' ? (
                                                         <div className="suspended-popup-overlay">
-                                                            <span className="lock-icon">🔒</span>
+                                                            <span className="lock-icon" style={{ color: '#ef4444' }}><LockIcon size={24} /></span>
                                                             <span className="suspension-title">SUSPENDED</span>
                                                             <span className="suspension-desc">Reactivate this vehicle's subscription to enable remote control commands and GPS tracking.</span>
                                                             <button
@@ -1546,13 +1567,13 @@ function App() {
                                                     <h3>{selectedVehicle.name}</h3>
                                                     <p>
                                                         Security: {selectedVehicle.cloudLocked ?
-                                                            <span style={{ color: '#ff4444' }}>WEB LOCKED 🔒</span> :
-                                                            <span style={{ color: '#22c55e' }}>WEB UNLOCKED (WAITING FOR RF) 🔓</span>}
+                                                            <span style={{ color: '#ff4444' }}>WEB LOCKED</span> :
+                                                            <span style={{ color: '#22c55e' }}>WEB UNLOCKED (WAITING FOR RF)</span>}
                                                     </p>
                                                     <p>
                                                         Engine: {selectedVehicle.locked ?
-                                                            <span style={{ color: '#ff4444' }}>CUT 🚫</span> :
-                                                            <span style={{ color: '#22c55e' }}>RUNNING ⚡</span>}
+                                                            <span style={{ color: '#ff4444' }}>CUT</span> :
+                                                            <span style={{ color: '#22c55e' }}>RUNNING</span>}
                                                     </p>
                                                     <p>Speed: {selectedVehicle.speed} km/h</p>
                                                     <p>Battery: {selectedVehicle.battery}%</p>
@@ -1579,30 +1600,30 @@ function App() {
                                                         <button
                                                             className="track-btn"
                                                             onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${selectedVehicle.lat},${selectedVehicle.lng}`, '_blank')}
-                                                            style={{ flex: 1, backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
+                                                            style={{ flex: 1, backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
                                                         >
-                                                            TRACK 📍
+                                                            <MapPinIcon size={12} /> TRACK
                                                         </button>
                                                         <button
                                                             className="share-btn"
                                                             onClick={() => { setShareTargetVehicle(selectedVehicle); setShowShareModal(true); }}
-                                                            style={{ flex: 1, backgroundColor: '#8b5cf6', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
+                                                            style={{ flex: 1, backgroundColor: '#8b5cf6', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
                                                         >
-                                                            SHARE 🔗
+                                                            <ShareIcon size={12} /> SHARE
                                                         </button>
                                                         <button
                                                             className="history-btn"
                                                             onClick={() => setShowHistory(true)}
-                                                            style={{ flex: 1, backgroundColor: '#8b5cf6', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
+                                                            style={{ flex: 1, backgroundColor: '#8b5cf6', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
                                                         >
-                                                            HISTORY 🕒
+                                                            <HistoryIcon size={12} /> HISTORY
                                                         </button>
                                                         <button
                                                             className="delete-btn"
                                                             onClick={() => handleDeleteVehicle(selectedVehicle.id)}
-                                                            style={{ flex: 1, backgroundColor: '#ff4444', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
+                                                            style={{ flex: 1, backgroundColor: '#ff4444', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
                                                         >
-                                                            REMOVE 🗑️
+                                                            <TrashIcon size={12} /> REMOVE
                                                         </button>
                                                     </div>
 
@@ -1621,7 +1642,7 @@ function App() {
                                                                                 color: geofenceType === 'circle' ? 'white' : '#475569',
                                                                                 border: 'none'
                                                                             }}
-                                                                        >⭕ Circle</button>
+                                                                        >Circle</button>
                                                                         <button
                                                                             onClick={() => { setGeofenceType('polygon'); setPolygonPoints([]); }}
                                                                             style={{
@@ -1630,7 +1651,7 @@ function App() {
                                                                                 color: geofenceType === 'polygon' ? 'white' : '#475569',
                                                                                 border: 'none'
                                                                             }}
-                                                                        >🔷 Polygon</button>
+                                                                        >Polygon</button>
                                                                     </div>
                                                                 )}
                                                                 {geofenceMode && geofenceType === 'circle' && (
