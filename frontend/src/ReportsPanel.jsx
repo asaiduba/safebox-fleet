@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import './ReportsPanel.css';
+import {
+    BarChartIcon, TargetIcon, CalendarIcon, FolderIcon,
+    ZapIcon, DownloadIcon, TrashIcon, MailIcon, ClockIcon,
+    SendIcon, SparklesIcon, FileTextIcon, XIcon, BellIcon
+} from './settings/Icons';
 
 export default function ReportsPanel({ onClose, vehicles = [] }) {
     const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -230,10 +235,10 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
             <div className="reports-panel-container glass-panel animate-fade-in">
                 <header className="reports-header">
                     <div className="title-area">
-                        <h2>📊 Reports & Analytics Hub</h2>
+                        <h2><BarChartIcon size={20} /> Reports & Analytics Hub</h2>
                         <p>Generate high-quality operational, financial, and security intelligence audits.</p>
                     </div>
-                    <button className="close-btn" onClick={onClose}>✕</button>
+                    <button className="close-btn" onClick={onClose}><XIcon size={16} /></button>
                 </header>
 
                 {/* Sub Tab Navigation */}
@@ -242,19 +247,19 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
                         className={`reports-subtab-btn ${subTab === 'center' ? 'active' : ''}`}
                         onClick={() => setSubTab('center')}
                     >
-                        🎯 Report Center
+                        <TargetIcon size={14} /> Report Center
                     </button>
                     <button 
                         className={`reports-subtab-btn ${subTab === 'schedules' ? 'active' : ''}`}
                         onClick={() => setSubTab('schedules')}
                     >
-                        🕒 Automated Schedules
+                        <CalendarIcon size={14} /> Automated Schedules
                     </button>
                     <button 
                         className={`reports-subtab-btn ${subTab === 'history' ? 'active' : ''}`}
                         onClick={() => setSubTab('history')}
                     >
-                        📁 Downloads Archive
+                        <FolderIcon size={14} /> Downloads Archive
                     </button>
                 </div>
 
@@ -364,7 +369,7 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
                                             onClick={handleGenerateReport}
                                             disabled={selectedVehicleIds.size === 0}
                                         >
-                                            ⚡ Compile Report
+                                            <ZapIcon size={14} /> Compile Report
                                         </button>
                                     )}
                                 </div>
@@ -372,7 +377,7 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
 
                             <div className="workspace-right">
                                 <div className="preview-card glass-panel">
-                                    <h3>📊 Selected Interval Preview</h3>
+                                    <h3><BarChartIcon size={16} /> Selected Interval Preview</h3>
                                     <p className="preview-sub">Live approximate stats based on your query criteria before downloading file.</p>
                                     
                                     {previewLoading ? (
@@ -405,7 +410,7 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
                                     )}
 
                                     <div className="ai-insights-block" style={{ marginTop: '1.5rem', background: 'rgba(234, 179, 8, 0.05)', border: '1px dashed #eab308', borderRadius: '0.5rem', padding: '1rem' }}>
-                                        <h4 style={{ color: '#eab308', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: '0 0 0.5rem 0' }}>✨ AI Operational Warnings Preview</h4>
+                                        <h4 style={{ color: '#eab308', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: '0 0 0.5rem 0' }}><SparklesIcon size={16} /> AI Operational Warnings Preview</h4>
                                         <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.8rem', color: '#e2e8f0', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                                             <li>Predictive Maintenance: Brake service probability for SBX-004 is elevated.</li>
                                             <li>Fuel Anomalies: Idle times for Musa indicate potential 12% excess fuel expenditure.</li>
@@ -478,7 +483,7 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
                                     </div>
 
                                     <button type="submit" disabled={schedLoading} className="generate-report-btn glowing-button">
-                                        {schedLoading ? 'Establishing...' : 'Establish Scheduler 🔔'}
+                                        {schedLoading ? 'Establishing...' : <><BellIcon size={14} /> Establish Scheduler</>}
                                     </button>
                                 </form>
                             </div>
@@ -504,13 +509,13 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
                                                             onClick={() => handleDeleteSchedule(s.id)}
                                                             style={{ background: 'none', border: 'none', color: '#ff4d4f', cursor: 'pointer', fontSize: '1rem' }}
                                                         >
-                                                            🗑️
+                                                            <TrashIcon size={14} />
                                                         </button>
                                                     </div>
                                                     <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                                        <div>📧 <strong>Recipients:</strong> {s.recipients}</div>
-                                                        <div>⏰ <strong>Time:</strong> {s.time_of_delivery}</div>
-                                                        <div>📦 <strong>Channel:</strong> {s.delivery_method}</div>
+                                                        <div><MailIcon size={12} /> <strong>Recipients:</strong> {s.recipients}</div>
+                                                        <div><ClockIcon size={12} /> <strong>Time:</strong> {s.time_of_delivery}</div>
+                                                        <div><SendIcon size={12} /> <strong>Channel:</strong> {s.delivery_method}</div>
                                                     </div>
                                                 </div>
                                             ))}
@@ -524,7 +529,7 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
                     {/* 3. DOWNLOADS ARCHIVE */}
                     {subTab === 'history' && (
                         <div className="reports-history-workspace glass-panel">
-                            <h3>📁 Generated Reports Archive</h3>
+                            <h3><FolderIcon size={16} /> Generated Reports Archive</h3>
                             {historyLoading ? (
                                 <div className="loading-spinner">Loading archive...</div>
                             ) : historyList.length === 0 ? (
@@ -544,7 +549,7 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
                                         <tbody>
                                             {historyList.map(h => (
                                                 <tr key={h.report_id}>
-                                                    <td className="file-name-cell">📄 {h.name}</td>
+                                                    <td className="file-name-cell"><FileTextIcon size={14} /> {h.name}</td>
                                                     <td>{h.report_type}</td>
                                                     <td>{h.period}</td>
                                                     <td>{new Date(h.generated_at).toLocaleString()}</td>
@@ -556,7 +561,7 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
                                                             rel="noreferrer"
                                                             className="download-link-btn"
                                                         >
-                                                            📥 Download
+                                                            <DownloadIcon size={14} /> Download
                                                         </a>
                                                     </td>
                                                 </tr>

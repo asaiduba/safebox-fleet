@@ -53,14 +53,14 @@ function MapTileLoader({ onStart, onEnd }) {
     const map = useMap();
     React.useEffect(() => {
         if (!map) return;
-        
+
         let activeTiles = 0;
-        
+
         const handleStart = () => {
             if (activeTiles === 0) onStart();
             activeTiles++;
         };
-        
+
         const handleEnd = () => {
             activeTiles = Math.max(0, activeTiles - 1);
             if (activeTiles === 0) onEnd();
@@ -381,7 +381,7 @@ function App() {
         };
         localStorage.setItem('user', JSON.stringify(impersonatedUser));
         setUser(impersonatedUser);
-        
+
         window.history.pushState({}, '', '/');
         setIsAdminRoute(false);
         setShowLanding(false);
@@ -399,7 +399,7 @@ function App() {
             localStorage.setItem('user', JSON.stringify(adminSession));
             localStorage.removeItem('admin_session');
             setUser(adminSession);
-            
+
             window.history.pushState({}, '', '/admin');
             setIsAdminRoute(true);
             setShowLanding(false);
@@ -583,7 +583,7 @@ function App() {
                 const userId = params.get('userId');
                 const vehiclesList = params.get('vehicles');
                 const cycle = params.get('cycle') || 'monthly';
-                
+
                 Promise.resolve().then(() => {
                     setSandboxData({
                         reference,
@@ -894,7 +894,7 @@ function App() {
                             <p className="sandbox-desc">
                                 You have been redirected to the SafeBox test sandbox environment. Please review your transaction details below:
                             </p>
-                            
+
                             <div className="sandbox-details-card">
                                 <div className="detail-row">
                                     <span className="detail-label">Reference ID</span>
@@ -920,9 +920,9 @@ function App() {
                                 ⚠️ This is a simulated checkout screen. No real money is processed. Select one of the outcomes below to verify your system's billing flow.
                             </p>
                         </div>
-                        
+
                         <div className="sandbox-modal-actions">
-                            <button 
+                            <button
                                 className="sandbox-btn-success"
                                 onClick={async () => {
                                     try {
@@ -939,7 +939,7 @@ function App() {
                             >
                                 Simulate Successful Payment
                             </button>
-                            <button 
+                            <button
                                 className="sandbox-btn-failed"
                                 onClick={() => {
                                     alert('❌ Sandbox Checkout: Payment simulation failed or was declined. Subscription not activated.');
@@ -985,13 +985,13 @@ function App() {
                             boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
                             letterSpacing: '0.025em'
                         }}>
-                            <span style={{ 
-                                display: 'inline-block', 
-                                width: '8px', 
-                                height: '8px', 
-                                borderRadius: '50%', 
-                                backgroundColor: 'white', 
-                                animation: 'sb-pulse 1.2s infinite ease-in-out' 
+                            <span style={{
+                                display: 'inline-block',
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                backgroundColor: 'white',
+                                animation: 'sb-pulse 1.2s infinite ease-in-out'
                             }} />
                             Connection lost. Attempting to reconnect to live telemetry engine...
                         </div>
@@ -1040,19 +1040,19 @@ function App() {
                                             <div className="req-time">🕒 Requested: {new Date(req.requested_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                                         </div>
                                         <div className="override-actions">
-                                            <button 
+                                            <button
                                                 className="btn-approve-once"
                                                 onClick={() => handleResolveOverride(req.id, 'APPROVED_ONCE')}
                                             >
                                                 Approve Once
                                             </button>
-                                            <button 
+                                            <button
                                                 className="btn-approve-midnight"
                                                 onClick={() => handleResolveOverride(req.id, 'APPROVED_MIDNIGHT')}
                                             >
                                                 Until Midnight
                                             </button>
-                                            <button 
+                                            <button
                                                 className="btn-deny"
                                                 onClick={() => handleResolveOverride(req.id, 'DENIED')}
                                             >
@@ -1067,7 +1067,7 @@ function App() {
 
                     {/* Header */}
                     <header className="app-header">
-                        <button 
+                        <button
                             className={`mobile-sidebar-toggle-btn ${mobileSidebarOpen ? 'open' : ''}`}
                             onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
                         >
@@ -1076,7 +1076,7 @@ function App() {
                         <div className="header-left" onClick={() => setShowLanding(true)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <img src="/logo.png" alt="SafeBox Logo" className="header-logo" />
                             <h1 style={{ margin: 0 }}>SafeBox Fleet</h1>
-                            <div 
+                            <div
                                 style={{
                                     width: '10px',
                                     height: '10px',
@@ -1131,10 +1131,10 @@ function App() {
                                     height: '38px'
                                 }}
                                 title="Notifications"
-                             >
+                            >
                                 <BellIcon size={18} />
                                 {notifications.filter(n => !n.is_read).length > 0 && (
-                                    <span 
+                                    <span
                                         style={{
                                             position: 'absolute',
                                             top: '-4px',
@@ -1152,7 +1152,7 @@ function App() {
                                         {notifications.filter(n => !n.is_read).length}
                                     </span>
                                 )}
-                             </button>
+                            </button>
                             <button
                                 className="settings-btn"
                                 onClick={() => setShowSettings(true)}
@@ -1169,7 +1169,7 @@ function App() {
                                     alignItems: 'center',
                                     gap: '0.4rem'
                                 }}
-                             >
+                            >
                                 <SettingsIcon size={16} /> Settings
                             </button>
                             <span>{user.username} ({user.role})</span>
@@ -1317,8 +1317,8 @@ function App() {
                                         </div>
 
                                         <div className="vehicle-details-mini" style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem' }}>
-                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}><BatteryIcon size={12} /> {v.battery}%</span>
-                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}><FuelIcon size={12} /> {v.fuel || '--'}%</span>
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', color: '#22c55e' }}><BatteryIcon size={12} /> {v.battery}%</span>
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', color: '#e67e22' }}><FuelIcon size={12} /> {v.fuel || '--'}%</span>
                                             {v.speed > 0 && online && <span style={{ color: '#22c55e', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}><ZapIcon size={12} /> {v.speed} km/h</span>}
                                         </div>
                                     </div>
@@ -1582,7 +1582,7 @@ function App() {
                                                         <button
                                                             className="lock-btn"
                                                             onClick={() => sendCommand(selectedVehicle.id, 'LOCK')}
-                                                            style={{ opacity: selectedVehicle.cloudLocked ? 0.5 : 1 }}
+                                                            style={{ opacity: selectedVehicle.cloudLocked ? 0.5 : 1, flex: 1, minWidth: 0 }}
                                                             title={selectedVehicle.cloudLocked ? 'Already Web Locked' : 'Lock via Web'}
                                                         >
                                                             LOCK (WEB)
@@ -1590,7 +1590,7 @@ function App() {
                                                         <button
                                                             className="unlock-btn"
                                                             onClick={() => sendCommand(selectedVehicle.id, 'UNLOCK')}
-                                                            style={{ opacity: !selectedVehicle.cloudLocked ? 0.5 : 1 }}
+                                                            style={{ opacity: !selectedVehicle.cloudLocked ? 0.5 : 1, flex: 1, minWidth: 0 }}
                                                             title={!selectedVehicle.cloudLocked ? 'Already Web Unlocked (waiting for RF)' : 'Grant Web Permission'}
                                                         >
                                                             UNLOCK (WEB)
@@ -1600,7 +1600,7 @@ function App() {
                                                         <button
                                                             className="track-btn"
                                                             onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${selectedVehicle.lat},${selectedVehicle.lng}`, '_blank')}
-                                                            style={{ flex: 1, backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
+                                                            style={{ flex: 1, backgroundColor: '#2088f0ff', color: 'white', border: 'none', padding: '0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
                                                         >
                                                             <MapPinIcon size={12} /> TRACK
                                                         </button>
@@ -1706,7 +1706,9 @@ function App() {
                                                                 )}
                                                                 <button
                                                                     onClick={() => { setGeofenceMode(!geofenceMode); setPolygonPoints([]); }}
-                                                                    style={{ width: '100%', padding: '0.4rem', background: geofenceMode ? '#64748b' : '#8b5cf6', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }}
+                                                                    style={{
+                                                                        width: '100%', padding: '0.4rem', background: geofenceMode ? '#64748b' : '#22c55e', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer'
+                                                                    }}
                                                                 >
                                                                     {geofenceMode ? 'Cancel Selection' : 'Add Safe Zone (Click Map)'}
                                                                 </button>
@@ -1731,7 +1733,8 @@ function App() {
                                                     </div>
                                                 </div>
                                             </Popup>
-                                        )}
+                                        )
+                                        }
                                     </Marker>
                                 );
                             })}
@@ -1764,7 +1767,7 @@ function App() {
                                 </div>
 
                                 <div className="timeline-scrubber-row">
-                                    <button 
+                                    <button
                                         className="timeline-play-pause-btn"
                                         onClick={() => setIsPlaying(!isPlaying)}
                                     >
@@ -1772,7 +1775,7 @@ function App() {
                                     </button>
 
                                     <div className="scrubber-slider-container">
-                                        <input 
+                                        <input
                                             type="range"
                                             min="0"
                                             max={playbackPath.length - 1}
@@ -1806,7 +1809,7 @@ function App() {
                                         ))}
                                     </div>
 
-                                    <button 
+                                    <button
                                         className="timeline-close-btn"
                                         onClick={() => {
                                             setPlayIndex(-1);
@@ -1822,16 +1825,19 @@ function App() {
                         )}
                     </div>
                 </div>
-            )}
+            )
+            }
 
             {/* Share Link Modal */}
-            {showShareModal && shareTargetVehicle && (
-                <ShareLinkModal
-                    vehicle={shareTargetVehicle}
-                    onClose={() => { setShowShareModal(false); setShareTargetVehicle(null); }}
-                />
-            )}
-        </ErrorBoundary>
+            {
+                showShareModal && shareTargetVehicle && (
+                    <ShareLinkModal
+                        vehicle={shareTargetVehicle}
+                        onClose={() => { setShowShareModal(false); setShareTargetVehicle(null); }}
+                    />
+                )
+            }
+        </ErrorBoundary >
     );
 }
 

@@ -4,6 +4,7 @@ import axios from 'axios';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './AnalyticsDashboard.css';
 import Leaderboard from './Leaderboard';
+import { BarChartIcon, TrendingUpIcon } from './settings/Icons';
 
 const AnalyticsDashboard = ({ onBack, onOpenReports }) => {
     const [stats, setStats] = useState(null);
@@ -168,7 +169,7 @@ const AnalyticsDashboard = ({ onBack, onOpenReports }) => {
                                 e.currentTarget.style.boxShadow = 'none';
                             }}
                         >
-                            Reports 📊
+                            <BarChartIcon size={16} /> Reports
                         </button>
                     )}
                     <div className="analytics-tabs" style={{ display: 'flex', background: 'rgba(255, 255, 255, 0.05)', padding: '4px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
@@ -187,7 +188,7 @@ const AnalyticsDashboard = ({ onBack, onOpenReports }) => {
                                 fontSize: '0.9rem'
                             }}
                         >
-                            📊 Insights
+                            <TrendingUpIcon size={16} /> Insights
                         </button>
                         <button
                             className={`tab-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}
@@ -265,25 +266,7 @@ const AnalyticsDashboard = ({ onBack, onOpenReports }) => {
                                     className={timeRange === '7d' ? 'active' : ''}
                                     onClick={() => setTimeRange('7d')}
                                 >7 Days</button>
-                                <button
-                                    onClick={handleExportCSV}
-                                    style={{
-                                        background: 'linear-gradient(135deg, #10b981, #059669)',
-                                        border: 'none',
-                                        padding: '0.4rem 0.8rem',
-                                        borderRadius: '6px',
-                                        color: 'white',
-                                        cursor: 'pointer',
-                                        fontWeight: 'bold',
-                                        fontSize: '0.85rem',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.4rem',
-                                        marginLeft: '0.5rem'
-                                    }}
-                                >
-                                    📥 Export CSV
-                                </button>
+
                             </div>
                         </div>
 
