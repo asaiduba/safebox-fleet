@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { db } = require('../db');
 const { authMiddleware, getRequestUserId } = require('../middleware/auth');
 const { isWithinAllowedHours } = require('../utils/helpers');
+const { logAuditAction } = require('../utils/audit');
 
 // GET all vehicles for user
 router.get('/', authMiddleware, (req, res) => {
@@ -121,6 +122,8 @@ router.put('/:id', authMiddleware, (req, res) => {
       WHERE id = ?
     `).run(name || vehicleId, plateNumber || null, driverName || null, vehicleType || 'car', vehicleId);
 
+    logAuditAction(userId, req.user.username, 'update_vehicle', vehicleId, { name, plateNumber, driverName, vehicleType }, req);
+
     res.json({ success: true, message: 'Vehicle details updated successfully.' });
   } catch (err) {
     console.error("Update vehicle error:", err);
@@ -144,6 +147,9 @@ router.delete('/:id', authMiddleware, (req, res) => {
     db.prepare('DELETE FROM geofences WHERE vehicle_id = ?').run(vehicleId);
     db.prepare('DELETE FROM vehicle_history WHERE vehicle_id = ?').run(vehicleId);
     db.prepare('DELETE FROM vehicles WHERE id = ?').run(vehicleId);
+
+    logAuditAction(userId, req.user.username, 'delete_vehicle', vehicleId, { name: vehicle.name }, req);
+
     res.json({ success: true });
   } catch (err) {
     console.error('Delete vehicle error:', err);
@@ -280,6 +286,15 @@ router.post('/curfew', authMiddleware, (req, res) => {
     });
 
     transaction();
+
+    logAuditAction(
+      userId,
+      req.user.username,
+      curfewEnabled ? 'enable_curfew' : 'disable_curfew',
+      applyTo === 'all' ? 'all' : vehicleIds.join(','),
+      { curfewStart, curfewEnd, curfewDays, curfewAllowOverride, curfewHolidayMode },
+      req
+    );
 
     if (io) {
       io.to(`user_${userId}`).emit('billing-updated', { userId, vehicleIds });

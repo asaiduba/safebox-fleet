@@ -47,6 +47,42 @@ const AnalyticsDashboard = ({ onBack, onOpenReports }) => {
         }
     }, [timeRange]);
 
+    const handleExportCSV = async () => {
+        if (!selectedVehicleId) return;
+        try {
+            const token = localStorage.getItem('token');
+            let startTimestamp = 0;
+            if (timeRange === '24h') {
+                startTimestamp = Date.now() - 24 * 60 * 60 * 1000;
+            } else if (timeRange === '7d') {
+                startTimestamp = Date.now() - 7 * 24 * 60 * 60 * 1000;
+            }
+
+            const response = await axios.get(`${API_BASE}/api/exports/travel-history`, {
+                params: {
+                    vehicleId: selectedVehicleId,
+                    startDate: startTimestamp,
+                    endDate: Date.now()
+                },
+                headers: {
+                    Authorization: `Bearer ${token}`
+                },
+                responseType: 'blob'
+            });
+
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `travel_history_${selectedVehicleId}_${timeRange}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (err) {
+            console.error("Failed to export travel history CSV", err);
+            alert("Failed to export travel history CSV");
+        }
+    };
+
     useEffect(() => {
         Promise.resolve().then(() => {
             fetchStats();
@@ -220,7 +256,7 @@ const AnalyticsDashboard = ({ onBack, onOpenReports }) => {
                                     <option key={v.id} value={v.id}>{v.name} ({v.id})</option>
                                 ))}
                             </select>
-                            <div className="range-toggle">
+                            <div className="range-toggle" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                 <button
                                     className={timeRange === '24h' ? 'active' : ''}
                                     onClick={() => setTimeRange('24h')}
@@ -229,6 +265,25 @@ const AnalyticsDashboard = ({ onBack, onOpenReports }) => {
                                     className={timeRange === '7d' ? 'active' : ''}
                                     onClick={() => setTimeRange('7d')}
                                 >7 Days</button>
+                                <button
+                                    onClick={handleExportCSV}
+                                    style={{
+                                        background: 'linear-gradient(135deg, #10b981, #059669)',
+                                        border: 'none',
+                                        padding: '0.4rem 0.8rem',
+                                        borderRadius: '6px',
+                                        color: 'white',
+                                        cursor: 'pointer',
+                                        fontWeight: 'bold',
+                                        fontSize: '0.85rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.4rem',
+                                        marginLeft: '0.5rem'
+                                    }}
+                                >
+                                    📥 Export CSV
+                                </button>
                             </div>
                         </div>
 

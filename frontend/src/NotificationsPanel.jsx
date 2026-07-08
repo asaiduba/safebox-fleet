@@ -39,12 +39,34 @@ const getSeverity = (notif) => {
     return 'info';
 };
 
-const NotificationsPanel = ({ notifications, onClose, onMarkRead, onMarkAllRead }) => {
+const NotificationsPanel = ({ notifications, onClose, onMarkRead, onMarkAllRead, onExportAlerts }) => {
     return (
         <div className="notifications-panel">
             <div className="notifications-header">
                 <h3>Notifications</h3>
-                <div className="header-actions">
+                <div className="header-actions" style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                    <button 
+                        className="export-alerts-btn" 
+                        onClick={onExportAlerts}
+                        style={{
+                            background: 'linear-gradient(135deg, #10b981, #059669)',
+                            border: 'none',
+                            color: 'white',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            transition: 'opacity 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                    >
+                        📥 Export CSV
+                    </button>
                     {notifications.some(n => !n.is_read) && (
                         <button className="mark-all-btn" onClick={onMarkAllRead}>Mark all read</button>
                     )}

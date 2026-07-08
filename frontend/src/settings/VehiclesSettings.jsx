@@ -1,0 +1,206 @@
+import React from 'react';
+
+const getVehicleEmoji = (type) => {
+    switch (type?.toLowerCase()) {
+        case 'motorcycle': return '🏍️';
+        case 'tricycle': return '🛺';
+        case 'bus': return '🚌';
+        case 'truck': return '🚚';
+        case 'van': return '🚐';
+        case 'car':
+        default: return '🚗';
+    }
+};
+
+export default function VehiclesSettings({
+    editingVehicleId,
+    setEditingVehicleId,
+    billingVehicles = [],
+    handleStartEditVehicle,
+    editName,
+    setEditName,
+    editPlateNumber,
+    setEditPlateNumber,
+    editDriverName,
+    setEditDriverName,
+    editVehicleType,
+    setEditVehicleType,
+    vehicleSuccess,
+    vehicleError,
+    vehicleLoading,
+    handleSaveVehicleEdit
+}) {
+    return (
+        <div className="settings-form">
+            <div className="form-section">
+                <h3>🚗 Manage Registered Fleet Vehicles</h3>
+                <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: '1.4' }}>
+                    Select a vehicle from your registered fleet to update its name, license plate, assigned driver, or vehicle type icon.
+                </p>
+
+                {/* 1. Selector Dropdown */}
+                <div className="form-group" style={{ marginBottom: '2rem' }}>
+                    <label style={{ fontSize: '0.95rem', fontWeight: '600', color: '#f8fafc', marginBottom: '0.5rem', display: 'block' }}>
+                        Select Vehicle to Customize
+                    </label>
+                    <select 
+                        value={editingVehicleId || ''} 
+                        onChange={(e) => {
+                            const vId = e.target.value;
+                            if (!vId) {
+                                setEditingVehicleId(null);
+                            } else {
+                                const selectedV = billingVehicles.find(v => v.id === vId);
+                                if (selectedV) {
+                                    handleStartEditVehicle(selectedV);
+                                }
+                            }
+                        }}
+                        style={{ 
+                            background: '#1e293b', 
+                            color: 'white', 
+                            border: '1px solid #475569', 
+                            padding: '0.75rem', 
+                            borderRadius: '0.375rem', 
+                            width: '100%', 
+                            outline: 'none',
+                            fontSize: '1rem',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        <option value="">-- Choose a vehicle from your fleet --</option>
+                        {billingVehicles.map(v => (
+                            <option key={v.id} value={v.id}>
+                                {getVehicleEmoji(v.vehicle_type)} {v.name || v.id} ({v.plate_number || 'No Plate'}) — {v.id}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+
+                {/* 2. Edit Details Card (Only shown when a vehicle is selected) */}
+                {editingVehicleId ? (
+                    <div className="glass-panel edit-vehicle-card" style={{
+                        background: 'rgba(30, 41, 59, 0.4)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        borderRadius: '0.75rem',
+                        padding: '1.5rem',
+                        marginTop: '1rem',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '0.75rem' }}>
+                            <h4 style={{ margin: 0, fontSize: '1.1rem', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                🔧 Edit Details: {editName || editingVehicleId}
+                            </h4>
+                            <span style={{ fontSize: '0.8rem', color: '#64748b', fontFamily: 'monospace' }}>
+                                IMEI: {editingVehicleId}
+                            </span>
+                        </div>
+
+                        {vehicleSuccess && <div className="status-alert success" style={{ marginBottom: '1rem' }}>{vehicleSuccess}</div>}
+                        {vehicleError && <div className="status-alert error" style={{ marginBottom: '1rem' }}>{vehicleError}</div>}
+
+                        <form onSubmit={(e) => { e.preventDefault(); handleSaveVehicleEdit(editingVehicleId); }}>
+                            <div className="form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
+                                
+                                {/* Vehicle Name */}
+                                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                    <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Vehicle Name / Display Name</label>
+                                    <input 
+                                        type="text" 
+                                        value={editName} 
+                                        onChange={(e) => setEditName(e.target.value)}
+                                        placeholder="e.g. Delivery Van 01"
+                                        style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none' }}
+                                        required
+                                    />
+                                </div>
+
+                                {/* License Plate */}
+                                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                    <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>License Plate Number</label>
+                                    <input 
+                                        type="text" 
+                                        value={editPlateNumber} 
+                                        onChange={(e) => setEditPlateNumber(e.target.value)}
+                                        placeholder="e.g. LA-123-ENG"
+                                        style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none' }}
+                                    />
+                                </div>
+
+                                {/* Driver Name */}
+                                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                    <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Assigned Driver Name</label>
+                                    <input 
+                                        type="text" 
+                                        value={editDriverName} 
+                                        onChange={(e) => setEditDriverName(e.target.value)}
+                                        placeholder="e.g. John Doe"
+                                        style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none' }}
+                                    />
+                                </div>
+
+                                {/* Vehicle Type */}
+                                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                    <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Vehicle Category / Icon</label>
+                                    <select 
+                                        value={editVehicleType} 
+                                        onChange={(e) => setEditVehicleType(e.target.value)}
+                                        style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none', cursor: 'pointer' }}
+                                    >
+                                        <option value="car">🚗 Car</option>
+                                        <option value="motorcycle">🏍️ Motorcycle</option>
+                                        <option value="tricycle">🛺 Tricycle</option>
+                                        <option value="bus">🚌 Bus</option>
+                                        <option value="truck">🚚 Truck</option>
+                                        <option value="van">🚐 Van</option>
+                                    </select>
+                                </div>
+
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.75rem', justifyContent: 'flex-end' }}>
+                                <button 
+                                    type="button"
+                                    onClick={() => setEditingVehicleId(null)}
+                                    style={{ padding: '0.65rem 1.25rem', background: '#334155', color: '#f8fafc', border: 'none', borderRadius: '0.375rem', fontWeight: 'bold', cursor: 'pointer' }}
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    type="submit"
+                                    disabled={vehicleLoading}
+                                    style={{ 
+                                        padding: '0.65rem 1.5rem', 
+                                        background: 'linear-gradient(135deg, #3b82f6, #2563eb)', 
+                                        color: 'white', 
+                                        border: 'none', 
+                                        borderRadius: '0.375rem', 
+                                        fontWeight: 'bold', 
+                                        cursor: 'pointer',
+                                        boxShadow: '0 4px 12px rgba(59, 130, 246, 0.2)'
+                                    }}
+                                >
+                                    {vehicleLoading ? 'Saving Changes...' : '💾 Save Configurations'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                ) : (
+                    <div className="glass-panel" style={{
+                        background: 'rgba(30, 41, 59, 0.2)',
+                        border: '1px dashed rgba(255, 255, 255, 0.1)',
+                        borderRadius: '0.75rem',
+                        padding: '3rem 1.5rem',
+                        textAlign: 'center',
+                        color: '#64748b',
+                        marginTop: '1rem'
+                    }}>
+                        <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🚗</div>
+                        <p style={{ margin: 0 }}>Please select a vehicle from the dropdown above to edit its settings.</p>
+                    </div>
+                )}
+
+            </div>
+        </div>
+    );
+}

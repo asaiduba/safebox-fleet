@@ -444,6 +444,29 @@ function App() {
         );
     };
 
+    const handleExportAlerts = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await axios.get(`${API_BASE}/api/exports/alerts`, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                },
+                responseType: 'blob'
+            });
+
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `alerts_${Date.now()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (err) {
+            console.error("Failed to export alerts CSV", err);
+            alert("Failed to export alerts CSV");
+        }
+    };
+
     // Clean up playback timers on unmount, vehicle toggle, or history drawer close
     useEffect(() => {
         return () => {
@@ -1073,6 +1096,7 @@ function App() {
                             onClose={() => setShowNotifications(false)}
                             onMarkRead={handleMarkRead}
                             onMarkAllRead={handleMarkAllRead}
+                            onExportAlerts={handleExportAlerts}
                         />
                     )}
 

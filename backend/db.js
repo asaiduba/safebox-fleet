@@ -423,7 +423,22 @@ function initDb() {
             p256dh TEXT NOT NULL,
             auth TEXT NOT NULL,
             created_at INTEGER NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
+
+    // 17. Create Audit Logs Table (NEW - P3 System Audit Logging)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            username TEXT,
+            action TEXT NOT NULL,
+            target_id TEXT,
+            details TEXT,
+            ip_address TEXT,
+            timestamp INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
         );
     `);
 

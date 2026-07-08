@@ -2,52 +2,19 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import './SettingsPanel.css';
 
-const getVehicleEmoji = (type) => {
-    switch (type?.toLowerCase()) {
-        case 'motorcycle': return '🏍️';
-        case 'tricycle': return '🛺';
-        case 'bus': return '🚌';
-        case 'truck': return '🚚';
-        case 'van': return '🚐';
-        case 'car':
-        default: return '🚗';
-    }
-};
-
-const CURRENCY_SYMBOLS = {
-    'NGN': '₦',
-    'USD': '$',
-    'EUR': '€',
-    'GBP': '£',
-    'KES': 'KSh',
-    'RWF': 'FRw'
-};
-
-const getCurrencyPrice = (nairaAmount, currencyCode) => {
-    switch (currencyCode) {
-        case 'USD': return (nairaAmount / 1500); // 1 USD = 1500 NGN
-        case 'EUR': return (nairaAmount / 1600); // 1 EUR = 1600 NGN
-        case 'GBP': return (nairaAmount / 1900); // 1 GBP = 1900 NGN
-        case 'KES': return (nairaAmount / 11);   // 1 KES = 11 NGN
-        case 'RWF': return (nairaAmount / 1.15); // 1 RWF = 1.15 NGN
-        default: return nairaAmount;
-    }
-};
-
-const formatCurrencyValue = (nairaAmount, currencyCode) => {
-    const symbol = CURRENCY_SYMBOLS[currencyCode] || '₦';
-    const convertedVal = getCurrencyPrice(nairaAmount, currencyCode);
-    return `${symbol}${convertedVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
+// Import Modular Subcomponents
+import ProfileSettings from './settings/ProfileSettings';
+import NotificationSettings from './settings/NotificationSettings';
+import SafetySettings from './settings/SafetySettings';
+import CurfewSettings from './settings/CurfewSettings';
+import FuelSettings from './settings/FuelSettings';
+import BleSettings from './settings/BleSettings';
+import MaintenanceSettings from './settings/MaintenanceSettings';
+import VehiclesSettings from './settings/VehiclesSettings';
+import SupportSettings from './settings/SupportSettings';
+import BillingSettings from './settings/BillingSettings';
 
 export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUpdate }) {
-    const estimateDistance = (rssi) => {
-        if (!rssi) return null;
-        const txPower = -59; // Measured RSSI at 1 meter for Teltonika EYE Beacon
-        const n = 2.5; // Path loss exponent
-        const distance = Math.pow(10, (txPower - rssi) / (10 * n));
-        return parseFloat(distance.toFixed(1));
-    };
     const API_BASE = import.meta.env.VITE_API_URL || '';
 
     // Form States
@@ -69,7 +36,7 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
     const [fuelAlert, setFuelAlert] = useState(true);
     const [geofenceAlert, setGeofenceAlert] = useState(true);
 
-    // Notification preferences sync hooks
+    // Notification preferences sync hooks (P2)
     const [notifyEmail, setNotifyEmail] = useState(true);
     const [notifySms, setNotifySms] = useState(true);
     const [notifyPush, setNotifyPush] = useState(true);
@@ -81,7 +48,7 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
     const [pushLoading, setPushLoading] = useState(false);
     const isPushSupported = ('serviceWorker' in navigator) && ('PushManager' in window);
 
-    // Safety Thresholds (Admin only - saved to localStorage / simulated telemetry)
+    // Safety Thresholds (Admin only)
     const [speedLimit, setSpeedLimit] = useState(100);
     const [brakingThreshold, setBrakingThreshold] = useState(0.3);
     const [corneringThreshold, setCorneringThreshold] = useState(0.35);
@@ -190,7 +157,6 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
             });
 
             setVehicleSuccess('Vehicle details updated successfully!');
-            // We do NOT clear editingVehicleId anymore so that the card remains open showing the updated state and success message.
             fetchBillingStatus(); // Refresh vehicles list
         } catch (err) {
             console.error('Failed to update vehicle:', err);
@@ -402,7 +368,7 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
             });
 
             setCurfewMsg({ type: 'success', text: '🕒 Operating hours policy applied successfully!' });
-            fetchBillingStatus(); // refresh vehicles list to reflect updated curfew settings
+            fetchBillingStatus();
         } catch (err) {
             console.error('Failed to apply curfew settings:', err);
             setCurfewMsg({ type: 'error', text: err.response?.data?.error || 'Failed to apply curfew settings.' });
@@ -417,8 +383,6 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
             setSelectedVehicleId(billingVehicles[0].id);
         }
     }, [billingVehicles, selectedVehicleId]);
-
-    // Fetch maintenance reminders when vehicle changes (Moved down below fetchMaintenance definition)
 
     // Cache/Load support code on mount
     useEffect(() => {
@@ -615,7 +579,6 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
             setPaymentHistory(res.data.history || []);
             setPricePerVehicle(res.data.pricePerVehicle || 3000);
             
-            // Check all active or grace period vehicles by default
             const initialSelected = new Set();
             res.data.vehicles?.forEach(v => {
                 if (v.subscription_status !== 'SUSPENDED' && v.subscription_status !== 'EXPIRED') {
@@ -670,7 +633,6 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
                 billingCycle
             });
 
-            // Redirect to checkout URL
             if (res.data.authorization_url) {
                 window.location.href = res.data.authorization_url;
             } else {
@@ -758,7 +720,6 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
         setStatusMsg({ type: '', text: '' });
         
         try {
-            // 1. Request Browser Notifications permission
             const permission = await Notification.requestPermission();
             if (permission !== 'granted') {
                 setStatusMsg({ type: 'error', text: 'Browser notification permission denied.' });
@@ -766,28 +727,23 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
                 return;
             }
 
-            // 2. Register Service Worker explicitly
             console.log('Registering push service worker...');
             const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
             console.log('Service Worker registered successfully!', reg);
 
-            // 3. Fetch VAPID Public Key from server
             const keyRes = await axios.get(`${API_BASE}/api/notifications/vapid-public-key`);
             const applicationServerKey = urlBase64ToUint8Array(keyRes.data.publicKey);
 
-            // 4. Enroll Browser Push Manager
             const subscription = await reg.pushManager.subscribe({
                 userVisibleOnly: true,
                 applicationServerKey
             });
 
-            // 5. Send subscription to server
             await axios.post(`${API_BASE}/api/notifications/subscribe`, { subscription });
             
             setPushSubscriptionActive(true);
             setStatusMsg({ type: 'success', text: '🔔 Registered for push notifications! Attempting to fire test notification...' });
             
-            // 6. Automatically trigger a test notification
             await axios.post(`${API_BASE}/api/notifications/test-push`);
         } catch (err) {
             console.error('Push registration failure:', err);
@@ -830,7 +786,6 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
             }
 
             try {
-                // Request OTP code
                 const res = await axios.post(`${API_BASE}/api/profile/request-password-change-otp`, {
                     oldPassword
                 });
@@ -959,6 +914,14 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
         }
     };
 
+    const estimateDistance = (rssi) => {
+        if (!rssi) return null;
+        const txPower = -59; // Measured RSSI at 1 meter for Teltonika EYE Beacon
+        const n = 2.5; // Path loss exponent
+        const distance = Math.pow(10, (txPower - rssi) / (10 * n));
+        return parseFloat(distance.toFixed(1));
+    };
+
     return (
         <div className="settings-overlay">
             <div className="settings-container">
@@ -975,6 +938,13 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
                             onClick={() => setActiveTab('general')}
                         >
                             👤 General Settings
+                        </button>
+                        <button 
+                            type="button" 
+                            className={`sidebar-tab ${activeTab === 'notifications' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('notifications')}
+                        >
+                            🔔 Notifications Preferences
                         </button>
                         <button 
                             type="button" 
@@ -1017,7 +987,7 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
                             disabled={user?.subscription_status === 'SUSPENDED'}
                             style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
-                            ⛽ Fuel & Cost
+                            Based Fuel & Cost
                         </button>
                         <button 
                             type="button" 
@@ -1040,1675 +1010,236 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
                     </aside>
 
                     <div className="settings-content-wrapper">
-                        {statusMsg.text && (activeTab === 'general' || activeTab === 'thresholds') && (
-                            <div className={`status-alert ${statusMsg.type}`}>
-                                {statusMsg.text}
-                            </div>
+                        {activeTab === 'general' && (
+                            <ProfileSettings
+                                user={user}
+                                email={email}
+                                setEmail={setEmail}
+                                phone={phone}
+                                setPhone={setPhone}
+                                companyName={companyName}
+                                setCompanyName={setCompanyName}
+                                currency={currency}
+                                setCurrency={setCurrency}
+                                password={password}
+                                setPassword={setPassword}
+                                confirmPassword={confirmPassword}
+                                setConfirmPassword={setConfirmPassword}
+                                oldPassword={oldPassword}
+                                setOldPassword={setOldPassword}
+                                showOTPModal={showOTPModal}
+                                setShowOTPModal={setShowOTPModal}
+                                otpCode={otpCode}
+                                setOtpCode={setOtpCode}
+                                otpLoading={otpLoading}
+                                setOtpLoading={setOtpLoading}
+                                otpError={otpError}
+                                setOtpError={setOtpError}
+                                settingsFallbackCode={settingsFallbackCode}
+                                setSettingsFallbackCode={setSettingsFallbackCode}
+                                handleSave={handleSave}
+                                handleConfirmPasswordChange={handleConfirmPasswordChange}
+                                loading={loading}
+                                statusMsg={statusMsg}
+                            />
                         )}
 
-                        {activeTab === 'general' && (
-                            <form onSubmit={handleSave} className="settings-form">
-                                {/* SECTION 1: USER ACCOUNT */}
-                                <div className="form-section">
-                                    <h3>👤 Account Settings</h3>
-                                    
-                                    <div className="form-group-row">
-                                        <div className="form-group">
-                                            <label>Username</label>
-                                            <input type="text" value={user.username} disabled className="disabled-input" />
-                                        </div>
-                                        <div className="form-group">
-                                            <label>Account Role</label>
-                                            <input type="text" value={user.role.toUpperCase()} disabled className="disabled-input" />
-                                        </div>
-                                    </div>
-
-                                    {user.role === 'company' && (
-                                        <div className="form-group">
-                                            <label>Company Name</label>
-                                            <input 
-                                                type="text" 
-                                                value={companyName} 
-                                                onChange={(e) => setCompanyName(e.target.value)} 
-                                                placeholder="Enter your organization name"
-                                            />
-                                        </div>
-                                    )}
-
-                                    <div className="form-group">
-                                        <label>Email Address</label>
-                                        <input 
-                                            type="email" 
-                                            value={email} 
-                                            onChange={(e) => setEmail(e.target.value)} 
-                                            placeholder="name@example.com"
-                                        />
-                                    </div>
-
-                                    <div className="form-group">
-                                        <label>Global Currency Preference</label>
-                                        <select
-                                            value={currency}
-                                            onChange={(e) => setCurrency(e.target.value)}
-                                            className="settings-input"
-                                            style={{
-                                                width: '100%',
-                                                padding: '0.55rem 0.75rem',
-                                                borderRadius: '0.375rem',
-                                                background: '#0f172a',
-                                                border: '1px solid #334155',
-                                                color: 'white',
-                                                fontSize: '0.875rem',
-                                                outline: 'none',
-                                                transition: 'border-color 0.2s'
-                                            }}
-                                        >
-                                            <option value="NGN">Nigerian Naira (₦ - NGN)</option>
-                                            <option value="USD">US Dollar ($ - USD)</option>
-                                            <option value="EUR">Euro (€ - EUR)</option>
-                                            <option value="GBP">British Pound (£ - GBP)</option>
-                                            <option value="KES">Kenyan Shilling (KSh - KES)</option>
-                                            <option value="RWF">Rwandan Franc (FRw - RWF)</option>
-                                        </select>
-                                        <small className="help-text" style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
-                                            This currency choice will reflect across all fleet billing, pricing options, and generated PDF/CSV reports.
-                                        </small>
-                                    </div>
-                                </div>
-
-                                {/* SECTION 2: TELEMETRY & BACKUP PHONES */}
-                                <div className="form-section">
-                                    <h3>📱 SMS Backup & Telemetry</h3>
-                                    <p className="section-subtitle">Configure emergency command protocols and safety parameters.</p>
-                                    
-                                    <div className="form-group">
-                                        <label>Authorized Backup SMS Phone Number</label>
-                                        <input 
-                                            type="tel" 
-                                            value={phone} 
-                                            onChange={(e) => setPhone(e.target.value)} 
-                                            placeholder="+250 788 123 456"
-                                        />
-                                        <small className="help-text">Any SMS emergency cutoff request sent from this number will be authenticated by the SafeBox node.</small>
-                                    </div>
-                                </div>
-
-                                {/* SECTION 3: NOTIFICATION ALERTS */}
-                                <div className="form-section">
-                                    <h3>🔔 Notification Triggers</h3>
-                                    <p className="section-subtitle">Toggle real-time alerts shown on your browser dashboard.</p>
-                                    
-                                    <div className="toggle-group">
-                                        <div className="toggle-item">
-                                            <div className="toggle-info">
-                                                <span className="toggle-title">Low Battery Alert</span>
-                                                <span className="toggle-desc">Notify if vehicle voltage falls below 20%.</span>
-                                            </div>
-                                            <label className="switch">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={batteryAlert} 
-                                                    onChange={(e) => setBatteryAlert(e.target.checked)} 
-                                                />
-                                                <span className="slider round"></span>
-                                            </label>
-                                        </div>
-
-                                        <div className="toggle-item">
-                                            <div className="toggle-info">
-                                                <span className="toggle-title">Low Fuel Alert</span>
-                                                <span className="toggle-desc">Notify if fuel tank drops below 15%.</span>
-                                            </div>
-                                            <label className="switch">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={fuelAlert} 
-                                                    onChange={(e) => setFuelAlert(e.target.checked)} 
-                                                />
-                                                <span className="slider round"></span>
-                                            </label>
-                                        </div>
-
-                                        <div className="toggle-item">
-                                            <div className="toggle-info">
-                                                <span className="toggle-title">Geofence Safe Zone Breach</span>
-                                                <span className="toggle-desc">Notify instantly if a vehicle leaves safe zones.</span>
-                                            </div>
-                                            <label className="switch">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={geofenceAlert} 
-                                                    onChange={(e) => setGeofenceAlert(e.target.checked)} 
-                                                />
-                                                <span className="slider round"></span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* SECTION 4: ALERT DELIVERY CHANNELS */}
-                                <div className="form-section">
-                                    <h3>📡 Alert Delivery Channels</h3>
-                                    <p className="section-subtitle">Choose where and how to receive security, speed, and geofence alerts.</p>
-                                    
-                                    <div className="toggle-group" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                                        {/* Email Channel */}
-                                        <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '1rem' }}>
-                                            <div className="toggle-item">
-                                                <div className="toggle-info">
-                                                    <span className="toggle-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '600' }}>✉️ Email Alerts</span>
-                                                    <span className="toggle-desc">Receive real-time security alerts in your mailbox.</span>
-                                                </div>
-                                                <label className="switch">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={notifyEmail} 
-                                                        onChange={(e) => setNotifyEmail(e.target.checked)} 
-                                                    />
-                                                    <span className="slider round"></span>
-                                                </label>
-                                            </div>
-                                            {notifyEmail && (
-                                                <div className="form-group" style={{ marginLeft: '1rem', marginTop: '0.8rem', paddingLeft: '0.5rem', borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
-                                                    <label style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Custom Alert Recipient Email</label>
-                                                    <input 
-                                                        type="email" 
-                                                        value={alertEmail} 
-                                                        onChange={(e) => setAlertEmail(e.target.value)} 
-                                                        placeholder={defaultEmail || "alerts@yourcompany.com"}
-                                                        style={{ marginTop: '0.25rem' }}
-                                                    />
-                                                    <small className="help-text" style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                                                        Leave blank to use default account email: <strong>{defaultEmail || user.email}</strong>
-                                                    </small>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* SMS Channel */}
-                                        <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '1rem' }}>
-                                            <div className="toggle-item">
-                                                <div className="toggle-info">
-                                                    <span className="toggle-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '600' }}>📱 SMS Text Alerts</span>
-                                                    <span className="toggle-desc">Receive urgent SMS alerts on your phone.</span>
-                                                </div>
-                                                <label className="switch">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={notifySms} 
-                                                        onChange={(e) => setNotifySms(e.target.checked)} 
-                                                    />
-                                                    <span className="slider round"></span>
-                                                </label>
-                                            </div>
-                                            {notifySms && (
-                                                <div className="form-group" style={{ marginLeft: '1rem', marginTop: '0.8rem', paddingLeft: '0.5rem', borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
-                                                    <label style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Custom Alert Recipient Phone Number</label>
-                                                    <input 
-                                                        type="tel" 
-                                                        value={alertPhone} 
-                                                        onChange={(e) => setAlertPhone(e.target.value)} 
-                                                        placeholder={defaultPhone || "+234 803 123 4567"}
-                                                        style={{ marginTop: '0.25rem' }}
-                                                    />
-                                                    <small className="help-text" style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                                                        Leave blank to use default account phone: <strong>{defaultPhone || user.phone}</strong>
-                                                    </small>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Push Channel */}
-                                        <div>
-                                            <div className="toggle-item">
-                                                <div className="toggle-info">
-                                                    <span className="toggle-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '600' }}>🔔 Browser Push Notifications</span>
-                                                    <span className="toggle-desc">Receive real-time desktop popups when tracking dashboard is open.</span>
-                                                </div>
-                                                <label className="switch">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={notifyPush} 
-                                                        onChange={(e) => setNotifyPush(e.target.checked)} 
-                                                    />
-                                                    <span className="slider round"></span>
-                                                </label>
-                                            </div>
-                                            
-                                            {notifyPush && isPushSupported && (
-                                                <div style={{ marginLeft: '1rem', marginTop: '0.8rem', paddingLeft: '0.5rem', borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
-                                                    {pushSubscriptionActive ? (
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#10b981', fontSize: '0.8rem', fontWeight: '600' }}>
-                                                            <span>🟢 Browser Push Enrolled Successfully</span>
-                                                            <button 
-                                                                type="button"
-                                                                onClick={handleTestPush}
-                                                                className="btn-secondary"
-                                                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.7rem', height: 'auto', background: 'rgba(255,255,255,0.05)', color: '#f8fafc', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', cursor: 'pointer' }}
-                                                            >
-                                                                Test Alert
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleEnrollPush}
-                                                            disabled={pushLoading}
-                                                            className="btn-primary"
-                                                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', height: 'auto', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                                                        >
-                                                            {pushLoading ? 'Enrolling...' : 'Register this Browser for Push Alerts'}
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            )}
-                                            {notifyPush && !isPushSupported && (
-                                                <div style={{ marginLeft: '1rem', marginTop: '0.5rem', color: '#f59e0b', fontSize: '0.75rem' }}>
-                                                    ⚠️ Push Notifications not supported by your current browser or protocol connection.
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* SECTION 5: SECURITY CHANGE PASSWORD */}
-                                <div className="form-section">
-                                    <h3>🔑 Change Password</h3>
-                                    <div className="form-group current-password-group" style={{ marginBottom: '1.25rem' }}>
-                                        <label>Current Password</label>
-                                        <input 
-                                            type="password" 
-                                            value={oldPassword} 
-                                            onChange={(e) => setOldPassword(e.target.value)} 
-                                            placeholder="Enter current password to authorize password change"
-                                        />
-                                    </div>
-                                    <div className="form-group-row">
-                                        <div className="form-group">
-                                            <label>New Password</label>
-                                            <input 
-                                                type="password" 
-                                                value={password} 
-                                                onChange={(e) => setPassword(e.target.value)} 
-                                                placeholder="Enter new password"
-                                            />
-                                        </div>
-                                        <div className="form-group">
-                                            <label>Confirm Password</label>
-                                            <input 
-                                                type="password" 
-                                                value={confirmPassword} 
-                                                onChange={(e) => setConfirmPassword(e.target.value)} 
-                                                placeholder="Confirm new password"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <footer className="settings-footer">
-                                    <button type="button" className="cancel-btn" onClick={onBack}>Cancel</button>
-                                    <button type="submit" className="save-btn" disabled={loading}>
-                                        {loading ? 'Saving...' : 'Save Settings'}
-                                    </button>
-                                </footer>
-                            </form>
+                        {activeTab === 'notifications' && (
+                            <NotificationSettings
+                                batteryAlert={batteryAlert}
+                                setBatteryAlert={setBatteryAlert}
+                                fuelAlert={fuelAlert}
+                                setFuelAlert={setFuelAlert}
+                                geofenceAlert={geofenceAlert}
+                                setGeofenceAlert={setGeofenceAlert}
+                                notifyEmail={notifyEmail}
+                                setNotifyEmail={setNotifyEmail}
+                                notifySms={notifySms}
+                                setNotifySms={setNotifySms}
+                                notifyPush={notifyPush}
+                                setNotifyPush={setNotifyPush}
+                                alertEmail={alertEmail}
+                                setAlertEmail={setAlertEmail}
+                                alertPhone={alertPhone}
+                                setAlertPhone={setAlertPhone}
+                                defaultEmail={defaultEmail}
+                                defaultPhone={defaultPhone}
+                                pushSubscriptionActive={pushSubscriptionActive}
+                                pushLoading={pushLoading}
+                                isPushSupported={isPushSupported}
+                                handleEnrollPush={handleEnrollPush}
+                                handleTestPush={handleTestPush}
+                                handleSave={handleSave}
+                                loading={loading}
+                                statusMsg={statusMsg}
+                                user={user}
+                            />
                         )}
 
                         {activeTab === 'thresholds' && (
-                            <div className="settings-form">
-                                {user.role === 'company' && (
-                                    <form onSubmit={handleSave} style={{ marginBottom: '2rem' }}>
-                                        <div className="form-section admin-section">
-                                            <h3>🛡️ Admin Safety Thresholds</h3>
-                                            <p className="section-subtitle font-admin">Configure dynamic G-Force and speed triggers for safety scoring.</p>
-
-                                    <div className="slider-group">
-                                        <div className="slider-item">
-                                            <div className="slider-header">
-                                                <span className="slider-title">Speed Limit Threshold</span>
-                                                <span className="slider-value">{speedLimit} km/h</span>
-                                            </div>
-                                            <input 
-                                                type="range" 
-                                                min="60" 
-                                                max="140" 
-                                                value={speedLimit} 
-                                                onChange={(e) => setSpeedLimit(Number(e.target.value))} 
-                                                className="styled-range"
-                                            />
-                                        </div>
-
-                                        <div className="slider-item">
-                                            <div className="slider-header">
-                                                <span className="slider-title">Harsh Braking Sensitivity</span>
-                                                <span className="slider-value">{brakingThreshold} g</span>
-                                            </div>
-                                            <input 
-                                                type="range" 
-                                                min="0.20" 
-                                                max="0.50" 
-                                                step="0.01" 
-                                                value={brakingThreshold} 
-                                                onChange={(e) => setBrakingThreshold(Number(e.target.value))} 
-                                                className="styled-range"
-                                            />
-                                        </div>
-
-                                        <div className="slider-item">
-                                            <div className="slider-header">
-                                                <span className="slider-title">Harsh Cornering Sensitivity</span>
-                                                <span className="slider-value">{corneringThreshold} g</span>
-                                            </div>
-                                            <input 
-                                                type="range" 
-                                                min="0.25" 
-                                                max="0.50" 
-                                                step="0.01" 
-                                                value={corneringThreshold} 
-                                                onChange={(e) => setCorneringThreshold(Number(e.target.value))} 
-                                                className="styled-range"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                                <footer className="settings-footer" style={{ padding: '1rem 0', background: 'transparent', borderTop: '1px solid rgba(255,255,255,0.05)', marginBottom: '2rem' }}>
-                                            <button type="submit" className="save-btn" disabled={loading}>
-                                                {loading ? 'Saving...' : 'Save Safety Thresholds'}
-                                            </button>
-                                        </footer>
-                                    </form>
-                                )}
-
-                                <div className="form-section admin-section curfew-section" style={{ marginTop: user.role === 'company' ? '2rem' : '0' }}>
-                                    <h3>🕒 Vehicle Access Policy (Operating Hours)</h3>
-                                    <p className="section-subtitle font-admin">Configure fleet operating hours. New engine starts outside allowed times or on unselected days will be blocked, and drivers can request real-time overrides from managers.</p>
-
-                                    {curfewMsg.text && (
-                                        <div className={`status-alert ${curfewMsg.type}`} style={{ marginBottom: '1.25rem' }}>
-                                            {curfewMsg.text}
-                                        </div>
-                                    )}
-
-                                    <div className="toggle-group" style={{ marginBottom: '1.5rem' }}>
-                                        <div className="toggle-item">
-                                            <div className="toggle-info">
-                                                <span className="toggle-title">Enable Operating Hours Restriction</span>
-                                                <span className="toggle-desc">Immobilize selected vehicles outside allowed times/days.</span>
-                                            </div>
-                                            <label className="switch">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={curfewEnabled} 
-                                                    onChange={(e) => setCurfewEnabled(e.target.checked)} 
-                                                />
-                                                <span className="slider round"></span>
-                                            </label>
-                                        </div>
-                                    </div>
-
-                                    <div className="form-group-row" style={{ marginBottom: '1.5rem' }}>
-                                        <div className="form-group">
-                                            <label>Allowed Operations Start Time</label>
-                                            <input 
-                                                type="time" 
-                                                value={curfewStart}
-                                                onChange={(e) => setCurfewStart(e.target.value)}
-                                                className="styled-time-input"
-                                                disabled={!curfewEnabled}
-                                            />
-                                        </div>
-                                        <div className="form-group">
-                                            <label>Allowed Operations End Time</label>
-                                            <input 
-                                                type="time" 
-                                                value={curfewEnd}
-                                                onChange={(e) => setCurfewEnd(e.target.value)}
-                                                className="styled-time-input"
-                                                disabled={!curfewEnabled}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-                                        <label style={{ marginBottom: '0.5rem', display: 'block' }}>Active Policy Days</label>
-                                        <div className="days-selector-row" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
-                                                const isActive = curfewDays.includes(day);
-                                                return (
-                                                    <button
-                                                        type="button"
-                                                        key={day}
-                                                        className={`day-pill-btn ${isActive ? 'active' : ''}`}
-                                                        onClick={() => {
-                                                            if (isActive) {
-                                                                setCurfewDays(curfewDays.filter(d => d !== day));
-                                                            } else {
-                                                                setCurfewDays([...curfewDays, day]);
-                                                            }
-                                                        }}
-                                                        disabled={!curfewEnabled}
-                                                        style={{
-                                                            padding: '0.4rem 1rem',
-                                                            border: isActive ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
-                                                            borderRadius: '2rem',
-                                                            background: isActive ? 'rgba(59,130,246,0.2)' : 'transparent',
-                                                            color: isActive ? '#60a5fa' : '#94a3b8',
-                                                            cursor: curfewEnabled ? 'pointer' : 'default',
-                                                            fontWeight: 'bold',
-                                                            transition: 'all 0.2s ease',
-                                                            opacity: curfewEnabled ? 1 : 0.5
-                                                        }}
-                                                    >
-                                                        {day}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-
-                                    <div className="toggle-group" style={{ marginBottom: '1.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                        <div className="toggle-item" style={{ border: '1px solid rgba(255,255,255,0.05)', padding: '0.75rem', borderRadius: '0.5rem' }}>
-                                            <div className="toggle-info">
-                                                <span className="toggle-title" style={{ fontSize: '0.9rem' }}>Allow Manager Overrides</span>
-                                                <span className="toggle-desc" style={{ fontSize: '0.75rem' }}>Drivers can request start codes.</span>
-                                            </div>
-                                            <label className="switch">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={curfewAllowOverride} 
-                                                    onChange={(e) => setCurfewAllowOverride(e.target.checked)} 
-                                                    disabled={!curfewEnabled}
-                                                />
-                                                <span className="slider round"></span>
-                                            </label>
-                                        </div>
-                                        <div className="toggle-item" style={{ border: '1px solid rgba(255,255,255,0.05)', padding: '0.75rem', borderRadius: '0.5rem' }}>
-                                            <div className="toggle-info">
-                                                <span className="toggle-title" style={{ fontSize: '0.9rem' }}>Holiday Restrict Mode</span>
-                                                <span className="toggle-desc" style={{ fontSize: '0.75rem' }}>Block starting on holidays.</span>
-                                            </div>
-                                            <label className="switch">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={curfewHolidayMode} 
-                                                    onChange={(e) => setCurfewHolidayMode(e.target.checked)} 
-                                                    disabled={!curfewEnabled}
-                                                />
-                                                <span className="slider round"></span>
-                                            </label>
-                                        </div>
-                                    </div>
-
-                                    <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-                                        <label style={{ marginBottom: '0.5rem', display: 'block' }}>Apply Access Policy To</label>
-                                        <div style={{ display: 'flex', gap: '2rem', marginTop: '0.25rem' }}>
-                                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: curfewEnabled ? 'pointer' : 'default', opacity: curfewEnabled ? 1 : 0.5 }}>
-                                                <input 
-                                                    type="radio" 
-                                                    name="applyTo" 
-                                                    value="all" 
-                                                    checked={applyTo === 'all'} 
-                                                    onChange={() => curfewEnabled && setApplyTo('all')}
-                                                    disabled={!curfewEnabled}
-                                                />
-                                                <span>All Vehicles</span>
-                                            </label>
-                                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: curfewEnabled ? 'pointer' : 'default', opacity: curfewEnabled ? 1 : 0.5 }}>
-                                                <input 
-                                                    type="radio" 
-                                                    name="applyTo" 
-                                                    value="selected" 
-                                                    checked={applyTo === 'selected'} 
-                                                    onChange={() => curfewEnabled && setApplyTo('selected')}
-                                                    disabled={!curfewEnabled}
-                                                />
-                                                <span>Selected Vehicles</span>
-                                            </label>
-                                        </div>
-                                    </div>
-
-                                    {applyTo === 'selected' && (
-                                        <div className="curfew-vehicles-checklist" style={{ animation: 'fadeIn 0.3s ease' }}>
-                                            <div className="billing-header-row" style={{ padding: '0 0.5rem 0.5rem 0.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: '0.75rem' }}>
-                                                <button 
-                                                    type="button" 
-                                                    className="select-all-btn"
-                                                    onClick={handleSelectAllCurfew}
-                                                    disabled={!curfewEnabled}
-                                                >
-                                                    {selectedCurfewVehicleIds.size === billingVehicles.length ? 'Deselect All' : 'Select All'}
-                                                </button>
-                                                <span className="selected-count-label">
-                                                    Selected: <strong>{selectedCurfewVehicleIds.size}</strong> / {billingVehicles.length} vehicles
-                                                </span>
-                                            </div>
-
-                                            {billingVehicles.length === 0 ? (
-                                                <p className="no-vehicles-text" style={{ padding: '1rem', textAlign: 'center', color: '#94a3b8' }}>
-                                                    No vehicles registered. Register vehicles to manage access policies.
-                                                </p>
-                                            ) : (
-                                                <div className="curfew-vehicles-grid">
-                                                    {billingVehicles.map(v => {
-                                                        const isChecked = selectedCurfewVehicleIds.has(v.id);
-                                                        return (
-                                                            <div 
-                                                                key={v.id} 
-                                                                className={`curfew-vehicle-card ${isChecked ? 'selected' : ''} ${!curfewEnabled ? 'disabled' : ''}`}
-                                                                onClick={() => curfewEnabled && handleCurfewVehicleToggle(v.id)}
-                                                            >
-                                                                <div className="card-left">
-                                                                    <input 
-                                                                        type="checkbox" 
-                                                                        checked={isChecked}
-                                                                        disabled={!curfewEnabled}
-                                                                        onChange={() => {}} 
-                                                                    />
-                                                                    <div className="card-meta">
-                                                                        <span className="v-name">{v.name}</span>
-                                                                        <span className="v-id">{v.id} {v.plate_number ? `• ${v.plate_number}` : ''}</span>
-                                                                    </div>
-                                                                </div>
-                                                                <div className="card-right">
-                                                                    {v.curfew_enabled ? (
-                                                                        <span className="curfew-badge active">
-                                                                            🕒 Active
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span className="curfew-badge inactive">
-                                                                            🔓 Off
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    <div className="curfew-action-row" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
-                                        <button 
-                                            type="button" 
-                                            className="apply-curfew-btn"
-                                            onClick={handleApplyCurfew}
-                                            disabled={curfewLoading}
-                                        >
-                                            {curfewLoading ? 'Applying...' : 'Apply Access Policy'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+                            <>
+                                <SafetySettings
+                                    speedLimit={speedLimit}
+                                    setSpeedLimit={setSpeedLimit}
+                                    brakingThreshold={brakingThreshold}
+                                    setBrakingThreshold={setBrakingThreshold}
+                                    corneringThreshold={corneringThreshold}
+                                    setCorneringThreshold={setCorneringThreshold}
+                                    handleSave={handleSave}
+                                    loading={loading}
+                                    user={user}
+                                />
+                                <CurfewSettings
+                                    curfewEnabled={curfewEnabled}
+                                    setCurfewEnabled={setCurfewEnabled}
+                                    curfewStart={curfewStart}
+                                    setCurfewStart={setCurfewStart}
+                                    curfewEnd={curfewEnd}
+                                    setCurfewEnd={setCurfewEnd}
+                                    curfewDays={curfewDays}
+                                    setCurfewDays={setCurfewDays}
+                                    curfewAllowOverride={curfewAllowOverride}
+                                    setCurfewAllowOverride={setCurfewAllowOverride}
+                                    curfewHolidayMode={curfewHolidayMode}
+                                    setCurfewHolidayMode={setCurfewHolidayMode}
+                                    applyTo={applyTo}
+                                    setApplyTo={setApplyTo}
+                                    selectedCurfewVehicleIds={selectedCurfewVehicleIds}
+                                    handleCurfewVehicleToggle={handleCurfewVehicleToggle}
+                                    handleSelectAllCurfew={handleSelectAllCurfew}
+                                    handleApplyCurfew={handleApplyCurfew}
+                                    curfewLoading={curfewLoading}
+                                    curfewMsg={curfewMsg}
+                                    billingVehicles={billingVehicles}
+                                />
+                            </>
                         )}
 
                         {activeTab === 'billing' && (
-                            <div className="settings-form">
-                                <div className="form-section billing-section">
-                                    <h3>💳 Fleet Billing Manager</h3>
-                                    <p className="section-subtitle">Manage automated payments and selective vehicle tracking suspensions.</p>
-
-                                    <div className="billing-cycle-selector">
-                                        <button 
-                                            type="button" 
-                                            className={`cycle-pill ${billingCycle === 'monthly' ? 'active' : ''}`}
-                                            onClick={() => setBillingCycle('monthly')}
-                                        >
-                                            Monthly Plan
-                                        </button>
-                                        <button 
-                                            type="button" 
-                                            className={`cycle-pill ${billingCycle === 'annual' ? 'active' : ''}`}
-                                            onClick={() => setBillingCycle('annual')}
-                                        >
-                                            Annual Plan (Save 16%) 🎁
-                                        </button>
-                                    </div>
-
-                                    {billingMsg.text && (
-                                        <div className={`status-alert ${billingMsg.type}`} style={{ margin: '0.5rem 0' }}>
-                                            {billingMsg.text}
-                                        </div>
-                                    )}
-
-                                    {billingVehicles.length === 0 ? (
-                                        <p className="billing-no-vehicles">No vehicles registered yet. Register a vehicle to configure payments.</p>
-                                    ) : (
-                                        <>
-                                            <div className="billing-header-row">
-                                                <button 
-                                                    type="button" 
-                                                    className="select-all-btn"
-                                                    onClick={handleSelectAllBilling}
-                                                >
-                                                    {selectedBillingIds.size === billingVehicles.length ? 'Deselect All' : 'Select All'}
-                                                </button>
-                                                <span className="selected-count-label">
-                                                    Selected: <strong>{selectedBillingIds.size}</strong> / {billingVehicles.length} vehicles
-                                                </span>
-                                            </div>
-
-                                            <div className="billing-grid">
-                                                {billingVehicles.map(v => {
-                                                    const isChecked = selectedBillingIds.has(v.id);
-                                                    
-                                                    let billingLabel = '';
-                                                    if (v.subscription_status === 'ACTIVE') {
-                                                        if (v.next_billing_date) {
-                                                            const days = Math.ceil((v.next_billing_date - Date.now()) / (1000 * 60 * 60 * 24));
-                                                            billingLabel = days > 0 ? `${days} days left` : 'Expiring today';
-                                                        } else {
-                                                            billingLabel = 'Trial Active 🎁';
-                                                        }
-                                                    } else if (v.subscription_status === 'GRACE_PERIOD' && v.grace_period_expires) {
-                                                        const days = Math.ceil((v.grace_period_expires - Date.now()) / (1000 * 60 * 60 * 24));
-                                                        billingLabel = `Grace Period: ${days}d left`;
-                                                    } else {
-                                                        billingLabel = 'Suspended 🚫';
-                                                    }
-
-                                                    return (
-                                                        <div 
-                                                            key={v.id} 
-                                                            className={`billing-card-item ${isChecked ? 'selected' : ''}`}
-                                                            onClick={() => handleVehicleToggle(v.id)}
-                                                        >
-                                                            <div className="billing-card-left">
-                                                                <input 
-                                                                    type="checkbox" 
-                                                                    checked={isChecked}
-                                                                    onChange={() => {}} 
-                                                                />
-                                                                <div className="billing-card-meta">
-                                                                    <span className="b-name">{v.name}</span>
-                                                                    {v.plate_number && <span className="b-plate">{v.plate_number}</span>}
-                                                                </div>
-                                                            </div>
-                                                            <div className="billing-card-right">
-                                                                <span className={`billing-badge ${v.subscription_status.toLowerCase()}`}>
-                                                                    {v.subscription_status}
-                                                                </span>
-                                                                <span className="billing-days">{billingLabel}</span>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-
-                                            <div className="billing-checkout-summary">
-                                                <div className="summary-details">
-                                                    <span>Plan Rate:</span>
-                                                    <strong>{formatCurrencyValue(pricePerVehicle, currency)}/vehicle{billingCycle === 'annual' ? '/year' : '/month'}</strong>
-                                                </div>
-                                                <div className="summary-details total">
-                                                    <span>Total Renewal Amount:</span>
-                                                    <strong>{formatCurrencyValue(selectedBillingIds.size * pricePerVehicle, currency)}{billingCycle === 'annual' ? '/year' : '/month'}</strong>
-                                                </div>
-                                                <button 
-                                                    type="button" 
-                                                    className="checkout-pay-btn"
-                                                    disabled={billingLoading || selectedBillingIds.size === 0}
-                                                    onClick={handleBulkCheckout}
-                                                >
-                                                    {billingLoading ? 'Connecting to Paystack...' : `🔒 SECURE PAY ${formatCurrencyValue(selectedBillingIds.size * pricePerVehicle, currency)}`}
-                                                </button>
-                                            </div>
-                                        </>
-                                    )}
-
-                                    {paymentHistory.length > 0 && (
-                                        <div className="billing-history-section">
-                                            <h4>🧾 Bulk Payment History</h4>
-                                            <div className="history-table-wrapper">
-                                                <table className="history-table">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>Reference</th>
-                                                            <th>Amount Paid</th>
-                                                            <th>Date</th>
-                                                            <th>Status</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {paymentHistory.map(h => (
-                                                            <tr key={h.id}>
-                                                                <td className="h-ref">{h.reference}</td>
-                                                                <td>{formatCurrencyValue(h.amount, currency)}</td>
-                                                                <td>{new Date(h.timestamp).toLocaleDateString()}</td>
-                                                                <td>
-                                                                    <span className="history-status success">{h.status}</span>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                            <BillingSettings
+                                billingCycle={billingCycle}
+                                setBillingCycle={setBillingCycle}
+                                billingMsg={billingMsg}
+                                billingVehicles={billingVehicles}
+                                selectedBillingIds={selectedBillingIds}
+                                handleSelectAllBilling={handleSelectAllBilling}
+                                handleVehicleToggle={handleVehicleToggle}
+                                pricePerVehicle={pricePerVehicle}
+                                currency={currency}
+                                billingLoading={billingLoading}
+                                handleBulkCheckout={handleBulkCheckout}
+                                paymentHistory={paymentHistory}
+                            />
                         )}
 
                         {activeTab === 'maintenance' && (
-                            <div className="settings-form">
-                                <div className="form-section">
-                                    <h3>🔧 Maintenance Alerts Manager</h3>
-                                    <p className="section-subtitle">Set up mileage thresholds, target due dates, and reminders for your fleet.</p>
-
-                                    {/* Success/Error Alerts */}
-                                    {maintenanceSuccess && <div className="status-alert success">{maintenanceSuccess}</div>}
-                                    {maintenanceError && <div className="status-alert error">{maintenanceError}</div>}
-
-                                    {billingVehicles.length === 0 ? (
-                                        <p className="help-text" style={{ textAlign: 'center', padding: '2rem 0' }}>
-                                            No vehicles registered. Register a vehicle first to manage maintenance reminders.
-                                        </p>
-                                    ) : (
-                                        <>
-                                            <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-                                                <label>Select Vehicle</label>
-                                                <select 
-                                                    value={selectedVehicleId} 
-                                                    onChange={(e) => {
-                                                        setSelectedVehicleId(e.target.value);
-                                                        setEditingReminderId(null);
-                                                    }}
-                                                    className="styled-select"
-                                                >
-                                                    {billingVehicles.map(v => (
-                                                        <option key={v.id} value={v.id}>
-                                                            {v.name} ({v.id}) {v.plate_number ? `- ${v.plate_number}` : ''}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-
-                                            {/* CREATE/EDIT REMINDER FORM */}
-                                            <form onSubmit={handleSaveMaintenanceReminder} className="reminder-creation-form">
-                                                <h4>{editingReminderId ? '✏️ Edit Reminder' : '➕ Create Maintenance Reminder'}</h4>
-                                                
-                                                <div className="form-group-row">
-                                                    <div className="form-group">
-                                                        <label>Reminder Type</label>
-                                                        <select 
-                                                            value={reminderType}
-                                                            onChange={(e) => setReminderType(e.target.value)}
-                                                            className="styled-select"
-                                                        >
-                                                            <option value="Oil Change">Oil Change 🛢️</option>
-                                                            <option value="Brake Service">Brake Service 🛑</option>
-                                                            <option value="Tire Change">Tire Change 🛞</option>
-                                                            <option value="Insurance">Insurance 📄</option>
-                                                            <option value="Road Worthiness">Road Worthiness 🛣️</option>
-                                                            <option value="Vehicle License">Vehicle License 💳</option>
-                                                            <option value="Custom">Custom ⚙️</option>
-                                                        </select>
-                                                    </div>
-                                                    <div className="form-group">
-                                                        <label>Custom Label / Name (Optional)</label>
-                                                        <input 
-                                                            type="text" 
-                                                            value={customName}
-                                                            onChange={(e) => setCustomName(e.target.value)}
-                                                            placeholder={reminderType === 'Custom' ? 'e.g. Battery replacement' : 'e.g. Front axle brake pads'}
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <div className="form-group-row">
-                                                    <div className="form-group">
-                                                        <label>Mileage Threshold (km)</label>
-                                                        <input 
-                                                            type="number" 
-                                                            value={thresholdKm}
-                                                            onChange={(e) => setThresholdKm(e.target.value)}
-                                                            placeholder="e.g. 10000"
-                                                            min="0"
-                                                        />
-                                                    </div>
-                                                    <div className="form-group">
-                                                        <label>Last Service Mileage (km)</label>
-                                                        <input 
-                                                            type="number" 
-                                                            value={lastServiceKm}
-                                                            onChange={(e) => setLastServiceKm(e.target.value)}
-                                                            placeholder="e.g. 5000"
-                                                            min="0"
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <div className="form-group">
-                                                    <label>Target Due Date</label>
-                                                    <input 
-                                                        type="date" 
-                                                        value={dueDate}
-                                                        onChange={(e) => setDueDate(e.target.value)}
-                                                    />
-                                                </div>
-
-                                                <div className="form-group">
-                                                    <label>Notes & Extra Details</label>
-                                                    <textarea 
-                                                        value={notes}
-                                                        onChange={(e) => setNotes(e.target.value)}
-                                                        placeholder="Add instructions, service center info, or part numbers..."
-                                                        className="styled-textarea"
-                                                        rows="3"
-                                                    />
-                                                </div>
-
-                                                <div className="reminder-form-actions">
-                                                    {editingReminderId && (
-                                                        <button 
-                                                            type="button" 
-                                                            className="cancel-reminder-btn"
-                                                            onClick={() => {
-                                                                setEditingReminderId(null);
-                                                                setReminderType('Oil Change');
-                                                                setCustomName('');
-                                                                setThresholdKm('');
-                                                                setLastServiceKm('');
-                                                                setDueDate('');
-                                                                setNotes('');
-                                                            }}
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                    )}
-                                                    <button 
-                                                        type="submit" 
-                                                        className="save-reminder-btn"
-                                                        disabled={maintenanceLoading}
-                                                    >
-                                                        {editingReminderId ? 'Update Reminder' : 'Add Reminder'}
-                                                    </button>
-                                                </div>
-                                            </form>
-
-                                            {/* ACTIVE REMINDERS LIST */}
-                                            <div className="active-reminders-section" style={{ marginTop: '2rem' }}>
-                                                <h4>📋 Active Fleet Reminders ({maintenanceReminders.length})</h4>
-                                                
-                                                {maintenanceReminders.length === 0 ? (
-                                                    <p className="no-reminders-msg">No active reminders configured for this vehicle.</p>
-                                                ) : (
-                                                    <div className="reminders-list">
-                                                        {maintenanceReminders.map(rem => (
-                                                            <div key={rem.id} className={`reminder-card ${rem.status.toLowerCase()}`}>
-                                                                <div className="reminder-card-header">
-                                                                    <div className="reminder-card-title">
-                                                                        <span className="reminder-type-tag">{rem.type}</span>
-                                                                        {rem.custom_name && <strong className="reminder-custom-name">{rem.custom_name}</strong>}
-                                                                    </div>
-                                                                    <span className={`reminder-status-badge ${rem.status.toLowerCase()}`}>
-                                                                        {rem.status}
-                                                                    </span>
-                                                                </div>
-
-                                                                <div className="reminder-card-details">
-                                                                    {rem.threshold_km && (
-                                                                        <div className="reminder-detail-item">
-                                                                            <span>Threshold Mileage:</span>
-                                                                            <strong>{rem.threshold_km.toLocaleString()} km</strong>
-                                                                        </div>
-                                                                    )}
-                                                                    {rem.last_service_km && (
-                                                                        <div className="reminder-detail-item">
-                                                                            <span>Last Service:</span>
-                                                                            <strong>{rem.last_service_km.toLocaleString()} km</strong>
-                                                                        </div>
-                                                                    )}
-                                                                    {rem.due_date && (
-                                                                        <div className="reminder-detail-item">
-                                                                            <span>Due Date:</span>
-                                                                            <strong>{new Date(rem.due_date).toLocaleDateString()}</strong>
-                                                                        </div>
-                                                                    )}
-                                                                    {rem.notes && (
-                                                                        <div className="reminder-card-notes">
-                                                                            <em>Notes:</em> {rem.notes}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-
-                                                                <div className="reminder-card-footer">
-                                                                    <button 
-                                                                        type="button" 
-                                                                        className="toggle-status-btn"
-                                                                        onClick={() => handleToggleReminderStatus(rem)}
-                                                                    >
-                                                                        {rem.status === 'PENDING' ? '✅ Mark Completed' : '🔄 Mark Pending'}
-                                                                    </button>
-                                                                    <div className="reminder-card-right-actions">
-                                                                        <button 
-                                                                            type="button" 
-                                                                            className="edit-reminder-btn"
-                                                                            onClick={() => handleStartEditReminder(rem)}
-                                                                        >
-                                                                            ✏️ Edit
-                                                                        </button>
-                                                                        <button 
-                                                                            type="button" 
-                                                                            className="delete-reminder-btn"
-                                                                            onClick={() => handleDeleteMaintenanceReminder(rem.id)}
-                                                                        >
-                                                                            🗑️ Delete
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
+                            <MaintenanceSettings
+                                selectedVehicleId={selectedVehicleId}
+                                setSelectedVehicleId={setSelectedVehicleId}
+                                setEditingReminderId={setEditingReminderId}
+                                billingVehicles={billingVehicles}
+                                handleSaveMaintenanceReminder={handleSaveMaintenanceReminder}
+                                editingReminderId={editingReminderId}
+                                reminderType={reminderType}
+                                setReminderType={setReminderType}
+                                customName={customName}
+                                setCustomName={setCustomName}
+                                thresholdKm={thresholdKm}
+                                setThresholdKm={setThresholdKm}
+                                lastServiceKm={lastServiceKm}
+                                setLastServiceKm={setLastServiceKm}
+                                dueDate={dueDate}
+                                setDueDate={setDueDate}
+                                notes={notes}
+                                setNotes={setNotes}
+                                maintenanceLoading={maintenanceLoading}
+                                maintenanceReminders={maintenanceReminders}
+                                handleToggleReminderStatus={handleToggleReminderStatus}
+                                handleStartEditReminder={handleStartEditReminder}
+                                handleDeleteMaintenanceReminder={handleDeleteMaintenanceReminder}
+                                maintenanceSuccess={maintenanceSuccess}
+                                maintenanceError={maintenanceError}
+                            />
                         )}
 
                         {activeTab === 'support' && (
-                            <div className="settings-form">
-                                <div className="form-section">
-                                    <h3>💬 Diagnostic Support Mode</h3>
-                                    <p className="section-subtitle">Generate a temporary verification code to grant support agents access to fleet stats, logs, and battery diagnostics.</p>
-
-                                    <div className="support-code-container">
-                                        {supportCode ? (
-                                            <div className="support-code-display glass-panel animate-fade-in">
-                                                <span className="code-label">SUPPORT CODE</span>
-                                                <div className="code-value-wrapper">
-                                                    <span className="code-value">{supportCode}</span>
-                                                    <button 
-                                                        type="button" 
-                                                        className="copy-code-btn"
-                                                        onClick={() => {
-                                                            navigator.clipboard.writeText(supportCode);
-                                                            alert("Support code copied to clipboard!");
-                                                        }}
-                                                    >
-                                                        📋 Copy
-                                                    </button>
-                                                </div>
-                                                <div className="code-timer">
-                                                    <span>Expires in:</span>
-                                                    <strong className="timer-countdown">{timeLeft}</strong>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="support-code-generate-placeholder">
-                                                <p>No active support code. Click the button below to generate a new 24h diagnostic code.</p>
-                                                <button 
-                                                    type="button" 
-                                                    className="generate-code-btn"
-                                                    disabled={supportLoading}
-                                                    onClick={handleGenerateSupportCode}
-                                                >
-                                                    {supportLoading ? 'Generating...' : '🔑 Generate Support Code'}
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="support-instructions">
-                                        <h4>🛡️ Security & Privacy Information</h4>
-                                        <ul>
-                                            <li>The support code is only valid for **24 hours** from generation.</li>
-                                            <li>Support agents can view telemetry, battery history, and geofence locations to troubleshoot problems.</li>
-                                            <li>Your account password and billing credentials **are never shared** or exposed.</li>
-                                            <li>You can invalidate the code at any time by waiting for it to expire or generating a new one.</li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
+                            <SupportSettings
+                                supportCode={supportCode}
+                                timeLeft={timeLeft}
+                                supportLoading={supportLoading}
+                                handleGenerateSupportCode={handleGenerateSupportCode}
+                            />
                         )}
 
                         {activeTab === 'fuel' && (
-                            <div className="settings-form fuel-settings-tab animate-fade-in">
-                                <div className="form-section">
-                                    <h3>⛽ Fuel & Cost Settings</h3>
-                                    <p className="section-subtitle">Configure fuel efficiency profile (km/L), fuel type, and price per liter for each vehicle to generate fuel utilization reports.</p>
-
-                                    {fuelError && <div className="status-alert error">{fuelError}</div>}
-                                    {fuelSuccess && <div className="status-alert success">{fuelSuccess}</div>}
-
-                                    {/* Bulk Configuration Bar */}
-                                    {!fuelLoading && fuelSettingsList.length > 0 && (
-                                        <div className="bulk-fuel-control-bar" style={{
-                                            display: 'flex',
-                                            flexWrap: 'wrap',
-                                            gap: '1rem',
-                                            alignItems: 'center',
-                                            padding: '1rem',
-                                            background: 'rgba(30, 41, 59, 0.4)',
-                                            border: '1px solid rgba(255, 255, 255, 0.08)',
-                                            borderRadius: '0.5rem',
-                                            marginTop: '1.25rem',
-                                            marginBottom: '1rem',
-                                            backdropFilter: 'blur(8px)'
-                                        }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                                                <input
-                                                    type="checkbox"
-                                                    id="selectAllFuel"
-                                                    checked={fuelSettingsList.length > 0 && selectedFuelVehicles.length === fuelSettingsList.length}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
-                                                            setSelectedFuelVehicles(fuelSettingsList.map(item => item.id));
-                                                        } else {
-                                                            setSelectedFuelVehicles([]);
-                                                        }
-                                                    }}
-                                                    style={{ cursor: 'pointer', transform: 'scale(1.2)', accentColor: '#3b82f6' }}
-                                                />
-                                                <label htmlFor="selectAllFuel" style={{ fontSize: '0.85rem', color: '#f8fafc', cursor: 'pointer', fontWeight: 'bold', userSelect: 'none' }}>
-                                                    Select All ({selectedFuelVehicles.length} of {fuelSettingsList.length} selected)
-                                                </label>
-                                            </div>
-
-                                            {selectedFuelVehicles.length > 0 && (
-                                                <div className="bulk-edit-fields-container" style={{
-                                                    display: 'flex',
-                                                    flexWrap: 'wrap',
-                                                    gap: '0.75rem',
-                                                    alignItems: 'center',
-                                                    background: 'rgba(15, 23, 42, 0.5)',
-                                                    padding: '0.5rem 1rem',
-                                                    borderRadius: '0.375rem',
-                                                    border: '1px solid rgba(255, 255, 255, 0.05)',
-                                                    flex: 1,
-                                                    justifyContent: 'flex-end'
-                                                }}>
-                                                    <span style={{ fontSize: '0.8rem', color: '#3b82f6', fontWeight: 'bold' }}>Bulk Apply:</span>
-                                                    <select
-                                                        value={bulkFuelType}
-                                                        onChange={(e) => setBulkFuelType(e.target.value)}
-                                                        className="settings-input"
-                                                        style={{ padding: '0.35rem 0.5rem', borderRadius: '0.25rem', background: '#0f172a', border: '1px solid #334155', color: 'white', fontSize: '0.8rem' }}
-                                                    >
-                                                        <option value="Premium Petrol">Premium Petrol (PMS)</option>
-                                                        <option value="Diesel">Diesel (AGO)</option>
-                                                        <option value="CNG">Compressed Natural Gas (CNG)</option>
-                                                        <option value="Electric">Electric (EV)</option>
-                                                    </select>
-
-                                                    <input
-                                                        type="number"
-                                                        step="0.1"
-                                                        placeholder={bulkFuelType === 'Electric' ? "Efficiency (km/kWh)" : "Efficiency (km/L)"}
-                                                        value={bulkFuelEfficiency}
-                                                        onChange={(e) => setBulkFuelEfficiency(e.target.value)}
-                                                        className="settings-input"
-                                                        style={{ width: '130px', padding: '0.35rem 0.5rem', borderRadius: '0.25rem', background: '#0f172a', border: '1px solid #334155', color: 'white', fontSize: '0.8rem' }}
-                                                    />
-
-                                                    <input
-                                                        type="number"
-                                                        step="0.01"
-                                                        placeholder={bulkFuelType === 'Electric' ? `Price (${CURRENCY_SYMBOLS[currency] || '₦'}/kWh)` : `Price (${CURRENCY_SYMBOLS[currency] || '₦'}/L)`}
-                                                        value={bulkFuelPrice}
-                                                        onChange={(e) => setBulkFuelPrice(e.target.value)}
-                                                        className="settings-input"
-                                                        style={{ width: '110px', padding: '0.35rem 0.5rem', borderRadius: '0.25rem', background: '#0f172a', border: '1px solid #334155', color: 'white', fontSize: '0.8rem' }}
-                                                    />
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleSaveBulkFuelSettings}
-                                                        style={{
-                                                            padding: '0.35rem 0.75rem',
-                                                            background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-                                                            color: 'white',
-                                                            border: 'none',
-                                                            borderRadius: '0.25rem',
-                                                            cursor: 'pointer',
-                                                            fontWeight: 'bold',
-                                                            fontSize: '0.8rem',
-                                                            boxShadow: '0 0 10px rgba(34, 197, 94, 0.3)'
-                                                        }}
-                                                    >
-                                                        Apply
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    <div className="fuel-settings-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
-                                        {fuelLoading && <div className="loading-spinner">Loading configurations...</div>}
-                                        {!fuelLoading && fuelSettingsList.length === 0 && (
-                                            <p className="no-data-msg">No vehicles available to configure.</p>
-                                        )}
-
-                                        {!fuelLoading && fuelSettingsList.map(item => (
-                                            <div key={item.id} className="fuel-card glass-panel" style={{ padding: '1rem', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.5rem', background: 'rgba(30, 41, 59, 0.5)' }}>
-                                                <div className="fuel-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={selectedFuelVehicles.includes(item.id)}
-                                                            onChange={(e) => {
-                                                                if (e.target.checked) {
-                                                                    setSelectedFuelVehicles([...selectedFuelVehicles, item.id]);
-                                                                } else {
-                                                                    setSelectedFuelVehicles(selectedFuelVehicles.filter(id => id !== item.id));
-                                                                }
-                                                            }}
-                                                            style={{ cursor: 'pointer', accentColor: '#3b82f6' }}
-                                                        />
-                                                        <h4 style={{ margin: 0, fontSize: '1rem', color: '#f8fafc' }}>🚗 {item.name}</h4>
-                                                    </div>
-                                                    <span className="device-id-badge" style={{ fontSize: '0.7rem', padding: '0.1rem 0.35rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', fontWeight: 'bold' }}>{item.id}</span>
-                                                </div>
-                                                
-                                                {editingFuelVehicleId === item.id ? (
-                                                    <div className="fuel-edit-form" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                                        <div className="form-group">
-                                                            <label style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Fuel Type</label>
-                                                            <select 
-                                                                value={fuelType} 
-                                                                onChange={(e) => setFuelType(e.target.value)}
-                                                                className="settings-input"
-                                                                style={{ width: '100%', padding: '0.4rem', borderRadius: '0.25rem', background: '#1e293b', border: '1px solid #475569', color: 'white', fontSize: '0.85rem' }}
-                                                            >
-                                                                <option value="Premium Petrol">Premium Petrol (PMS)</option>
-                                                                <option value="Diesel">Diesel (AGO)</option>
-                                                                <option value="CNG">Compressed Natural Gas (CNG)</option>
-                                                                <option value="Electric">Electric (EV)</option>
-                                                            </select>
-                                                        </div>
-                                                        
-                                                        <div className="form-row" style={{ display: 'flex', gap: '0.5rem' }}>
-                                                            <div className="form-group" style={{ flex: 1 }}>
-                                                                <label style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{fuelType === 'Electric' ? 'Efficiency (km/kWh)' : 'Efficiency (km/L)'}</label>
-                                                                <input 
-                                                                    type="number" 
-                                                                    step="0.1"
-                                                                    value={fuelEfficiency}
-                                                                    onChange={(e) => setFuelEfficiency(e.target.value)}
-                                                                    className="settings-input"
-                                                                    placeholder={fuelType === 'Electric' ? 'e.g. 6.5' : 'e.g. 12'}
-                                                                    style={{ width: '100%', padding: '0.4rem', borderRadius: '0.25rem', background: '#1e293b', border: '1px solid #475569', color: 'white', fontSize: '0.85rem' }}
-                                                                />
-                                                            </div>
-                                                            <div className="form-group" style={{ flex: 1 }}>
-                                                                <label style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Price per {fuelType === 'Electric' ? 'kWh' : 'Liter'} ({CURRENCY_SYMBOLS[currency] || '₦'})</label>
-                                                                <input 
-                                                                    type="number" 
-                                                                    step="0.01"
-                                                                    value={fuelPrice}
-                                                                    onChange={(e) => setFuelPrice(e.target.value)}
-                                                                    className="settings-input"
-                                                                    placeholder={fuelType === 'Electric' ? 'e.g. 150' : 'e.g. 1000'}
-                                                                    style={{ width: '100%', padding: '0.4rem', borderRadius: '0.25rem', background: '#1e293b', border: '1px solid #475569', color: 'white', fontSize: '0.85rem' }}
-                                                                />
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="fuel-actions" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                                            <button 
-                                                                type="button" 
-                                                                className="save-btn"
-                                                                onClick={() => handleSaveFuelSetting(item.id)}
-                                                                style={{ flex: 1, padding: '0.4rem', background: '#22c55e', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
-                                                            >
-                                                                Save
-                                                            </button>
-                                                            <button 
-                                                                type="button" 
-                                                                className="cancel-btn"
-                                                                onClick={() => setEditingFuelVehicleId(null)}
-                                                                style={{ flex: 1, padding: '0.4rem', background: '#64748b', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}
-                                                            >
-                                                                Cancel
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <div className="fuel-card-details" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                                        <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                                                            <span style={{ color: '#94a3b8' }}>Type:</span>
-                                                            <strong style={{ color: '#f1f5f9' }}>{item.fuel_type || 'Premium Petrol'}</strong>
-                                                        </div>
-                                                        <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                                                            <span style={{ color: '#94a3b8' }}>Efficiency:</span>
-                                                            <strong style={{ color: '#f1f5f9' }}>{item.fuel_efficiency || 12.0} {item.fuel_type === 'Electric' ? 'km/kWh' : 'km/L'}</strong>
-                                                        </div>
-                                                        <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                                                            <span style={{ color: '#94a3b8' }}>Price per {item.fuel_type === 'Electric' ? 'kWh' : 'Liter'}:</span>
-                                                            <strong style={{ color: '#f1f5f9' }}>{CURRENCY_SYMBOLS[currency] || '₦'}{(item.fuel_price || 1000.0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
-                                                        </div>
-                                                        
-                                                        <button 
-                                                            type="button" 
-                                                            className="edit-trigger-btn"
-                                                            onClick={() => {
-                                                                setEditingFuelVehicleId(item.id);
-                                                                setFuelType(item.fuel_type || 'Premium Petrol');
-                                                                setFuelPrice(item.fuel_price || 1000.0);
-                                                                setFuelEfficiency(item.fuel_efficiency || 12.0);
-                                                            }}
-                                                            style={{ width: '100%', padding: '0.4rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', marginTop: '0.25rem' }}
-                                                        >
-                                                            ✏️ Configure Vehicle
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
+                            <FuelSettings
+                                fuelError={fuelError}
+                                fuelSuccess={fuelSuccess}
+                                fuelLoading={fuelLoading}
+                                fuelSettingsList={fuelSettingsList}
+                                selectedFuelVehicles={selectedFuelVehicles}
+                                setSelectedFuelVehicles={setSelectedFuelVehicles}
+                                bulkFuelType={bulkFuelType}
+                                setBulkFuelType={setBulkFuelType}
+                                bulkFuelEfficiency={bulkFuelEfficiency}
+                                setBulkFuelEfficiency={setBulkFuelEfficiency}
+                                bulkFuelPrice={bulkFuelPrice}
+                                setBulkFuelPrice={setBulkFuelPrice}
+                                handleSaveBulkFuelSettings={handleSaveBulkFuelSettings}
+                                editingFuelVehicleId={editingFuelVehicleId}
+                                setEditingFuelVehicleId={setEditingFuelVehicleId}
+                                fuelType={fuelType}
+                                setFuelType={setFuelType}
+                                fuelEfficiency={fuelEfficiency}
+                                setFuelEfficiency={setFuelEfficiency}
+                                fuelPrice={fuelPrice}
+                                setFuelPrice={setFuelPrice}
+                                handleSaveFuelSetting={handleSaveFuelSetting}
+                                currency={currency}
+                            />
                         )}
 
                         {activeTab === 'ble' && (
-                            <div className="settings-form animate-fade-in">
-                                <div className="form-section">
-                                    <h3>🔑 BLE Keyless Entry (Passive Proximity) Configuration</h3>
-                                    <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: '1.4' }}>
-                                        Link a driver's wireless BLE Keyfob (beacon) to the vehicle tracker. 
-                                        The tracker will automatically unlock the starter circuit when the keyfob is detected nearby (within your set RSSI threshold) and lock it when they walk away. 
-                                        Cloud overrides (remote locks and curfew hours) take precedence over the proximity unlock.
-                                    </p>
-
-                                    {bleSuccess && <div className="status-alert success">{bleSuccess}</div>}
-                                    {bleError && <div className="status-alert error">{bleError}</div>}
-
-                                    <form onSubmit={handleSaveBleSettings}>
-                                        <div className="form-group-row">
-                                            <div className="form-group">
-                                                <label>Select Vehicle to Configure</label>
-                                                <select 
-                                                    value={bleVehicleId} 
-                                                    onChange={(e) => setBleVehicleId(e.target.value)}
-                                                    style={{ background: '#1e293b', color: 'white', border: '1px solid #475569', padding: '0.6rem', borderRadius: '0.375rem', width: '100%', outline: 'none' }}
-                                                >
-                                                    {billingVehicles.map(v => (
-                                                        <option key={v.id} value={v.id}>
-                                                            {v.name || v.id} ({v.plate_number || 'No Plate'})
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-
-                                            <div className="form-group">
-                                                <label>BLE Beacon ID / MAC Address</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={bleBeaconId} 
-                                                    onChange={(e) => setBleBeaconId(e.target.value)} 
-                                                    placeholder="e.g. AA:BB:CC:DD:EE:FF" 
-                                                    style={{ background: '#1e293b', color: 'white', border: '1px solid #475569', padding: '0.6rem', borderRadius: '0.375rem', width: '100%', outline: 'none' }}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="form-group" style={{ marginTop: '1.5rem' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                                <label>RSSI Proximity Threshold Sensitivity</label>
-                                                <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>{bleBeaconRssiThreshold} dBm</span>
-                                            </div>
-                                            <input 
-                                                type="range" 
-                                                min="-100" 
-                                                max="-50" 
-                                                step="1"
-                                                value={bleBeaconRssiThreshold} 
-                                                onChange={(e) => setBleBeaconRssiThreshold(parseInt(e.target.value))} 
-                                                style={{ width: '100%', cursor: 'pointer' }}
-                                            />
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: '0.75rem', marginTop: '0.25rem' }}>
-                                                <span>-100 dBm (Far Range - approx. 10m)</span>
-                                                <span>-80 dBm (Default - approx. 3m)</span>
-                                                <span>-50 dBm (Close Proximity - approx. 0.5m)</span>
-                                            </div>
-                                        </div>
-
-                                        {bleBeaconId && bleBeaconId.trim().length > 0 && (() => {
-                                            const liveVehicle = vehicles.find(v => v.id === bleVehicleId);
-                                            const liveRssi = liveVehicle?.beaconRssi;
-                                            const distanceMeters = liveRssi ? estimateDistance(liveRssi) : null;
-                                            return (
-                                                <div style={{
-                                                    marginTop: '1.5rem',
-                                                    background: '#0f172a',
-                                                    padding: '1.25rem',
-                                                    borderRadius: '0.5rem',
-                                                    border: '1px solid #334155',
-                                                    display: 'flex',
-                                                    flexDirection: 'column',
-                                                    gap: '0.75rem'
-                                                }}>
-                                                    <h4 style={{ color: '#f8fafc', margin: 0, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                        📡 Live Beacon Proximity Status
-                                                     </h4>
-                                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                                         <div style={{ background: '#1e293b', padding: '0.75rem', borderRadius: '0.375rem', border: '1px solid #475569' }}>
-                                                             <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '0.25rem' }}>SIGNAL STRENGTH</span>
-                                                             <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: liveRssi ? '#3b82f6' : '#94a3b8' }}>
-                                                                 {liveRssi ? `${liveRssi} dBm` : 'No Signal / Offline'}
-                                                             </span>
-                                                         </div>
-                                                         <div style={{ background: '#1e293b', padding: '0.75rem', borderRadius: '0.375rem', border: '1px solid #475569' }}>
-                                                             <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '0.25rem' }}>ESTIMATED DISTANCE</span>
-                                                             <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: distanceMeters ? '#10b981' : '#94a3b8' }}>
-                                                                 {distanceMeters !== null ? `~${distanceMeters} meters` : 'Unknown'}
-                                                             </span>
-                                                         </div>
-                                                     </div>
-
-                                                     <div style={{
-                                                         display: 'flex',
-                                                         alignItems: 'center',
-                                                         gap: '0.5rem',
-                                                         background: liveRssi ? (liveRssi >= bleBeaconRssiThreshold ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)') : 'rgba(148, 163, 184, 0.1)',
-                                                         padding: '0.75rem',
-                                                         borderRadius: '0.375rem',
-                                                         border: liveRssi ? (liveRssi >= bleBeaconRssiThreshold ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)') : '1px solid rgba(148, 163, 184, 0.3)',
-                                                         marginTop: '0.25rem'
-                                                     }}>
-                                                         <div style={{
-                                                             width: '10px',
-                                                             height: '10px',
-                                                             borderRadius: '50%',
-                                                             background: liveRssi ? (liveRssi >= bleBeaconRssiThreshold ? '#10b981' : '#ef4444') : '#94a3b8',
-                                                             boxShadow: liveRssi && liveRssi >= bleBeaconRssiThreshold ? '0 0 8px #10b981' : 'none'
-                                                         }} />
-                                                         <span style={{ fontSize: '0.85rem', fontWeight: '600', color: liveRssi ? (liveRssi >= bleBeaconRssiThreshold ? '#10b981' : '#ef4444') : '#94a3b8' }}>
-                                                             {liveRssi ? (
-                                                                 liveRssi >= bleBeaconRssiThreshold ? 'KEYFOB DETECTED (Engine Unlocked / DOUT1 Active)' : 'KEYFOB OUT OF RANGE (Engine Immobilized / DOUT1 Inactive)'
-                                                             ) : (
-                                                                 'Waiting for beacon signal update...'
-                                                             )}
-                                                         </span>
-                                                     </div>
-                                                 </div>
-                                             );
-                                         })()}
-
-                                         <button 
-                                            type="submit" 
-                                            disabled={bleLoading}
-                                            className="submit-btn"
-                                            style={{ marginTop: '2rem', padding: '0.75rem 1.5rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                                        >
-                                            {bleLoading ? 'Saving...' : '💾 Save BLE Configurations'}
-                                        </button>
-                                    </form>
-                                </div>
-                            </div>
+                            <BleSettings
+                                bleSuccess={bleSuccess}
+                                bleError={bleError}
+                                handleSaveBleSettings={handleSaveBleSettings}
+                                bleVehicleId={bleVehicleId}
+                                setBleVehicleId={setBleVehicleId}
+                                bleBeaconId={bleBeaconId}
+                                setBleBeaconId={setBleBeaconId}
+                                bleBeaconRssiThreshold={bleBeaconRssiThreshold}
+                                setBleBeaconRssiThreshold={setBleBeaconRssiThreshold}
+                                bleLoading={bleLoading}
+                                vehicles={vehicles}
+                                billingVehicles={billingVehicles}
+                                estimateDistance={estimateDistance}
+                            />
                         )}
 
                         {activeTab === 'vehicles' && (
-                            <div className="settings-form animate-fade-in">
-                                <div className="form-section">
-                                    <h3>🚗 Manage Registered Fleet Vehicles</h3>
-                                    <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: '1.4' }}>
-                                        Select a vehicle from your registered fleet to update its name, license plate, assigned driver, or vehicle type icon.
-                                    </p>
-
-                                    {/* 1. Selector Dropdown */}
-                                    <div className="form-group" style={{ marginBottom: '2rem' }}>
-                                        <label style={{ fontSize: '0.95rem', fontWeight: '600', color: '#f8fafc', marginBottom: '0.5rem', display: 'block' }}>
-                                            Select Vehicle to Customize
-                                        </label>
-                                        <select 
-                                            value={editingVehicleId || ''} 
-                                            onChange={(e) => {
-                                                const vId = e.target.value;
-                                                if (!vId) {
-                                                    setEditingVehicleId(null);
-                                                } else {
-                                                    const selectedV = billingVehicles.find(v => v.id === vId);
-                                                    if (selectedV) {
-                                                        handleStartEditVehicle(selectedV);
-                                                    }
-                                                }
-                                            }}
-                                            style={{ 
-                                                background: '#1e293b', 
-                                                color: 'white', 
-                                                border: '1px solid #475569', 
-                                                padding: '0.75rem', 
-                                                borderRadius: '0.375rem', 
-                                                width: '100%', 
-                                                outline: 'none',
-                                                fontSize: '1rem',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            <option value="">-- Choose a vehicle from your fleet --</option>
-                                            {billingVehicles.map(v => (
-                                                <option key={v.id} value={v.id}>
-                                                    {getVehicleEmoji(v.vehicle_type)} {v.name || v.id} ({v.plate_number || 'No Plate'}) — {v.id}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {/* 2. Edit Details Card (Only shown when a vehicle is selected) */}
-                                    {editingVehicleId ? (
-                                        <div className="glass-panel edit-vehicle-card animate-fade-in" style={{
-                                            background: 'rgba(30, 41, 59, 0.4)',
-                                            border: '1px solid rgba(255, 255, 255, 0.08)',
-                                            borderRadius: '0.75rem',
-                                            padding: '1.5rem',
-                                            marginTop: '1rem',
-                                            boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
-                                        }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '0.75rem' }}>
-                                                <h4 style={{ margin: 0, fontSize: '1.1rem', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                    🔧 Edit Details: {editName || editingVehicleId}
-                                                </h4>
-                                                <span style={{ fontSize: '0.8rem', color: '#64748b', fontFamily: 'monospace' }}>
-                                                    IMEI: {editingVehicleId}
-                                                </span>
-                                            </div>
-
-                                            {vehicleSuccess && <div className="status-alert success" style={{ marginBottom: '1rem' }}>{vehicleSuccess}</div>}
-                                            {vehicleError && <div className="status-alert error" style={{ marginBottom: '1rem' }}>{vehicleError}</div>}
-
-                                            <form onSubmit={(e) => { e.preventDefault(); handleSaveVehicleEdit(editingVehicleId); }}>
-                                                <div className="form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
-                                                    
-                                                    {/* Vehicle Name */}
-                                                    <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                                                        <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Vehicle Name / Display Name</label>
-                                                        <input 
-                                                            type="text" 
-                                                            value={editName} 
-                                                            onChange={(e) => setEditName(e.target.value)}
-                                                            placeholder="e.g. Delivery Van 01"
-                                                            style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none' }}
-                                                            required
-                                                        />
-                                                    </div>
-
-                                                    {/* License Plate */}
-                                                    <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                                                        <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>License Plate Number</label>
-                                                        <input 
-                                                            type="text" 
-                                                            value={editPlateNumber} 
-                                                            onChange={(e) => setEditPlateNumber(e.target.value)}
-                                                            placeholder="e.g. LA-123-ENG"
-                                                            style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none' }}
-                                                        />
-                                                    </div>
-
-                                                    {/* Driver Name */}
-                                                    <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                                                        <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Assigned Driver Name</label>
-                                                        <input 
-                                                            type="text" 
-                                                            value={editDriverName} 
-                                                            onChange={(e) => setEditDriverName(e.target.value)}
-                                                            placeholder="e.g. John Doe"
-                                                            style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none' }}
-                                                        />
-                                                    </div>
-
-                                                    {/* Vehicle Type */}
-                                                    <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                                                        <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Vehicle Category / Icon</label>
-                                                        <select 
-                                                            value={editVehicleType} 
-                                                            onChange={(e) => setEditVehicleType(e.target.value)}
-                                                            style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none', cursor: 'pointer' }}
-                                                        >
-                                                            <option value="car">🚗 Car</option>
-                                                            <option value="motorcycle">🏍️ Motorcycle</option>
-                                                            <option value="tricycle">🛺 Tricycle</option>
-                                                            <option value="bus">🚌 Bus</option>
-                                                            <option value="truck">🚚 Truck</option>
-                                                            <option value="van">🚐 Van</option>
-                                                        </select>
-                                                    </div>
-
-                                                </div>
-
-                                                <div style={{ display: 'flex', gap: '1rem', marginTop: '1.75rem', justifyContent: 'flex-end' }}>
-                                                    <button 
-                                                        type="button"
-                                                        onClick={() => setEditingVehicleId(null)}
-                                                        style={{ padding: '0.65rem 1.25rem', background: '#334155', color: '#f8fafc', border: 'none', borderRadius: '0.375rem', fontWeight: 'bold', cursor: 'pointer' }}
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                    <button 
-                                                        type="submit"
-                                                        disabled={vehicleLoading}
-                                                        style={{ 
-                                                            padding: '0.65rem 1.5rem', 
-                                                            background: 'linear-gradient(135deg, #3b82f6, #2563eb)', 
-                                                            color: 'white', 
-                                                            border: 'none', 
-                                                            borderRadius: '0.375rem', 
-                                                            fontWeight: 'bold', 
-                                                            cursor: 'pointer',
-                                                            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.2)'
-                                                        }}
-                                                    >
-                                                        {vehicleLoading ? 'Saving Changes...' : '💾 Save Configurations'}
-                                                    </button>
-                                                </div>
-                                            </form>
-                                        </div>
-                                    ) : (
-                                        <div className="glass-panel" style={{
-                                            background: 'rgba(30, 41, 59, 0.2)',
-                                            border: '1px dashed rgba(255, 255, 255, 0.1)',
-                                            borderRadius: '0.75rem',
-                                            padding: '3rem 1.5rem',
-                                            textAlign: 'center',
-                                            color: '#64748b',
-                                            marginTop: '1rem'
-                                        }}>
-                                            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🚗</div>
-                                            <p style={{ margin: 0 }}>Please select a vehicle from the dropdown above to edit its settings.</p>
-                                        </div>
-                                    )}
-
-                                </div>
-                            </div>
+                            <VehiclesSettings
+                                editingVehicleId={editingVehicleId}
+                                setEditingVehicleId={setEditingVehicleId}
+                                billingVehicles={billingVehicles}
+                                handleStartEditVehicle={handleStartEditVehicle}
+                                editName={editName}
+                                setEditName={setEditName}
+                                editPlateNumber={editPlateNumber}
+                                setEditPlateNumber={setEditPlateNumber}
+                                editDriverName={editDriverName}
+                                setEditDriverName={setEditDriverName}
+                                editVehicleType={editVehicleType}
+                                setEditVehicleType={setEditVehicleType}
+                                vehicleSuccess={vehicleSuccess}
+                                vehicleError={vehicleError}
+                                vehicleLoading={vehicleLoading}
+                                handleSaveVehicleEdit={handleSaveVehicleEdit}
+                            />
                         )}
                     </div>
                 </div>
             </div>
-
-            {showOTPModal && (
-                <div className="otp-modal-overlay">
-                    <div className="otp-modal-container glass-panel animate-fade-in">
-                        <header className="otp-modal-header">
-                            <h4>🔑 Password Change OTP Verification</h4>
-                            <button 
-                                type="button" 
-                                className="otp-modal-close" 
-                                onClick={() => {
-                                    setShowOTPModal(false);
-                                    setOtpCode('');
-                                    setOtpError('');
-                                    setSettingsFallbackCode('');
-                                    setLoading(false);
-                                }}
-                            >
-                                ✕
-                            </button>
-                        </header>
-                        
-                        <div className="otp-modal-body">
-                            <p className="otp-modal-desc">
-                                We have sent a 6-digit verification code to your email <strong>{user.email}</strong>. Enter the code below to authorize your password change.
-                            </p>
-                            
-                            {settingsFallbackCode && (
-                                <div style={{
-                                    background: 'rgba(59, 130, 246, 0.1)',
-                                    border: '1px solid rgba(59, 130, 246, 0.3)',
-                                    color: '#60a5fa',
-                                    padding: '1rem',
-                                    borderRadius: '8px',
-                                    marginBottom: '1.5rem',
-                                    textAlign: 'center',
-                                    lineHeight: '1.5',
-                                    fontSize: '0.9rem'
-                                }}>
-                                    📬 <strong>Email Delivery Fallback</strong><br />
-                                    We couldn't deliver the verification email. Your code is:<br />
-                                    <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#3b82f6', letterSpacing: '2px', display: 'block', margin: '0.5rem 0' }}>
-                                        {settingsFallbackCode}
-                                    </span>
-                                    Enter this code in the field below.
-                                </div>
-                            )}
-
-                            {otpError && (
-                                <div className="status-alert error modal-alert">
-                                    {otpError}
-                                </div>
-                            )}
-
-                            <div className="form-group otp-input-group">
-                                <label>6-Digit Verification Code</label>
-                                <input 
-                                    type="text" 
-                                    maxLength="6"
-                                    value={otpCode}
-                                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                                    placeholder="000000"
-                                    className="otp-code-input"
-                                    autoFocus
-                                />
-                            </div>
-                        </div>
-
-                        <footer className="otp-modal-footer">
-                            <button 
-                                type="button" 
-                                className="otp-cancel-btn" 
-                                onClick={() => {
-                                    setShowOTPModal(false);
-                                    setOtpCode('');
-                                    setOtpError('');
-                                    setSettingsFallbackCode('');
-                                    setLoading(false);
-                                }}
-                            >
-                                Cancel
-                            </button>
-                            <button 
-                                type="button" 
-                                className="otp-confirm-btn"
-                                disabled={otpLoading || otpCode.length !== 6}
-                                onClick={handleConfirmPasswordChange}
-                            >
-                                {otpLoading ? 'Verifying...' : 'Confirm Password Change'}
-                            </button>
-                        </footer>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

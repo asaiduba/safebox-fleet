@@ -67,6 +67,75 @@ io.use((socket, next) => {
   }
 });
 
+// --- Socket.io connection joining and remote command listener ---
+io.on('connection', (socket) => {
+  if (socket.user && socket.user.id) {
+    const userRoom = `user_${socket.user.id}`;
+    socket.join(userRoom);
+    console.log(`👤 Socket client ${socket.id} joined room: ${userRoom}`);
+
+    socket.on('send-command', (data) => {
+      const { deviceId, command } = data;
+      console.log(`[Socket.io Command] Received "${command}" command for device ${deviceId} from user ${socket.user.username}`);
+
+      const activeTcpSockets = app.get('activeTcpSockets');
+      const mqttClient = app.get('mqttClient');
+
+      try {
+        const vehicle = db.prepare('SELECT owner_id, name FROM vehicles WHERE id = ?').get(deviceId);
+        if (!vehicle) {
+          console.warn(`[Socket.io Command] Vehicle ${deviceId} not found.`);
+          return;
+        }
+        if (vehicle.owner_id !== socket.user.id && socket.user.role !== 'admin') {
+          console.warn(`[Socket.io Command] User ${socket.user.username} unauthorized for vehicle ${deviceId}.`);
+          return;
+        }
+
+        const isLock = (command === 'LOCK' || command === 'BLOCK_START');
+        const cloudLockedVal = isLock ? 1 : 0;
+
+        if (isLock) {
+          db.prepare('UPDATE vehicles SET cloud_locked = 1, is_locked = 1 WHERE id = ?').run(deviceId);
+        } else {
+          db.prepare('UPDATE vehicles SET cloud_locked = 0, is_locked = 0, override_status = "NONE", override_expires = 0 WHERE id = ?').run(deviceId);
+        }
+
+        if (mqttClient) {
+          mqttClient.publish(`/device/${deviceId}/command`, JSON.stringify({ command: isLock ? 'BLOCK_START' : 'UNLOCK' }));
+          if (isLock) {
+            mqttClient.publish(`/device/${deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
+          }
+        }
+        if (activeTcpSockets && activeTcpSockets.has(deviceId)) {
+          activeTcpSockets.get(deviceId).write(`$$CMD,${deviceId},SET_CLOUDLOCKED,${cloudLockedVal}\r\n`);
+        }
+
+        const { logAuditAction } = require('./utils/audit');
+        logAuditAction(
+          socket.user.id,
+          socket.user.username,
+          isLock ? 'lock_vehicle' : 'unlock_vehicle',
+          deviceId,
+          { source: 'dashboard_ws', vehicleName: vehicle.name },
+          socket.request
+        );
+
+        io.to(userRoom).emit('device-data', {
+          topic: `/device/${deviceId}/status`,
+          payload: {
+            deviceId,
+            locked: isLock,
+            timestamp: Date.now()
+          }
+        });
+      } catch (err) {
+        console.error('[Socket.io Command] Command execution error:', err.message);
+      }
+    });
+  }
+});
+
 // --- SECURITY: JWT Secret & Middleware Imports ---
 const { authMiddleware, adminMiddleware, getRequestUserId, JWT_SECRET } = require('./middleware/auth');
 const { saveAndNotifyAlert, dispatchAlertNotification } = require('./utils/notifications');
@@ -86,6 +155,9 @@ const paymentsRouter = require('./routes/payments');
 const analyticsRouter = require('./routes/analytics');
 const reportsRouter = require('./routes/reports');
 const notificationsRouter = require('./routes/notifications');
+const overrideRouter = require('./routes/override');
+const auditRouter = require('./routes/audit');
+const exportsRouter = require('./routes/exports');
 
 // Mount route middleware
 app.use('/api', authRouter);
@@ -96,6 +168,9 @@ app.use('/api/payments', paymentsRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/override', overrideRouter);
+app.use('/api/audit-logs', auditRouter);
+app.use('/api/exports', exportsRouter);
 
 // MQTT Broker Setup — Private HiveMQ Cloud (TLS + Credentials)
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.emqx.io'; // fallback for local dev only
