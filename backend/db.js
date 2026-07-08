@@ -442,6 +442,17 @@ function initDb() {
         );
     `);
 
+    // 18. Create Vehicle Groups Table (NEW - P4 Vehicle Grouping)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS vehicle_groups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    `);
+
     // Schema Migration: Add notification preference columns to users table
     try {
         db.exec("ALTER TABLE users ADD COLUMN notify_email INTEGER DEFAULT 1");
@@ -471,10 +482,18 @@ function initDb() {
         // Column already exists
     }
 
+    // Schema Migration: Add group_id column to vehicles table
+    try {
+        db.exec("ALTER TABLE vehicles ADD COLUMN group_id INTEGER");
+    } catch (e) {
+        // Column already exists
+    }
+
     // Create Indexes for Performance
     db.exec(`CREATE INDEX IF NOT EXISTS idx_history_vehicle_time ON vehicle_history(vehicle_id, timestamp DESC)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_vehicle_time ON vehicle_alerts(vehicle_id, timestamp DESC)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_type ON vehicle_alerts(type)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicles_group_id ON vehicles(group_id)`);
 
     // Seed default admin user if not exists (MUST run before vehicles referencing owner_id = 1)
     try {

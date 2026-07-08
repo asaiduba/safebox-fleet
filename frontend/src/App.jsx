@@ -1,7 +1,7 @@
 const API_BASE = import.meta.env.VITE_API_URL || '';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import io from 'socket.io-client';
-import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, Polyline, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, Polyline, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import axios from 'axios';
@@ -18,22 +18,56 @@ import NotificationsPanel from './NotificationsPanel';
 import SupportDashboard from './SupportDashboard';
 import AdminDashboard from './AdminDashboard';
 import SharedTracker from './SharedTracker';
-
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
 // Fix Leaflet default icon issue
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+    iconRetinaUrl: markerIcon2x,
+    iconUrl: markerIcon,
+    shadowUrl: markerShadow,
 });
 
-let socket = null;
+// Helper component for map tile loading states
+function MapTileLoader({ onStart, onEnd }) {
+    const map = useMap();
+    React.useEffect(() => {
+        if (!map) return;
+        
+        let activeTiles = 0;
+        
+        const handleStart = () => {
+            if (activeTiles === 0) onStart();
+            activeTiles++;
+        };
+        
+        const handleEnd = () => {
+            activeTiles = Math.max(0, activeTiles - 1);
+            if (activeTiles === 0) onEnd();
+        };
 
-const defaultCenter = {
-    lat: -1.9441,
-    lng: 30.0619
-};
+        map.on('tileloadstart', handleStart);
+        map.on('tileload', handleEnd);
+        map.on('tileunload', handleEnd);
+        map.on('load', onEnd);
+
+        const timeout = setTimeout(() => {
+            onEnd();
+        }, 5000);
+
+        return () => {
+            map.off('tileloadstart', handleStart);
+            map.off('tileload', handleEnd);
+            map.off('tileunload', handleEnd);
+            map.off('load', onEnd);
+            clearTimeout(timeout);
+        };
+    }, [map, onStart, onEnd]);
+
+    return null;
+}
 
 // Helper component for map click events
 function MapClickHandler({ onClick }) {
@@ -42,6 +76,13 @@ function MapClickHandler({ onClick }) {
     });
     return null;
 }
+
+let socket = null;
+
+const defaultCenter = {
+    lat: -1.9441,
+    lng: 30.0619
+};
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -187,8 +228,22 @@ function App() {
     const [socketConnected, setSocketConnected] = useState(true);
     const mapRef = useRef(null);
 
+    // Vehicle Groups state
+    const [groups, setGroups] = useState([]);
+    const [activeGroupFilter, setActiveGroupFilter] = useState('all'); // 'all' or group id
+
+    // Map tile loading state
+    const [mapTilesLoading, setMapTilesLoading] = useState(true);
+    const handleMapTileStart = useCallback(() => setMapTilesLoading(true), []);
+    const handleMapTileEnd = useCallback(() => setMapTilesLoading(false), []);
+
     // Derive selected vehicle from vehicles array
     const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId) || null;
+
+    // Derive filtered vehicles by active group
+    const filteredVehicles = activeGroupFilter === 'all'
+        ? vehicles
+        : vehicles.filter(v => v.group_id === activeGroupFilter);
 
     // Leaflet doesn't need API loading
 
@@ -232,6 +287,16 @@ function App() {
             })));
         } catch (err) {
             console.error("Failed to fetch vehicles", err);
+        }
+    }, [user]);
+
+    const fetchGroups = useCallback(async () => {
+        if (!user) return;
+        try {
+            const res = await axios.get(`${API_BASE}/api/groups`);
+            setGroups(res.data);
+        } catch (err) {
+            console.error("Failed to fetch groups", err);
         }
     }, [user]);
 
@@ -546,6 +611,7 @@ function App() {
 
         Promise.resolve().then(() => {
             fetchVehicles();
+            fetchGroups();
             if (user.role === 'company') {
                 fetchPendingOverrides();
             }
@@ -663,7 +729,7 @@ function App() {
                 socket = null;
             }
         };
-    }, [user, fetchVehicles, fetchPendingOverrides, handleLogout]);
+    }, [user, fetchVehicles, fetchGroups, fetchPendingOverrides, handleLogout]);
 
     useEffect(() => {
         if (selectedVehicleId) {
@@ -754,6 +820,8 @@ function App() {
                 <SettingsPanel
                     user={user}
                     vehicles={vehicles}
+                    groups={groups}
+                    onGroupsChanged={fetchGroups}
                     onBack={() => setShowSettings(false)}
                     onProfileUpdate={(updatedUser) => {
                         setUser(updatedUser);
@@ -790,6 +858,7 @@ function App() {
             {user && showAddVehicle && (
                 <AddVehicleModal
                     user={user}
+                    groups={groups}
                     onClose={() => setShowAddVehicle(false)}
                     onVehicleAdded={fetchVehicles}
                 />
@@ -1135,9 +1204,35 @@ function App() {
                             ))}
                         </div>
 
+                        {/* Group Filter Dropdown — only shown if groups exist */}
+                        {groups.length > 0 && (
+                            <div style={{ padding: '0 1rem 0.5rem' }}>
+                                <select
+                                    value={activeGroupFilter}
+                                    onChange={(e) => setActiveGroupFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                                    style={{
+                                        width: '100%',
+                                        background: 'rgba(255,255,255,0.05)',
+                                        border: '1px solid rgba(255,255,255,0.12)',
+                                        borderRadius: '8px',
+                                        color: 'white',
+                                        padding: '0.4rem 0.6rem',
+                                        fontSize: '0.75rem',
+                                        cursor: 'pointer',
+                                        outline: 'none',
+                                    }}
+                                >
+                                    <option value="all">🚘 All Groups</option>
+                                    {groups.map(g => (
+                                        <option key={g.id} value={g.id}>{g.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
                         {/* Vehicle List */}
                         <div className="vehicle-list">
-                            {vehicles.filter(v => {
+                            {filteredVehicles.filter(v => {
                                 const matchesSearch =
                                     v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                                     v.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1218,12 +1313,20 @@ function App() {
 
                     {/* Map Area */}
                     <div className="map-container">
+                        {/* Map tile loading overlay */}
+                        {mapTilesLoading && (
+                            <div className="map-loading-overlay">
+                                <div className="map-spinner" />
+                                <span style={{ fontSize: '0.85rem', opacity: 0.8 }}>Loading map tiles...</span>
+                            </div>
+                        )}
                         <MapContainer
                             center={[defaultCenter.lat, defaultCenter.lng]}
                             zoom={14}
                             ref={mapRef}
                             style={{ height: '100%', width: '100%', cursor: geofenceMode ? 'crosshair' : 'grab' }}
                         >
+                            <MapTileLoader onStart={handleMapTileStart} onEnd={handleMapTileEnd} />
                             <TileLayer
                                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -1389,7 +1492,7 @@ function App() {
                                 </>
                             )}
 
-                            {vehicles.map(v => {
+                            {filteredVehicles.map(v => {
                                 const online = isOnline(v.lastUpdate);
                                 const isAlert = v.battery < 20 || v.fuel < 15;
                                 const isArmed = v.cloudLocked || v.locked;

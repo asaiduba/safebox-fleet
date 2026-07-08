@@ -158,6 +158,7 @@ const notificationsRouter = require('./routes/notifications');
 const overrideRouter = require('./routes/override');
 const auditRouter = require('./routes/audit');
 const exportsRouter = require('./routes/exports');
+const groupsRouter = require('./routes/groups');
 
 // Mount route middleware
 app.use('/api', authRouter);
@@ -171,6 +172,7 @@ app.use('/api/notifications', notificationsRouter);
 app.use('/api/override', overrideRouter);
 app.use('/api/audit-logs', auditRouter);
 app.use('/api/exports', exportsRouter);
+app.use('/api/groups', groupsRouter);
 
 // MQTT Broker Setup — Private HiveMQ Cloud (TLS + Credentials)
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.emqx.io'; // fallback for local dev only

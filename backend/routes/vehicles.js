@@ -42,7 +42,7 @@ router.get('/', authMiddleware, (req, res) => {
 
 // POST register a new vehicle
 router.post('/', authMiddleware, async (req, res) => {
-  const { id, name, plateNumber, driverName, vehicleType } = req.body;
+  const { id, name, plateNumber, driverName, vehicleType, groupId } = req.body;
   const ownerId = getRequestUserId(req);
 
   try {
@@ -90,9 +90,9 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 
     db.prepare(`
-      INSERT INTO vehicles (id, name, owner_id, is_locked, cloud_locked, last_seen, battery_level, fuel_level, lat, lng, plate_number, driver_name, subscription_status, vehicle_type)
-      VALUES (?, ?, ?, 1, 1, ?, 100, 100, 0.0, 0.0, ?, ?, 'ACTIVE', ?)
-    `).run(id, name || id, ownerId, Date.now(), plateNumber || null, driverName || null, vehicleType || 'car');
+      INSERT INTO vehicles (id, name, owner_id, is_locked, cloud_locked, last_seen, battery_level, fuel_level, lat, lng, plate_number, driver_name, subscription_status, vehicle_type, group_id)
+      VALUES (?, ?, ?, 1, 1, ?, 100, 100, 0.0, 0.0, ?, ?, 'ACTIVE', ?, ?)
+    `).run(id, name || id, ownerId, Date.now(), plateNumber || null, driverName || null, vehicleType || 'car', groupId ? parseInt(groupId) : null);
 
     res.json({ success: true, message: 'Vehicle registered successfully.' });
   } catch (err) {
@@ -105,7 +105,7 @@ router.post('/', authMiddleware, async (req, res) => {
 router.put('/:id', authMiddleware, (req, res) => {
   const userId = getRequestUserId(req);
   const vehicleId = req.params.id;
-  const { name, plateNumber, driverName, vehicleType } = req.body;
+  const { name, plateNumber, driverName, vehicleType, groupId } = req.body;
 
   try {
     const vehicle = db.prepare('SELECT owner_id FROM vehicles WHERE id = ?').get(vehicleId);
@@ -118,11 +118,11 @@ router.put('/:id', authMiddleware, (req, res) => {
 
     db.prepare(`
       UPDATE vehicles
-      SET name = ?, plate_number = ?, driver_name = ?, vehicle_type = ?
+      SET name = ?, plate_number = ?, driver_name = ?, vehicle_type = ?, group_id = ?
       WHERE id = ?
-    `).run(name || vehicleId, plateNumber || null, driverName || null, vehicleType || 'car', vehicleId);
+    `).run(name || vehicleId, plateNumber || null, driverName || null, vehicleType || 'car', groupId ? parseInt(groupId) : null, vehicleId);
 
-    logAuditAction(userId, req.user.username, 'update_vehicle', vehicleId, { name, plateNumber, driverName, vehicleType }, req);
+    logAuditAction(userId, req.user.username, 'update_vehicle', vehicleId, { name, plateNumber, driverName, vehicleType, groupId }, req);
 
     res.json({ success: true, message: 'Vehicle details updated successfully.' });
   } catch (err) {

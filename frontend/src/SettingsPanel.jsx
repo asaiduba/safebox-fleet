@@ -14,7 +14,7 @@ import VehiclesSettings from './settings/VehiclesSettings';
 import SupportSettings from './settings/SupportSettings';
 import BillingSettings from './settings/BillingSettings';
 
-export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUpdate }) {
+export default function SettingsPanel({ user, vehicles = [], groups = [], onGroupsChanged = () => {}, onBack, onProfileUpdate }) {
     const API_BASE = import.meta.env.VITE_API_URL || '';
 
     // Form States
@@ -1235,6 +1235,8 @@ export default function SettingsPanel({ user, vehicles = [], onBack, onProfileUp
                                 vehicleError={vehicleError}
                                 vehicleLoading={vehicleLoading}
                                 handleSaveVehicleEdit={handleSaveVehicleEdit}
+                                groups={groups}
+                                onGroupsChanged={onGroupsChanged}
                             />
                         )}
                     </div>

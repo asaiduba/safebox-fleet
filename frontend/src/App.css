@@ -382,6 +382,40 @@ body {
   overflow: hidden;
 }
 
+.map-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-family: system-ui, sans-serif;
+  gap: 0.75rem;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.map-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top: 3px solid #3b82f6;
+  border-radius: 50%;
+  animation: map-spin 1s linear infinite;
+}
+
+@keyframes map-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 /* Info Window Customization */
 .info-window {
   color: #0f172a;

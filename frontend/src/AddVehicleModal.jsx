@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import './AddVehicleModal.css';
 
-export default function AddVehicleModal({ user, onClose, onVehicleAdded }) {
+export default function AddVehicleModal({ user, groups = [], onClose, onVehicleAdded }) {
     const API_BASE = import.meta.env.VITE_API_URL || '';
 
     const [deviceId, setDeviceId] = useState('');
@@ -10,6 +10,7 @@ export default function AddVehicleModal({ user, onClose, onVehicleAdded }) {
     const [plateNumber, setPlateNumber] = useState('');
     const [driverName, setDriverName] = useState('');
     const [vehicleType, setVehicleType] = useState('car');
+    const [groupId, setGroupId] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -38,6 +39,7 @@ export default function AddVehicleModal({ user, onClose, onVehicleAdded }) {
                 plateNumber: cleanPlate || null,
                 driverName: cleanDriver || null,
                 vehicleType,
+                groupId: groupId || null,
                 ownerId: user.id
             });
 
@@ -127,6 +129,30 @@ export default function AddVehicleModal({ user, onClose, onVehicleAdded }) {
                             <option value="van">🚐 Van</option>
                         </select>
                     </div>
+
+                    {groups.length > 0 && (
+                        <div className="form-group">
+                            <label>Fleet Group</label>
+                            <select
+                                value={groupId}
+                                onChange={(e) => setGroupId(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    padding: '0.75rem',
+                                    borderRadius: '0.5rem',
+                                    background: '#1e293b',
+                                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    color: 'white',
+                                    outline: 'none'
+                                }}
+                            >
+                                <option value="">— No Group —</option>
+                                {groups.map(g => (
+                                    <option key={g.id} value={g.id}>{g.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     <footer className="modal-footer">
                         <button type="button" className="cancel-btn" onClick={onClose}>Cancel</button>
