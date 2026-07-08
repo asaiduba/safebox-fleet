@@ -43,7 +43,11 @@ axios.interceptors.response.use(
 
       if (error.response.status === 403) {
         if (!isPublicAuthUrl && error.response.data?.error) {
-          alert(error.response.data.error);
+          if (window.showToast) {
+            window.showToast(error.response.data.error, 'error');
+          } else {
+            alert(error.response.data.error);
+          }
         }
         return Promise.reject(error);
       }

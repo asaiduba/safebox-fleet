@@ -126,6 +126,7 @@ io.on('connection', (socket) => {
           payload: {
             deviceId,
             locked: isLock,
+            cloudLocked: isLock,
             timestamp: Date.now()
           }
         });
@@ -173,6 +174,9 @@ app.use('/api/override', overrideRouter);
 app.use('/api/audit-logs', auditRouter);
 app.use('/api/exports', exportsRouter);
 app.use('/api/groups', groupsRouter);
+
+// Serve reports public directory statically
+app.use('/reports', express.static(path.join(__dirname, 'public', 'reports')));
 
 // MQTT Broker Setup — Private HiveMQ Cloud (TLS + Credentials)
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.emqx.io'; // fallback for local dev only

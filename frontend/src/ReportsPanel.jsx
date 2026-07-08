@@ -381,7 +381,14 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
                                     <p className="preview-sub">Live approximate stats based on your query criteria before downloading file.</p>
                                     
                                     {previewLoading ? (
-                                        <div className="preview-loading">Calculating operational indices...</div>
+                                        <div className="preview-kpi-grid">
+                                            {[...Array(5)].map((_, i) => (
+                                                <div key={i} className="skeleton-card">
+                                                    <div className="skeleton-title skeleton-shimmer" style={{ width: '60%' }} />
+                                                    <div className="skeleton-value skeleton-shimmer" style={{ width: '40%' }} />
+                                                </div>
+                                            ))}
+                                        </div>
                                     ) : previewData ? (
                                         <div className="preview-kpi-grid">
                                             <div className="preview-kpi-card">
@@ -530,9 +537,18 @@ export default function ReportsPanel({ onClose, vehicles = [] }) {
                     {subTab === 'history' && (
                         <div className="reports-history-workspace glass-panel">
                             <h3><FolderIcon size={16} /> Generated Reports Archive</h3>
-                            {historyLoading ? (
-                                <div className="loading-spinner">Loading archive...</div>
-                            ) : historyList.length === 0 ? (
+                             {historyLoading ? (
+                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
+                                     {[...Array(3)].map((_, i) => (
+                                         <div key={i} className="skeleton-card" style={{ padding: '1rem', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                             <div className="skeleton-title skeleton-shimmer" style={{ width: '40%' }} />
+                                             <div className="skeleton-desc skeleton-shimmer" style={{ width: '15%' }} />
+                                             <div className="skeleton-desc skeleton-shimmer" style={{ width: '20%' }} />
+                                             <div className="skeleton-desc skeleton-shimmer" style={{ width: '10%' }} />
+                                         </div>
+                                     ))}
+                                 </div>
+                             ) : historyList.length === 0 ? (
                                 <p className="no-data-msg">No reports found in history archive.</p>
                             ) : (
                                 <div className="history-table-container">

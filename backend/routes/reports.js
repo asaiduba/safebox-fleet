@@ -257,6 +257,12 @@ router.post('/fuel-settings', authMiddleware, (req, res) => {
     });
 
     runTransaction(idsToProcess);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${userId}`).emit('sync-data', { type: 'vehicles' });
+    }
+
     res.json({ message: 'Fuel & Cost configurations saved' });
   } catch (err) {
     console.error('Save fuel configuration failed:', err);

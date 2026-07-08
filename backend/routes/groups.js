@@ -42,6 +42,11 @@ router.post('/', authMiddleware, (req, res) => {
             req
         );
 
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`user_${userId}`).emit('sync-data', { type: 'groups' });
+        }
+
         res.json({ success: true, id: groupId, name: name.trim() });
     } catch (err) {
         console.error('Failed to create group:', err);
@@ -79,6 +84,11 @@ router.put('/:id', authMiddleware, (req, res) => {
             { oldName: group.name, newName: name.trim() },
             req
         );
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`user_${userId}`).emit('sync-data', { type: 'groups' });
+        }
 
         res.json({ success: true, message: 'Group renamed successfully.' });
     } catch (err) {
@@ -118,6 +128,11 @@ router.delete('/:id', authMiddleware, (req, res) => {
             { groupName: group.name },
             req
         );
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`user_${userId}`).emit('sync-data', { type: 'groups' });
+        }
 
         res.json({ success: true, message: 'Group deleted successfully.' });
     } catch (err) {
@@ -168,6 +183,11 @@ router.post('/:id/assign', authMiddleware, (req, res) => {
             { groupName: group.name, assignedVehiclesCount: vehicleIds.length, vehicleIds },
             req
         );
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`user_${userId}`).emit('sync-data', { type: 'groups' });
+        }
 
         res.json({ success: true, message: 'Vehicles assigned successfully.' });
     } catch (err) {

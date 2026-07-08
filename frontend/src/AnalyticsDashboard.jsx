@@ -100,39 +100,28 @@ const AnalyticsDashboard = ({ onBack, onOpenReports }) => {
     }, [selectedVehicleId, fetchHistory]);
 
     if (!stats) return (
-        <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100vw',
-            height: '100vh',
-            background: 'rgba(15, 23, 42, 0.85)',
-            backdropFilter: 'blur(12px)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 9999,
-            color: 'white',
-            fontFamily: 'system-ui, sans-serif'
-        }}>
-            <div style={{
-                width: '50px',
-                height: '50px',
-                border: '3px solid rgba(255, 255, 255, 0.1)',
-                borderTop: '3px solid #3b82f6',
-                borderRadius: '50%',
-                animation: 'spin 1s linear infinite',
-                marginBottom: '1.25rem'
-            }} />
-            <h2 style={{ fontSize: '1.2rem', fontWeight: '600', letterSpacing: '0.02em', margin: 0 }}>Loading Analytics Dashboard...</h2>
-            <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginTop: '0.4rem', margin: 0 }}>Querying fleet performance history</p>
-            <style>{`
-                @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                }
-            `}</style>
+        <div className="analytics-container" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', minHeight: '100vh', background: '#0f172a', color: 'white' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="skeleton-card" style={{ width: '250px', height: '40px', padding: '0.5rem', background: 'transparent', border: 'none' }}>
+                    <div className="skeleton-title skeleton-shimmer" style={{ width: '80%', height: '24px' }} />
+                </div>
+                <div className="skeleton-card" style={{ width: '100px', height: '40px', padding: '0.5rem', background: 'transparent', border: 'none' }}>
+                    <div className="skeleton-title skeleton-shimmer" style={{ width: '100%', height: '32px', borderRadius: '8px' }} />
+                </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                {[...Array(4)].map((_, i) => (
+                    <div key={i} className="skeleton-card">
+                        <div className="skeleton-title skeleton-shimmer" style={{ width: '60%' }} />
+                        <div className="skeleton-value skeleton-shimmer" style={{ width: '40%', marginTop: '0.5rem' }} />
+                        <div className="skeleton-desc skeleton-shimmer" style={{ width: '80%', marginTop: '0.5rem' }} />
+                    </div>
+                ))}
+            </div>
+            <div className="skeleton-card" style={{ height: '320px', width: '100%' }}>
+                <div className="skeleton-title skeleton-shimmer" style={{ width: '30%', height: '20px' }} />
+                <div className="skeleton-value skeleton-shimmer" style={{ width: '100%', height: '80%', marginTop: '1rem' }} />
+            </div>
         </div>
     );
 

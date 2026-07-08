@@ -94,6 +94,11 @@ router.post('/', authMiddleware, async (req, res) => {
       VALUES (?, ?, ?, 1, 1, ?, 100, 100, 0.0, 0.0, ?, ?, 'ACTIVE', ?, ?)
     `).run(id, name || id, ownerId, Date.now(), plateNumber || null, driverName || null, vehicleType || 'car', groupId ? parseInt(groupId) : null);
 
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${ownerId}`).emit('sync-data', { type: 'vehicles' });
+    }
+
     res.json({ success: true, message: 'Vehicle registered successfully.' });
   } catch (err) {
     console.error('Register vehicle error:', err);
@@ -124,6 +129,11 @@ router.put('/:id', authMiddleware, (req, res) => {
 
     logAuditAction(userId, req.user.username, 'update_vehicle', vehicleId, { name, plateNumber, driverName, vehicleType, groupId }, req);
 
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${userId}`).emit('sync-data', { type: 'vehicles' });
+    }
+
     res.json({ success: true, message: 'Vehicle details updated successfully.' });
   } catch (err) {
     console.error("Update vehicle error:", err);
@@ -149,6 +159,11 @@ router.delete('/:id', authMiddleware, (req, res) => {
     db.prepare('DELETE FROM vehicles WHERE id = ?').run(vehicleId);
 
     logAuditAction(userId, req.user.username, 'delete_vehicle', vehicleId, { name: vehicle.name }, req);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${userId}`).emit('sync-data', { type: 'vehicles' });
+    }
 
     res.json({ success: true });
   } catch (err) {
@@ -185,6 +200,11 @@ router.post('/ble-settings', authMiddleware, (req, res) => {
       const socket = activeTcpSockets.get(vehicleId);
       socket.write(`$$CMD,${vehicleId},SET_BLE_BEACON,${bleBeaconId || ''},${rssi}\r\n`);
       console.log(`[BLE Config Sync] Pushed new BLE configuration to TCP socket for ${vehicleId}`);
+    }
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${userId}`).emit('sync-data', { type: 'vehicles' });
     }
 
     res.json({ success: true, message: 'BLE Keyless Entry configurations saved successfully.' });

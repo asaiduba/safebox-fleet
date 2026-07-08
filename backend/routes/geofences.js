@@ -46,6 +46,12 @@ router.post('/', authMiddleware, (req, res) => {
 
     const stmt = db.prepare('INSERT INTO geofences (vehicle_id, lat, lng, radius, type, coordinates) VALUES (?, ?, ?, ?, ?, ?)');
     const info = stmt.run(vehicleId, lat || 0, lng || 0, radius || 0, geoType, coordsJson);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${userId}`).emit('sync-data', { type: 'geofences' });
+    }
+
     res.json({ id: info.lastInsertRowid, vehicleId, lat, lng, radius, type: geoType, coordinates });
   } catch (err) {
     console.error(err);
@@ -93,6 +99,12 @@ router.delete('/:id', authMiddleware, (req, res) => {
 
     const stmt = db.prepare('DELETE FROM geofences WHERE id = ?');
     stmt.run(req.params.id);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${userId}`).emit('sync-data', { type: 'geofences' });
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete geofence' });

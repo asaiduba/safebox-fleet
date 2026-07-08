@@ -1482,6 +1482,50 @@ body {
   to { transform: translateY(0); }
 }
 
+/* Shimmer Skeleton Loaders */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(30, 41, 59, 0.4) 25%, rgba(51, 65, 85, 0.6) 50%, rgba(30, 41, 59, 0.4) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite linear;
+}
+
+.skeleton-card {
+  padding: 1.5rem;
+  background: rgba(30, 41, 59, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.skeleton-title {
+  height: 1.25rem;
+  width: 50%;
+  border-radius: 4px;
+}
+
+.skeleton-value {
+  height: 2rem;
+  width: 80%;
+  border-radius: 4px;
+}
+
+.skeleton-desc {
+  height: 0.85rem;
+  width: 35%;
+  border-radius: 4px;
+}
+
 /* Adjust App Header position when impersonating banner is visible */
 .impersonating-active .app-header {
   margin-top: 42px;

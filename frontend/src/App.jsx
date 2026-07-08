@@ -76,7 +76,10 @@ import {
     TrashIcon,
     LogOutIcon,
     ShieldIcon,
-    XIcon
+    XIcon,
+    CheckIcon,
+    InfoIcon,
+    AlertTriangleIcon
 } from './settings/Icons';
 
 // Fix Leaflet default icon issue
@@ -206,7 +209,17 @@ function App() {
         return savedUser ? JSON.parse(savedUser) : null;
     });
 
-    const [vehicles, setVehicles] = useState([]);
+    const [vehicles, setVehicles] = useState(() => {
+        try {
+            const savedUser = localStorage.getItem('user');
+            if (savedUser) {
+                const u = JSON.parse(savedUser);
+                const cached = localStorage.getItem(`cached_vehicles_${u.id}`);
+                return cached ? JSON.parse(cached) : [];
+            }
+        } catch (_) {}
+        return [];
+    });
     const [selectedVehicleId, setSelectedVehicleId] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('all');
@@ -286,13 +299,71 @@ function App() {
     const mapRef = useRef(null);
 
     // Vehicle Groups state
-    const [groups, setGroups] = useState([]);
+    const [groups, setGroups] = useState(() => {
+        try {
+            const savedUser = localStorage.getItem('user');
+            if (savedUser) {
+                const u = JSON.parse(savedUser);
+                const cached = localStorage.getItem(`cached_groups_${u.id}`);
+                return cached ? JSON.parse(cached) : [];
+            }
+        } catch (_) {}
+        return [];
+    });
+
+    const [isAppOffline, setIsAppOffline] = useState(!navigator.onLine);
+
+    useEffect(() => {
+        const goOnline = () => {
+            setIsAppOffline(false);
+            window.showToast?.("Network connection restored. Syncing fleet status...", "success");
+            fetchVehicles();
+            fetchGroups();
+        };
+        const goOffline = () => {
+            setIsAppOffline(true);
+            window.showToast?.("Working offline. Showing cached fleet coordinates.", "warning");
+        };
+        window.addEventListener('online', goOnline);
+        window.addEventListener('offline', goOffline);
+        return () => {
+            window.removeEventListener('online', goOnline);
+            window.removeEventListener('offline', goOffline);
+        };
+    }, [fetchVehicles, fetchGroups]);
     const [activeGroupFilter, setActiveGroupFilter] = useState('all'); // 'all' or group id
 
     // Map tile loading state
     const [mapTilesLoading, setMapTilesLoading] = useState(true);
     const handleMapTileStart = useCallback(() => setMapTilesLoading(true), []);
     const handleMapTileEnd = useCallback(() => setMapTilesLoading(false), []);
+
+    // Toast notifications state
+    const [toasts, setToasts] = useState([]);
+
+    const addToast = useCallback((message, type = 'info') => {
+        const id = Date.now() + Math.random();
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => {
+            setToasts(prev => prev.filter(t => t.id !== id));
+        }, 4000);
+    }, []);
+
+    useEffect(() => {
+        const handleToastEvent = (e) => {
+            if (e.detail && e.detail.message) {
+                addToast(e.detail.message, e.detail.type || 'info');
+            }
+        };
+        window.addEventListener('show-toast', handleToastEvent);
+        window.showToast = (message, type = 'info') => {
+            window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, type } }));
+        };
+        return () => {
+            window.removeEventListener('show-toast', handleToastEvent);
+            delete window.showToast;
+        };
+    }, [addToast]);
 
     // Derive selected vehicle from vehicles array
     const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId) || null;
@@ -325,7 +396,7 @@ function App() {
     const fetchVehicles = useCallback(async () => {
         try {
             const res = await axios.get(`${API_BASE}/api/vehicles?userId=${user.id}&role=${user.role}`);
-            setVehicles(res.data.map(v => ({
+            const mapped = res.data.map(v => ({
                 ...v,
                 lat: v.lat || -1.9441,
                 lng: v.lng || 30.0619,
@@ -341,9 +412,16 @@ function App() {
                 // shows signal immediately on load without waiting for a Socket.IO packet.
                 beaconRssi: v.beacon_rssi ?? v.beaconRssi ?? null,
                 driverPresent: v.driver_present !== undefined ? v.driver_present !== 0 : true
-            })));
+            }));
+            setVehicles(mapped);
+            localStorage.setItem(`cached_vehicles_${user.id}`, JSON.stringify(mapped));
         } catch (err) {
             console.error("Failed to fetch vehicles", err);
+            const cached = localStorage.getItem(`cached_vehicles_${user.id}`);
+            if (cached) {
+                setVehicles(JSON.parse(cached));
+                window.showToast?.("Offline Mode: Displaying cached vehicle coordinates.", "warning");
+            }
         }
     }, [user]);
 
@@ -352,8 +430,13 @@ function App() {
         try {
             const res = await axios.get(`${API_BASE}/api/groups`);
             setGroups(res.data);
+            localStorage.setItem(`cached_groups_${user.id}`, JSON.stringify(res.data));
         } catch (err) {
             console.error("Failed to fetch groups", err);
+            const cached = localStorage.getItem(`cached_groups_${user.id}`);
+            if (cached) {
+                setGroups(JSON.parse(cached));
+            }
         }
     }, [user]);
 
@@ -373,7 +456,7 @@ function App() {
             setPendingOverrides(prev => prev.filter(r => r.id !== requestId));
             fetchVehicles();
         } catch (err) {
-            alert(err.response?.data?.error || 'Failed to resolve override request');
+            window.showToast(err.response?.data?.error || 'Failed to resolve override request', 'error');
         }
     }, [fetchVehicles]);
 
@@ -385,7 +468,7 @@ function App() {
             if (selectedVehicleId === vehicleId) setSelectedVehicleId(null);
         } catch (err) {
             console.error('Failed to delete vehicle', err);
-            alert('Failed to delete vehicle');
+            window.showToast('Failed to delete vehicle', 'error');
         }
     }, [fetchVehicles, selectedVehicleId]);
 
@@ -482,7 +565,7 @@ function App() {
             await axios.delete(`${API_BASE}/api/geofences/${id}`);
         } catch (err) {
             console.error('Failed to delete geofence', err);
-            alert('Failed to delete geofence');
+            window.showToast('Failed to delete geofence', 'error');
             setGeofences(previousGeofences);
         }
     }, [geofences]);
@@ -585,7 +668,7 @@ function App() {
             link.remove();
         } catch (err) {
             console.error("Failed to export alerts CSV", err);
-            alert("Failed to export alerts CSV");
+            window.showToast("Failed to export alerts CSV", "error");
         }
     };
 
@@ -635,13 +718,13 @@ function App() {
                 // Real Production/Test Paystack Mode (Server-to-Server Handoff Verification)
                 axios.get(`${API_BASE}/api/payments/verify/${reference}`)
                     .then(() => {
-                        alert('💳 Paystack Checkout Verified! Your fleet subscription has been successfully activated.');
+                        window.showToast('Paystack Checkout Verified! Your fleet subscription has been successfully activated.', 'success');
                         fetchVehicles();
                         window.history.replaceState({}, document.title, "/"); // Clean URL parameters
                     })
                     .catch(err => {
                         console.error('Real Paystack verification failed:', err);
-                        alert('Failed to verify payment transaction with Paystack.');
+                        window.showToast('Failed to verify payment transaction with Paystack.', 'error');
                     });
             }
         }
@@ -697,8 +780,10 @@ function App() {
                 const index = prev.findIndex(v => v.id === data.payload.deviceId);
                 if (index > -1) {
                     const newVehicles = [...prev];
-                    // Preserve cloudLocked — it is web-only and must NOT be overwritten by device telemetry.
-                    const { cloudLocked: _ignore, ...telemetry } = data.payload;
+                    // Preserve cloudLocked unless it is explicitly sent in the socket payload (e.g. from lock/unlock commands)
+                    const { cloudLocked, ...telemetry } = data.payload;
+                    const existingVehicle = newVehicles[index];
+                    const updatedCloudLocked = cloudLocked !== undefined ? cloudLocked : existingVehicle.cloudLocked;
 
                     // Preserve beaconRssi and driverPresent — most telemetry packets have NO beacon
                     // data and carry beaconRssi=null. We must not let those null values erase a
@@ -711,8 +796,9 @@ function App() {
                     }
 
                     newVehicles[index] = {
-                        ...newVehicles[index],
+                        ...existingVehicle,
                         ...telemetry,
+                        cloudLocked: updatedCloudLocked,
                         lastUpdate: new Date()
                     };
                     return newVehicles;
@@ -758,6 +844,20 @@ function App() {
             fetchVehicles(); // Refetch vehicles to apply active/suspended billing status
         });
 
+        socket.on('sync-data', (data) => {
+            console.log('[Socket] Sync request received:', data);
+            if (data.type === 'vehicles' || data.type === 'profile' || data.type === 'settings') {
+                fetchVehicles();
+            } else if (data.type === 'groups') {
+                fetchGroups();
+            } else if (data.type === 'geofences') {
+                fetchVehicles();
+                if (selectedVehicleId) {
+                    fetchGeofences(selectedVehicleId);
+                }
+            }
+        });
+
         socket.on('override-request', (data) => {
             setPendingOverrides(prev => {
                 if (prev.some(r => r.id === data.id)) return prev;
@@ -780,6 +880,7 @@ function App() {
                 socket.off('device-tampering');
                 socket.off('device-alert');
                 socket.off('billing-updated');
+                socket.off('sync-data');
                 socket.off('override-request');
                 socket.off('override-resolved');
                 socket.disconnect();
@@ -976,13 +1077,13 @@ function App() {
                                 onClick={async () => {
                                     try {
                                         await axios.get(`${API_BASE}/api/payments/verify/${sandboxData.reference}?userId=${sandboxData.userId}&vehicles=${sandboxData.vehicles}&cycle=${sandboxData.cycle}`);
-                                        alert('💳 Secure Sandbox Checkout Complete! Your fleet subscription has been activated.');
+                                        window.showToast('Secure Sandbox Checkout Complete! Your fleet subscription has been activated.', 'success');
                                         fetchVehicles();
                                         setSandboxData(null);
                                         window.history.replaceState({}, document.title, "/"); // Clean URL parameters
                                     } catch (err) {
                                         console.error('Mock verification failed:', err);
-                                        alert('Failed to verify payment reference');
+                                        window.showToast('Failed to verify payment reference', 'error');
                                     }
                                 }}
                             >
@@ -991,7 +1092,7 @@ function App() {
                             <button
                                 className="sandbox-btn-failed"
                                 onClick={() => {
-                                    alert('❌ Sandbox Checkout: Payment simulation failed or was declined. Subscription not activated.');
+                                    window.showToast('Sandbox Checkout: Payment simulation failed or was declined. Subscription not activated.', 'error');
                                     setSandboxData(null);
                                     window.history.replaceState({}, document.title, "/"); // Clean URL parameters
                                 }}
@@ -1130,13 +1231,27 @@ function App() {
                                     width: '10px',
                                     height: '10px',
                                     borderRadius: '50%',
-                                    backgroundColor: socketConnected ? '#10b981' : '#ef4444',
-                                    boxShadow: socketConnected ? '0 0 8px #10b981' : '0 0 8px #ef4444',
+                                    backgroundColor: (socketConnected && !isAppOffline) ? '#10b981' : '#ef4444',
+                                    boxShadow: (socketConnected && !isAppOffline) ? '0 0 8px #10b981' : '0 0 8px #ef4444',
                                     transition: 'all 0.3s ease',
                                     marginLeft: '0.25rem'
                                 }}
-                                title={socketConnected ? "Telemetry stream: Connected" : "Telemetry stream: Disconnected"}
+                                title={(socketConnected && !isAppOffline) ? "Telemetry stream: Connected" : "Telemetry stream: Offline"}
                             />
+                            {isAppOffline && (
+                                <span style={{
+                                    fontSize: '0.65rem',
+                                    background: 'rgba(239, 68, 68, 0.2)',
+                                    color: '#ef4444',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                                    fontWeight: 'bold',
+                                    letterSpacing: '0.05em'
+                                }}>
+                                    OFFLINE
+                                </span>
+                            )}
                         </div>
                         <div className="user-info">
                             {user.role === 'company' && user.subscription_status !== 'SUSPENDED' && (
@@ -1502,7 +1617,7 @@ function App() {
                                         }).then(() => {
                                             fetchGeofences(selectedVehicleId);
                                         }).catch(() => {
-                                            alert('Failed to create geofence');
+                                             window.showToast('Failed to create geofence', 'error');
                                             setGeofenceMode(true);
                                         });
                                     }
@@ -1734,7 +1849,7 @@ function App() {
                                                                                         fetchGeofences(selectedVehicleId);
                                                                                         setPolygonPoints([]);
                                                                                     }).catch(() => {
-                                                                                        alert('Failed to create polygon geofence');
+                                                                                        window.showToast('Failed to create polygon geofence', 'error');
                                                                                         setGeofenceMode(true);
                                                                                     });
                                                                                 }}
@@ -1886,7 +2001,50 @@ function App() {
                     />
                 )
             }
-        </ErrorBoundary >
+
+            {/* Toast Container */}
+            <div style={{
+                position: 'fixed',
+                top: '20px',
+                right: '20px',
+                zIndex: 99999,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                pointerEvents: 'none'
+            }}>
+                {toasts.map(t => (
+                    <div key={t.id} style={{
+                        pointerEvents: 'auto',
+                        background: t.type === 'success' ? 'linear-gradient(135deg, #059669, #10b981)' :
+                                    t.type === 'error' ? 'linear-gradient(135deg, #dc2626, #ef4444)' :
+                                    t.type === 'warning' ? 'linear-gradient(135deg, #d97706, #f59e0b)' :
+                                    'linear-gradient(135deg, #1e293b, #334155)',
+                        color: 'white',
+                        padding: '0.75rem 1.25rem',
+                        borderRadius: '8px',
+                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                        minWidth: '250px',
+                        maxWidth: '400px',
+                        animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {t.type === 'success' && <CheckIcon size={18} />}
+                            {t.type === 'error' && <AlertTriangleIcon size={18} />}
+                            {t.type === 'warning' && <AlertTriangleIcon size={18} />}
+                            {t.type === 'info' && <InfoIcon size={18} />}
+                        </div>
+                        <div style={{ flex: 1, fontSize: '0.85rem', fontWeight: '500', lineHeight: '1.25' }}>
+                            {t.message}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </ErrorBoundary>
     );
 }
 
@@ -1915,7 +2073,7 @@ function ShareLinkModal({ vehicle, onClose }) {
             const baseUrl = window.location.origin;
             setGeneratedLink(`${baseUrl}/track/${res.data.token}`);
         } catch (err) {
-            alert(err.response?.data?.error || 'Failed to generate share link');
+            window.showToast(err.response?.data?.error || 'Failed to generate share link', 'error');
         }
         setGenerating(false);
     };

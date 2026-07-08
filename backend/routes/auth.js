@@ -362,6 +362,11 @@ router.post('/profile/update', authMiddleware, async (req, res) => {
       });
     }
 
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${userId}`).emit('sync-data', { type: 'profile' });
+    }
+
     res.json({ success: true, message: 'Profile updated successfully' });
   } catch (err) {
     console.error('Profile update failed:', err);
