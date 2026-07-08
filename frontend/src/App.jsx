@@ -312,25 +312,6 @@ function App() {
     });
 
     const [isAppOffline, setIsAppOffline] = useState(!navigator.onLine);
-
-    useEffect(() => {
-        const goOnline = () => {
-            setIsAppOffline(false);
-            window.showToast?.("Network connection restored. Syncing fleet status...", "success");
-            fetchVehicles();
-            fetchGroups();
-        };
-        const goOffline = () => {
-            setIsAppOffline(true);
-            window.showToast?.("Working offline. Showing cached fleet coordinates.", "warning");
-        };
-        window.addEventListener('online', goOnline);
-        window.addEventListener('offline', goOffline);
-        return () => {
-            window.removeEventListener('online', goOnline);
-            window.removeEventListener('offline', goOffline);
-        };
-    }, [fetchVehicles, fetchGroups]);
     const [activeGroupFilter, setActiveGroupFilter] = useState('all'); // 'all' or group id
 
     // Map tile loading state
@@ -449,6 +430,25 @@ function App() {
             console.error("Failed to fetch pending overrides", err);
         }
     }, [user]);
+
+    useEffect(() => {
+        const goOnline = () => {
+            setIsAppOffline(false);
+            window.showToast?.("Network connection restored. Syncing fleet status...", "success");
+            fetchVehicles();
+            fetchGroups();
+        };
+        const goOffline = () => {
+            setIsAppOffline(true);
+            window.showToast?.("Working offline. Showing cached fleet coordinates.", "warning");
+        };
+        window.addEventListener('online', goOnline);
+        window.addEventListener('offline', goOffline);
+        return () => {
+            window.removeEventListener('online', goOnline);
+            window.removeEventListener('offline', goOffline);
+        };
+    }, [fetchVehicles, fetchGroups]);
 
     const handleResolveOverride = useCallback(async (requestId, status) => {
         try {
