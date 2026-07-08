@@ -213,7 +213,7 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
         setFuelLoading(true);
         setFuelError('');
         try {
-            const res = await axios.get(`${API_BASE}/api/vehicles/fuel-settings`);
+            const res = await axios.get(`${API_BASE}/api/reports/fuel-settings`);
             setFuelSettingsList(res.data);
         } catch (err) {
             console.error('Failed to load fuel settings:', err);
@@ -234,7 +234,7 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
         setFuelError('');
         setFuelSuccess('');
         try {
-            await axios.post(`${API_BASE}/api/vehicles/fuel-settings`, {
+            await axios.post(`${API_BASE}/api/reports/fuel-settings`, {
                 vehicleId: vId,
                 fuelType,
                 fuelPrice: parseFloat(fuelPrice),
@@ -269,7 +269,7 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
         setFuelError('');
         setFuelSuccess('');
         try {
-            await axios.post(`${API_BASE}/api/vehicles/fuel-settings`, {
+            await axios.post(`${API_BASE}/api/reports/fuel-settings`, {
                 vehicleIds: selectedFuelVehicles,
                 fuelType: bulkFuelType,
                 fuelPrice: parseFloat(bulkFuelPrice),
