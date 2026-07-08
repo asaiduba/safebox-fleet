@@ -1,4 +1,5 @@
 import React from 'react';
+import { ClockIcon, LockIcon } from './Icons';
 
 export default function CurfewSettings({
     curfewEnabled,
@@ -25,7 +26,9 @@ export default function CurfewSettings({
 }) {
     return (
         <div className="form-section admin-section curfew-section">
-            <h3>🕒 Vehicle Access Policy (Operating Hours)</h3>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <ClockIcon size={20} /> Vehicle Access Policy (Operating Hours)
+            </h3>
             <p className="section-subtitle font-admin">
                 Configure fleet operating hours. New engine starts outside allowed times or on unselected days will be blocked, and drivers can request real-time overrides from managers.
             </p>
@@ -218,12 +221,12 @@ export default function CurfewSettings({
                                         </div>
                                         <div className="card-right">
                                             {v.curfew_enabled ? (
-                                                <span className="curfew-badge active">
-                                                    🕒 Active
+                                                <span className="curfew-badge active" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                                    <ClockIcon size={12} /> Active
                                                 </span>
                                             ) : (
-                                                <span className="curfew-badge inactive">
-                                                    🔓 Off
+                                                <span className="curfew-badge inactive" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                                    <LockIcon size={12} /> Off
                                                 </span>
                                             )}
                                         </div>
@@ -238,7 +241,7 @@ export default function CurfewSettings({
             <div className="curfew-action-row" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
                 <button 
                     type="button" 
-                    className="apply-curfew-btn"
+                    className="btn-primary"
                     onClick={handleApplyCurfew}
                     disabled={curfewLoading}
                 >

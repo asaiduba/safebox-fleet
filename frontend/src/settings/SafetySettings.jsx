@@ -1,4 +1,5 @@
 import React from 'react';
+import { ShieldIcon } from './Icons';
 
 export default function SafetySettings({
     speedLimit,
@@ -16,7 +17,9 @@ export default function SafetySettings({
     return (
         <form onSubmit={handleSave} style={{ marginBottom: '2rem' }}>
             <div className="form-section admin-section">
-                <h3>🛡️ Admin Safety Thresholds</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <ShieldIcon size={20} /> Admin Safety Thresholds
+                </h3>
                 <p className="section-subtitle font-admin">Configure dynamic G-Force and speed triggers for safety scoring.</p>
 
                 <div className="slider-group">
@@ -68,8 +71,8 @@ export default function SafetySettings({
                     </div>
                 </div>
             </div>
-            <footer className="settings-footer" style={{ padding: '1rem 0', background: 'transparent', borderTop: '1px solid rgba(255,255,255,0.05)', marginBottom: '2rem' }}>
-                <button type="submit" className="save-btn" disabled={loading}>
+            <footer className="settings-footer" style={{ padding: '1rem 0', background: 'transparent', borderTop: '1px solid rgba(255,255,255,0.05)', marginBottom: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="submit" className="btn-primary" disabled={loading}>
                     {loading ? 'Saving...' : 'Save Safety Thresholds'}
                 </button>
             </footer>

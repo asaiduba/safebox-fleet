@@ -1,4 +1,5 @@
 import React from 'react';
+import { BellIcon, MailIcon, PhoneIcon, CheckIcon, AlertTriangleIcon } from './Icons';
 
 export default function NotificationSettings({
     batteryAlert,
@@ -7,6 +8,8 @@ export default function NotificationSettings({
     setFuelAlert,
     geofenceAlert,
     setGeofenceAlert,
+    maintenanceAlert,
+    setMaintenanceAlert,
     notifyEmail,
     setNotifyEmail,
     notifySms,
@@ -39,7 +42,9 @@ export default function NotificationSettings({
 
             {/* SECTION 1: NOTIFICATION TRIGGERS */}
             <div className="form-section">
-                <h3>🔔 Notification Triggers</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <BellIcon size={20} /> Notification Triggers
+                </h3>
                 <p className="section-subtitle">Toggle real-time alerts shown on your browser dashboard.</p>
                 
                 <div className="toggle-group">
@@ -87,12 +92,29 @@ export default function NotificationSettings({
                             <span className="slider round"></span>
                         </label>
                     </div>
+
+                    <div className="toggle-item">
+                        <div className="toggle-info">
+                            <span className="toggle-title">Maintenance Due Alert</span>
+                            <span className="toggle-desc">Notify when a vehicle's scheduled maintenance service is due.</span>
+                        </div>
+                        <label className="switch">
+                            <input 
+                                type="checkbox" 
+                                checked={maintenanceAlert} 
+                                onChange={(e) => setMaintenanceAlert(e.target.checked)} 
+                            />
+                            <span className="slider round"></span>
+                        </label>
+                    </div>
                 </div>
             </div>
 
             {/* SECTION 2: ALERT DELIVERY CHANNELS */}
             <div className="form-section">
-                <h3>📡 Alert Delivery Channels</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <BellIcon size={20} /> Alert Delivery Channels
+                </h3>
                 <p className="section-subtitle">Choose where and how to receive security, speed, and geofence alerts.</p>
                 
                 <div className="toggle-group" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -100,7 +122,9 @@ export default function NotificationSettings({
                     <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '1rem' }}>
                         <div className="toggle-item">
                             <div className="toggle-info">
-                                <span className="toggle-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '600' }}>✉️ Email Alerts</span>
+                                <span className="toggle-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '600' }}>
+                                    <MailIcon size={16} /> Email Alerts
+                                </span>
                                 <span className="toggle-desc">Receive real-time security alerts in your mailbox.</span>
                             </div>
                             <label className="switch">
@@ -133,7 +157,9 @@ export default function NotificationSettings({
                     <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '1rem' }}>
                         <div className="toggle-item">
                             <div className="toggle-info">
-                                <span className="toggle-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '600' }}>📱 SMS Text Alerts</span>
+                                <span className="toggle-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '600' }}>
+                                    <PhoneIcon size={16} /> SMS Text Alerts
+                                </span>
                                 <span className="toggle-desc">Receive urgent SMS alerts on your phone.</span>
                             </div>
                             <label className="switch">
@@ -166,7 +192,9 @@ export default function NotificationSettings({
                     <div>
                         <div className="toggle-item">
                             <div className="toggle-info">
-                                <span className="toggle-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '600' }}>🔔 Browser Push Notifications</span>
+                                <span className="toggle-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '600' }}>
+                                    <BellIcon size={16} /> Browser Push Notifications
+                                </span>
                                 <span className="toggle-desc">Receive real-time desktop popups when tracking dashboard is open.</span>
                             </div>
                             <label className="switch">
@@ -183,7 +211,7 @@ export default function NotificationSettings({
                             <div style={{ marginLeft: '1rem', marginTop: '0.8rem', paddingLeft: '0.5rem', borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
                                 {pushSubscriptionActive ? (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#10b981', fontSize: '0.8rem', fontWeight: '600' }}>
-                                        <span>🟢 Browser Push Enrolled Successfully</span>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><CheckIcon size={14} /> Browser Push Enrolled Successfully</span>
                                         <button 
                                             type="button"
                                             onClick={handleTestPush}
@@ -207,8 +235,8 @@ export default function NotificationSettings({
                             </div>
                         )}
                         {notifyPush && !isPushSupported && (
-                            <div style={{ marginLeft: '1rem', marginTop: '0.5rem', color: '#f59e0b', fontSize: '0.75rem' }}>
-                                ⚠️ Push Notifications not supported by your current browser or protocol connection.
+                            <div style={{ marginLeft: '1rem', marginTop: '0.5rem', color: '#f59e0b', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <AlertTriangleIcon size={14} /> Push Notifications not supported by your current browser or protocol connection.
                             </div>
                         )}
                     </div>

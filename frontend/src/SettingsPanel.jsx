@@ -14,6 +14,21 @@ import VehiclesSettings from './settings/VehiclesSettings';
 import SupportSettings from './settings/SupportSettings';
 import BillingSettings from './settings/BillingSettings';
 
+// Import Premium SVG Icons
+import {
+    UserIcon,
+    BellIcon,
+    ShieldIcon,
+    ClockIcon,
+    CreditCardIcon,
+    WrenchIcon,
+    MessageSquareIcon,
+    FuelIcon,
+    KeyIcon,
+    CarIcon,
+    SettingsIcon
+} from './settings/Icons';
+
 export default function SettingsPanel({ user, vehicles = [], groups = [], onGroupsChanged = () => {}, onBack, onProfileUpdate }) {
     const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -35,6 +50,7 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
     const [batteryAlert, setBatteryAlert] = useState(true);
     const [fuelAlert, setFuelAlert] = useState(true);
     const [geofenceAlert, setGeofenceAlert] = useState(true);
+    const [maintenanceAlert, setMaintenanceAlert] = useState(true);
 
     // Notification preferences sync hooks (P2)
     const [notifyEmail, setNotifyEmail] = useState(true);
@@ -655,6 +671,7 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                 setBatteryAlert(parsed.batteryAlert !== false);
                 setFuelAlert(parsed.fuelAlert !== false);
                 setGeofenceAlert(parsed.geofenceAlert !== false);
+                setMaintenanceAlert(parsed.maintenanceAlert !== false);
                 setSpeedLimit(parsed.speedLimit || 100);
                 setBrakingThreshold(parsed.brakingThreshold || 0.3);
                 setCorneringThreshold(parsed.corneringThreshold || 0.35);
@@ -826,6 +843,7 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                 batteryAlert,
                 fuelAlert,
                 geofenceAlert,
+                maintenanceAlert,
                 speedLimit,
                 brakingThreshold,
                 corneringThreshold
@@ -885,6 +903,7 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                 batteryAlert,
                 fuelAlert,
                 geofenceAlert,
+                maintenanceAlert,
                 speedLimit,
                 brakingThreshold,
                 corneringThreshold
@@ -926,7 +945,9 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
         <div className="settings-overlay">
             <div className="settings-container">
                 <header className="settings-header">
-                    <h2>⚙️ Settings & Configuration</h2>
+                    <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <SettingsIcon size={22} className="header-icon" /> Settings & Configuration
+                    </h2>
                     <button className="close-btn" onClick={onBack}>✕</button>
                 </header>
 
@@ -937,14 +958,14 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                             className={`sidebar-tab ${activeTab === 'general' ? 'active' : ''}`}
                             onClick={() => setActiveTab('general')}
                         >
-                            👤 General Settings
+                            <UserIcon size={18} /> General Settings
                         </button>
                         <button 
                             type="button" 
                             className={`sidebar-tab ${activeTab === 'notifications' ? 'active' : ''}`}
                             onClick={() => setActiveTab('notifications')}
                         >
-                            🔔 Notifications Preferences
+                            <BellIcon size={18} /> Notifications Preferences
                         </button>
                         <button 
                             type="button" 
@@ -953,14 +974,22 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                             disabled={user?.subscription_status === 'SUSPENDED'}
                             style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
-                            {user.role === 'company' ? '🛡️ Safety & Curfew' : '🕒 Curfew Settings'}
+                            {user.role === 'company' ? (
+                                <>
+                                    <ShieldIcon size={18} /> Safety & Curfew
+                                </>
+                            ) : (
+                                <>
+                                    <ClockIcon size={18} /> Curfew Settings
+                                </>
+                            )}
                         </button>
                         <button 
                             type="button" 
                             className={`sidebar-tab ${activeTab === 'billing' ? 'active' : ''}`}
                             onClick={() => setActiveTab('billing')}
                         >
-                            💳 Fleet Billing
+                            <CreditCardIcon size={18} /> Fleet Billing
                         </button>
                         <button 
                             type="button" 
@@ -969,7 +998,7 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                             disabled={user?.subscription_status === 'SUSPENDED'}
                             style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
-                            🔧 Maintenance Alerts
+                            <WrenchIcon size={18} /> Maintenance Alerts
                         </button>
                         <button 
                             type="button" 
@@ -978,7 +1007,7 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                             disabled={user?.subscription_status === 'SUSPENDED'}
                             style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
-                            💬 Support Mode
+                            <MessageSquareIcon size={18} /> Support Mode
                         </button>
                         <button 
                             type="button" 
@@ -987,7 +1016,7 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                             disabled={user?.subscription_status === 'SUSPENDED'}
                             style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
-                            Based Fuel & Cost
+                            <FuelIcon size={18} /> Based Fuel & Cost
                         </button>
                         <button 
                             type="button" 
@@ -996,7 +1025,7 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                             disabled={user?.subscription_status === 'SUSPENDED'}
                             style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
-                            🔑 BLE Keyless
+                            <KeyIcon size={18} /> BLE Keyless
                         </button>
                         <button 
                             type="button" 
@@ -1005,7 +1034,7 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                             disabled={user?.subscription_status === 'SUSPENDED'}
                             style={user?.subscription_status === 'SUSPENDED' ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                         >
-                            🚗 Manage Vehicles
+                            <CarIcon size={18} /> Manage Vehicles
                         </button>
                     </aside>
 
@@ -1052,6 +1081,8 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                                 setFuelAlert={setFuelAlert}
                                 geofenceAlert={geofenceAlert}
                                 setGeofenceAlert={setGeofenceAlert}
+                                maintenanceAlert={maintenanceAlert}
+                                setMaintenanceAlert={setMaintenanceAlert}
                                 notifyEmail={notifyEmail}
                                 setNotifyEmail={setNotifyEmail}
                                 notifySms={notifySms}

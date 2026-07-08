@@ -1,4 +1,5 @@
 import React from 'react';
+import { FuelIcon, CarIcon } from './Icons';
 
 const CURRENCY_SYMBOLS = {
     'NGN': '₦',
@@ -37,7 +38,9 @@ export default function FuelSettings({
     return (
         <div className="settings-form fuel-settings-tab">
             <div className="form-section">
-                <h3>⛽ Fuel & Cost Settings</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <FuelIcon size={20} /> Fuel & Cost Settings
+                </h3>
                 <p className="section-subtitle">Configure fuel efficiency profile (km/L), fuel type, and price per liter for each vehicle to generate fuel utilization reports.</p>
 
                 {fuelError && <div className="status-alert error">{fuelError}</div>}
@@ -167,7 +170,9 @@ export default function FuelSettings({
                                         }}
                                         style={{ cursor: 'pointer', accentColor: '#3b82f6' }}
                                     />
-                                    <h4 style={{ margin: 0, fontSize: '1rem', color: '#f8fafc' }}>🚗 {item.name}</h4>
+                                    <h4 style={{ margin: 0, fontSize: '1rem', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                        <CarIcon size={16} /> {item.name}
+                                    </h4>
                                 </div>
                                 <span className="device-id-badge" style={{ fontSize: '0.7rem', padding: '0.1rem 0.35rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', fontWeight: 'bold' }}>{item.id}</span>
                             </div>

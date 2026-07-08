@@ -1,4 +1,5 @@
 import React from 'react';
+import { UserIcon, PhoneIcon, KeyIcon } from './Icons';
 
 export default function ProfileSettings({
     user,
@@ -41,7 +42,9 @@ export default function ProfileSettings({
 
             {/* SECTION 1: PROFILE DETAILS */}
             <div className="form-section">
-                <h3>👤 Profile Details</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <UserIcon size={20} /> Profile Details
+                </h3>
                 <p className="section-subtitle">Manage your account information and contact configurations.</p>
                 
                 <div className="form-grid">
@@ -103,7 +106,9 @@ export default function ProfileSettings({
 
             {/* SECTION 2: SMS BACKUP & TELEMETRY */}
             <div className="form-section">
-                <h3>📱 SMS Backup & Telemetry</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <PhoneIcon size={20} /> SMS Backup & Telemetry
+                </h3>
                 <p className="section-subtitle">Configure emergency command protocols and safety parameters.</p>
                 
                 <div className="form-group">
@@ -120,7 +125,9 @@ export default function ProfileSettings({
 
             {/* SECTION 3: SECURITY CHANGE PASSWORD */}
             <div className="form-section">
-                <h3>🔑 Change Password</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <KeyIcon size={20} /> Change Password
+                </h3>
                 <div className="form-group current-password-group" style={{ marginBottom: '1.25rem' }}>
                     <label>Current Password</label>
                     <input 
@@ -168,7 +175,9 @@ export default function ProfileSettings({
                 <div className="otp-modal-overlay">
                     <div className="otp-modal-container glass-panel animate-fade-in">
                         <header className="otp-modal-header">
-                            <h4>🔑 Password Change OTP Verification</h4>
+                            <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <KeyIcon size={18} /> Password Change OTP Verification
+                            </h4>
                             <button 
                                 type="button" 
                                 className="otp-modal-close" 

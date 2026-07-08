@@ -1,4 +1,5 @@
 import React from 'react';
+import { KeyIcon, SignalIcon } from './Icons';
 
 export default function BleSettings({
     bleSuccess,
@@ -18,7 +19,9 @@ export default function BleSettings({
     return (
         <div className="settings-form">
             <div className="form-section">
-                <h3>🔑 BLE Keyless Entry (Passive Proximity) Configuration</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <KeyIcon size={20} /> BLE Keyless Entry (Passive Proximity) Configuration
+                </h3>
                 <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: '1.4' }}>
                     Link a driver's wireless BLE Keyfob (beacon) to the vehicle tracker. 
                     The tracker will automatically unlock the starter circuit when the keyfob is detected nearby (within your set RSSI threshold) and lock it when they walk away. 
@@ -94,7 +97,7 @@ export default function BleSettings({
                                 gap: '0.75rem'
                             }}>
                                 <h4 style={{ color: '#f8fafc', margin: 0, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    📡 Live Beacon Proximity Status
+                                    <SignalIcon size={16} /> Live Beacon Proximity Status
                                  </h4>
                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                      <div style={{ background: '#1e293b', padding: '0.75rem', borderRadius: '0.375rem', border: '1px solid #475569' }}>
@@ -143,8 +146,8 @@ export default function BleSettings({
                     <button 
                         type="submit" 
                         disabled={bleLoading}
-                        className="submit-btn"
-                        style={{ marginTop: '2rem', padding: '0.75rem 1.5rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                        className="btn-primary"
+                        style={{ marginTop: '2rem' }}
                     >
                         {bleLoading ? 'Saving...' : '💾 Save BLE Configurations'}
                     </button>

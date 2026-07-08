@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { CarIcon, WrenchIcon, TagIcon } from './Icons';
 import axios from 'axios';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -146,7 +147,9 @@ export default function VehiclesSettings({
         <div className="settings-form">
             {/* =================== VEHICLE EDITOR SECTION =================== */}
             <div className="form-section">
-                <h3>🚗 Manage Registered Fleet Vehicles</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <CarIcon size={20} /> Manage Registered Fleet Vehicles
+                </h3>
                 <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: '1.4' }}>
                     Select a vehicle from your registered fleet to update its name, license plate, assigned driver, or vehicle type icon.
                 </p>
@@ -202,7 +205,7 @@ export default function VehiclesSettings({
                     }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '0.75rem' }}>
                             <h4 style={{ margin: 0, fontSize: '1.1rem', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                🔧 Edit Details: {editName || editingVehicleId}
+                                <WrenchIcon size={16} /> Edit Details: {editName || editingVehicleId}
                             </h4>
                             <span style={{ fontSize: '0.8rem', color: '#64748b', fontFamily: 'monospace' }}>
                                 IMEI: {editingVehicleId}
@@ -308,7 +311,9 @@ export default function VehiclesSettings({
                         color: '#64748b',
                         marginTop: '1rem'
                     }}>
-                        <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🚗</div>
+                        <div style={{ marginBottom: '0.5rem', color: '#64748b' }}>
+                            <CarIcon size={40} />
+                        </div>
                         <p style={{ margin: 0 }}>Please select a vehicle from the dropdown above to edit its settings.</p>
                     </div>
                 )}
@@ -316,7 +321,9 @@ export default function VehiclesSettings({
 
             {/* =================== FLEET GROUPS SECTION =================== */}
             <div className="form-section" style={{ marginTop: '2.5rem', borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '2rem' }}>
-                <h3>🏷️ Fleet Groups</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <TagIcon size={20} /> Fleet Groups
+                </h3>
                 <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: '1.4' }}>
                     Organize your vehicles into named groups (e.g. "Delivery Fleet", "Executive Cars"). Group filters will appear in the sidebar.
                 </p>

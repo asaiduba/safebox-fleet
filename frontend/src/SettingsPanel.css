@@ -906,6 +906,7 @@ input:checked + .slider:before {
     transition: all 0.2s ease;
     display: flex;
     align-items: center;
+    gap: 0.65rem;
 }
 
 .sidebar-tab:hover {
@@ -1478,31 +1479,45 @@ input:checked + .slider:before {
     border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.btn-primary,
 .apply-curfew-btn {
-    background: linear-gradient(135deg, #f59e0b, #d97706);
+    background: linear-gradient(135deg, #10b981, #059669);
     color: white;
     border: none;
     border-radius: 0.5rem;
-    padding: 0.65rem 1.25rem;
+    padding: 0.65rem 1.5rem;
     font-weight: 600;
     font-size: 0.875rem;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(217, 119, 6, 0.2);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    display: inline-block;
+    text-align: center;
 }
 
+.btn-primary:hover,
 .apply-curfew-btn:hover {
-    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    background: linear-gradient(135deg, #34d399, #10b981);
     transform: translateY(-1px);
-    box-shadow: 0 6px 15px rgba(217, 119, 6, 0.35);
+    box-shadow: 0 6px 15px rgba(16, 185, 129, 0.35);
 }
 
+.btn-primary:disabled,
 .apply-curfew-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
 }
+
+.form-actions-bar {
+    margin-top: 2rem;
+    display: flex;
+    justify-content: flex-end;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 1.5rem;
+}
+
 
 @media (max-width: 600px) {
     .curfew-vehicles-grid {

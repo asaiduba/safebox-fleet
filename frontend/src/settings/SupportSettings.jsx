@@ -1,4 +1,5 @@
 import React from 'react';
+import { MessageSquareIcon, FileTextIcon, KeyIcon, ShieldIcon } from './Icons';
 
 export default function SupportSettings({
     supportCode,
@@ -9,7 +10,9 @@ export default function SupportSettings({
     return (
         <div className="settings-form">
             <div className="form-section">
-                <h3>💬 Diagnostic Support Mode</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <MessageSquareIcon size={20} /> Diagnostic Support Mode
+                </h3>
                 <p className="section-subtitle">Generate a temporary verification code to grant support agents access to fleet stats, logs, and battery diagnostics.</p>
 
                 <div className="support-code-container">
@@ -26,7 +29,7 @@ export default function SupportSettings({
                                         alert("Support code copied to clipboard!");
                                     }}
                                 >
-                                    📋 Copy
+                                    Copy
                                 </button>
                             </div>
                             <div className="code-timer">
@@ -42,15 +45,18 @@ export default function SupportSettings({
                                 className="generate-code-btn"
                                 disabled={supportLoading}
                                 onClick={handleGenerateSupportCode}
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', margin: 'auto' }}
                             >
-                                {supportLoading ? 'Generating...' : '🔑 Generate Support Code'}
+                                <KeyIcon size={16} /> {supportLoading ? 'Generating...' : 'Generate Support Code'}
                             </button>
                         </div>
                     )}
                 </div>
 
                 <div className="support-instructions">
-                    <h4>🛡️ Security & Privacy Information</h4>
+                    <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <ShieldIcon size={16} /> Security & Privacy Information
+                    </h4>
                     <ul>
                         <li>The support code is only valid for **24 hours** from generation.</li>
                         <li>Support agents can view telemetry, battery history, and geofence locations to troubleshoot problems.</li>

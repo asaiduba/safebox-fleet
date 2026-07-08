@@ -1,4 +1,5 @@
 import React from 'react';
+import { WrenchIcon, EditIcon, PlusIcon, FileTextIcon } from './Icons';
 
 export default function MaintenanceSettings({
     selectedVehicleId,
@@ -30,7 +31,9 @@ export default function MaintenanceSettings({
     return (
         <div className="settings-form">
             <div className="form-section">
-                <h3>🛠️ Maintenance Alerts Scheduler</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <WrenchIcon size={20} /> Maintenance Alerts Scheduler
+                </h3>
                 <p className="section-subtitle">
                     Configure automated distance-based or date-based service reminders. Email notifications will automatically alert you when maintenance is due.
                 </p>
@@ -58,7 +61,17 @@ export default function MaintenanceSettings({
 
                 {/* CREATE/EDIT REMINDER FORM */}
                 <form onSubmit={handleSaveMaintenanceReminder} className="reminder-creation-form">
-                    <h4>{editingReminderId ? '✏️ Edit Reminder' : '➕ Create Maintenance Reminder'}</h4>
+                    <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {editingReminderId ? (
+                            <>
+                                <EditIcon size={16} /> Edit Reminder
+                            </>
+                        ) : (
+                            <>
+                                <PlusIcon size={16} /> Create Maintenance Reminder
+                            </>
+                        )}
+                    </h4>
                     
                     <div className="form-group-row">
                         <div className="form-group">
@@ -151,7 +164,7 @@ export default function MaintenanceSettings({
                         )}
                         <button 
                             type="submit" 
-                            className="save-reminder-btn"
+                            className="btn-primary"
                             disabled={maintenanceLoading}
                         >
                             {editingReminderId ? 'Update Reminder' : 'Add Reminder'}
@@ -161,7 +174,9 @@ export default function MaintenanceSettings({
 
                 {/* ACTIVE REMINDERS LIST */}
                 <div className="active-reminders-section" style={{ marginTop: '2rem' }}>
-                    <h4>📋 Active Fleet Reminders ({maintenanceReminders.length})</h4>
+                    <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <FileTextIcon size={16} /> Active Fleet Reminders ({maintenanceReminders.length})
+                    </h4>
                     
                     {maintenanceReminders.length === 0 ? (
                         <p className="no-reminders-msg">No active reminders configured for this vehicle.</p>

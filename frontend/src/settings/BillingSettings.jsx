@@ -1,4 +1,5 @@
 import React from 'react';
+import { CreditCardIcon, FileTextIcon } from './Icons';
 
 const CURRENCY_SYMBOLS = {
     'NGN': '₦',
@@ -43,7 +44,9 @@ export default function BillingSettings({
     return (
         <div className="settings-form">
             <div className="form-section">
-                <h3>💳 Fleet Billing Manager</h3>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <CreditCardIcon size={20} /> Fleet Billing Manager
+                </h3>
                 <p className="section-subtitle">Renew telemetry subscriptions, manage licenses, and review payment history.</p>
 
                 <div className="billing-cycle-selector" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', marginTop: '1rem' }}>
@@ -59,7 +62,7 @@ export default function BillingSettings({
                         className={`cycle-pill ${billingCycle === 'annual' ? 'active' : ''}`}
                         onClick={() => setBillingCycle('annual')}
                     >
-                        Annual Plan (Save 16%) 🎁
+                        Annual Plan (Save 16%)
                     </button>
                 </div>
 
@@ -156,7 +159,9 @@ export default function BillingSettings({
 
                 {paymentHistory.length > 0 && (
                     <div className="billing-history-section">
-                        <h4>🧾 Bulk Payment History</h4>
+                        <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <FileTextIcon size={16} /> Bulk Payment History
+                        </h4>
                         <div className="history-table-wrapper">
                             <table className="history-table">
                                 <thead>
