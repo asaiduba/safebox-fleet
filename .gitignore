@@ -17,6 +17,8 @@ Docs/
 *.tmp
 *.lock
 database.sqlite
+database.sqlite-*
+*.sqlite-*
 database.sqlite.backup
 
 # Logs

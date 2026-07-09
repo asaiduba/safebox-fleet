@@ -7,6 +7,9 @@ const dbPath = process.env.NODE_ENV === 'production'
 
 const db = new Database(dbPath, { timeout: 7000 });
 
+// Enable WAL (Write-Ahead Log) mode for concurrent read/write optimization in production
+db.pragma('journal_mode = WAL');
+
 function initDb() {
     // Migrate users check constraint to support 'admin' role if needed
     try {
