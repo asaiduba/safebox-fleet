@@ -61,7 +61,7 @@ export default function SharedTracker({ token }) {
     useEffect(() => {
         async function fetchData() {
             try {
-                const res = await axios.get(`${API_BASE}/api/shared-track/${token}`);
+                const res = await axios.get(`${API_BASE}/api/vehicles/shared-track/${token}`);
                 setVehicleData(res.data);
                 expiresAtRef.current = res.data.expiresAt;
                 setLoading(false);

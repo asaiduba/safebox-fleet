@@ -2141,6 +2141,9 @@ function ShareLinkModal({ vehicle, onClose }) {
     return (
         <div className="share-link-modal-overlay" onClick={onClose}>
             <div className="share-link-modal" onClick={e => e.stopPropagation()}>
+                <button className="share-link-modal-close-icon" onClick={onClose} aria-label="Close">
+                    <XIcon size={16} />
+                </button>
                 <h3>🔗 Share Live Location</h3>
                 <div className="modal-subtitle">
                     Share a temporary live tracking link for <strong>{vehicle.name}</strong>
@@ -2181,10 +2184,6 @@ function ShareLinkModal({ vehicle, onClose }) {
                         </div>
                     </div>
                 )}
-
-                <div className="modal-actions">
-                    <button className="close-btn" onClick={onClose}>Close</button>
-                </div>
             </div>
         </div>
     );
