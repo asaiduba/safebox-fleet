@@ -138,6 +138,58 @@ io.on('connection', (socket) => {
   }
 });
 
+// --- Shared Tracking Socket.io Namespace ---
+const sharedTrackingNamespace = io.of('/shared-tracking');
+sharedTrackingNamespace.on('connection', (socket) => {
+  console.log(`📡 Shared tracking socket connected: ${socket.id}`);
+
+  socket.on('join-shared-track', (token) => {
+    try {
+      const link = db.prepare('SELECT * FROM shared_tracking_links WHERE token = ? AND active = 1').get(token);
+      if (!link) {
+        socket.emit('shared-track-error', { error: 'Invalid or inactive tracking link.' });
+        return;
+      }
+      if (link.expires_at <= Date.now()) {
+        db.prepare('UPDATE shared_tracking_links SET active = 0 WHERE token = ?').run(token);
+        socket.emit('shared-track-error', { error: 'Tracking session has expired.' });
+        return;
+      }
+
+      const room = `shared_token_${token}`;
+      socket.join(room);
+      console.log(`📡 Socket ${socket.id} joined shared tracking room: ${room} for vehicle ${link.vehicle_id}`);
+    } catch (err) {
+      console.error('Error joining shared track room:', err.message);
+      socket.emit('shared-track-error', { error: 'Internal server error.' });
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`📡 Shared tracking socket disconnected: ${socket.id}`);
+  });
+});
+
+function broadcastToSharedTrackers(deviceId, lat, lng, speed, nowMs) {
+  try {
+    const activeLinks = db.prepare(`
+      SELECT token FROM shared_tracking_links
+      WHERE vehicle_id = ? AND active = 1 AND expires_at > ?
+    `).all(deviceId, Date.now());
+
+    activeLinks.forEach(link => {
+      sharedTrackingNamespace.to(`shared_token_${link.token}`).emit('shared-device-data', {
+        lat,
+        lng,
+        speed,
+        timestamp: nowMs
+      });
+    });
+  } catch (err) {
+    console.error('Error broadcasting to shared trackers:', err.message);
+  }
+}
+
 // --- SECURITY: JWT Secret & Middleware Imports ---
 const { authMiddleware, adminMiddleware, getRequestUserId, JWT_SECRET } = require('./middleware/auth');
 const { saveAndNotifyAlert, dispatchAlertNotification } = require('./utils/notifications');
@@ -1780,16 +1832,7 @@ app.post('/api/telematics-webhook', (req, res) => {
       if (pos.attributes?.batteryLevel !== undefined) {
         batteryPct = pos.attributes.batteryLevel;
       } else if (pos.attributes?.battery !== undefined) {
-        const val = pos.attributes.battery;
-        if (val > 100) {
-          // sent in millivolts (e.g. 3787 mV) - LiPo range 3.4V (0%) to 4.2V (100%)
-          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3400) / 800) * 100)));
-        } else if (val > 1.0 && val < 6.0) {
-          // sent in Volts (e.g. 3.787 V) - LiPo range 3.4V (0%) to 4.2V (100%)
-          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3.4) / 0.8) * 100)));
-        } else {
-          batteryPct = val;
-        }
+        batteryPct = estimateBatteryPercentage(pos.attributes.battery);
       }
 
       // Extract harsh driving indicators from Traccar attributes
@@ -2174,6 +2217,35 @@ function isPointInPolygon(point, polygon) {
     if (intersect) inside = !inside;
   }
   return inside;
+}
+
+// Helper: Estimate Battery Percentage from Voltage (with Piecewise Linear Approximation matching Teltonika curve)
+function estimateBatteryPercentage(val) {
+  if (val > 100) {
+    val = val / 1000.0; // millivolts to volts
+  }
+  const points = [
+    { v: 4.20, p: 100 },
+    { v: 4.10, p: 80 },
+    { v: 4.00, p: 60 },
+    { v: 3.90, p: 40 },
+    { v: 3.80, p: 20 },
+    { v: 3.70, p: 5 },
+    { v: 3.60, p: 0 }
+  ];
+
+  if (val >= points[0].v) return 100;
+  if (val <= points[points.length - 1].v) return 0;
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    if (val <= p1.v && val >= p2.v) {
+      const ratio = (val - p2.v) / (p1.v - p2.v);
+      return Math.round(p2.p + ratio * (p1.p - p2.p));
+    }
+  }
+  return 100;
 }
 
 // Global fuel level tracking for dynamic fuel theft detection
