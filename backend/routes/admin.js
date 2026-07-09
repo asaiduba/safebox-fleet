@@ -161,6 +161,10 @@ router.post('/tenants/:id/toggle-status', authMiddleware, adminMiddleware, (req,
       }
     })();
 
+    if (global.invalidateMetadataCache) {
+      global.invalidateMetadataCache(); // Clear all cache entries
+    }
+
     const vehicles = db.prepare("SELECT id FROM vehicles WHERE owner_id = ?").all(id);
     vehicles.forEach(v => {
       if (newStatus === 'SUSPENDED') {

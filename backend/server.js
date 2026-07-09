@@ -33,6 +33,77 @@ require('dotenv').config();
 // Initialize DB
 initDb();
 
+// --- In-Memory Telemetry Metadata Cache ---
+global.metadataCache = new Map();
+global.invalidateMetadataCache = (deviceId) => {
+  if (!deviceId) {
+    global.metadataCache.clear();
+    console.log('[Cache] Invalidated entire metadata cache.');
+  } else {
+    global.metadataCache.delete(deviceId);
+    console.log(`[Cache] Invalidated metadata cache for device: ${deviceId}`);
+  }
+};
+
+global.getVehicleMetadata = (deviceId) => {
+  const now = Date.now();
+  const cached = global.metadataCache.get(deviceId);
+  if (cached && (now - cached.timestamp < 60000)) {
+    return cached.data;
+  }
+  
+  // Cache miss or expired: Query Database
+  const vehicle = db.prepare(`
+    SELECT v.owner_id, v.name, v.lat, v.lng, v.odometer_km, v.curfew_enabled, v.curfew_start, v.curfew_end, v.curfew_days, v.curfew_allow_override, v.curfew_holiday_mode, v.override_status, v.override_expires, v.cloud_locked, v.ble_beacon_id, v.ble_beacon_rssi_threshold, v.subscription_status, u.subscription_status AS user_subscription_status
+    FROM vehicles v
+    LEFT JOIN users u ON v.owner_id = u.id
+    WHERE v.id = ?
+  `).get(deviceId);
+  
+  global.metadataCache.set(deviceId, {
+    timestamp: now,
+    data: vehicle || null
+  });
+  return vehicle;
+};
+
+// --- Batch Database Writes for History ---
+global.historyWriteQueue = [];
+const insertHistoryStmt = db.prepare(`
+  INSERT INTO vehicle_history (vehicle_id, timestamp, speed, battery_level, fuel_level, lat, lng)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`);
+const batchInsertHistory = db.transaction((records) => {
+  for (const r of records) {
+    insertHistoryStmt.run(r.vehicleId, r.timestamp, r.speed, r.battery, r.fuel, r.lat, r.lng);
+  }
+});
+
+global.logVehicleHistory = (record) => {
+  global.historyWriteQueue.push(record);
+  if (global.historyWriteQueue.length >= 20) {
+    global.flushHistoryQueue();
+  }
+};
+
+global.flushHistoryQueue = () => {
+  if (global.historyWriteQueue.length === 0) return;
+  const records = [...global.historyWriteQueue];
+  global.historyWriteQueue.length = 0; // Clear queue
+  try {
+    batchInsertHistory(records);
+    console.log(`[Database Perf] Successfully flushed ${records.length} history records in a batch.`);
+  } catch (err) {
+    console.error('[Database Perf] Failed to flush history records batch:', err.message);
+    // Put them back in front of the queue to avoid loss
+    global.historyWriteQueue.unshift(...records);
+  }
+};
+
+// Periodic flush every 10 seconds
+setInterval(global.flushHistoryQueue, 10000);
+
+
 const app = express();
 app.set('trust proxy', 1); // trust first proxy for accurate rate limiting behind Railway's reverse proxy
 const server = http.createServer(app);
@@ -100,6 +171,9 @@ io.on('connection', (socket) => {
           db.prepare('UPDATE vehicles SET cloud_locked = 1, is_locked = 1 WHERE id = ?').run(deviceId);
         } else {
           db.prepare('UPDATE vehicles SET cloud_locked = 0, is_locked = 0, override_status = "NONE", override_expires = 0 WHERE id = ?').run(deviceId);
+        }
+        if (global.invalidateMetadataCache) {
+          global.invalidateMetadataCache(deviceId);
         }
 
         if (mqttClient) {
@@ -362,12 +436,7 @@ mqttClient.on('message', (topic, message) => {
       const payload = JSON.parse(payloadStr);
 
       // Verify the vehicle exists and find its owner
-      const vehicle = db.prepare(`
-        SELECT v.owner_id, v.name, v.lat, v.lng, v.odometer_km, v.curfew_enabled, v.curfew_start, v.curfew_end, v.curfew_days, v.curfew_allow_override, v.curfew_holiday_mode, v.override_status, v.override_expires, v.cloud_locked, v.ble_beacon_id, v.ble_beacon_rssi_threshold, v.subscription_status, u.subscription_status AS user_subscription_status
-        FROM vehicles v
-        LEFT JOIN users u ON v.owner_id = u.id
-        WHERE v.id = ?
-      `).get(payload.deviceId);
+      const vehicle = global.getVehicleMetadata(payload.deviceId);
       if (!vehicle) {
         console.warn(`⚠️ Received telemetry for unregistered device: ${payload.deviceId}`);
         return;
@@ -616,20 +685,16 @@ mqttClient.on('message', (topic, message) => {
         const stmt = db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ?, beacon_rssi = ?, driver_present = ? WHERE id = ?');
         stmt.run(Date.now(), payload.battery || 100, payload.fuel || 100, payload.locked ? 1 : 0, finalLat, finalLng, newOdometer, matchedRssi, driverPresent ? 1 : 0, payload.deviceId);
 
-        // Insert into vehicle_history
-        const historyStmt = db.prepare(`
-              INSERT INTO vehicle_history (vehicle_id, timestamp, speed, battery_level, fuel_level, lat, lng)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
-          `);
-        historyStmt.run(
-          payload.deviceId,
-          Date.now(),
-          finalSpeed,
-          payload.battery || 100,
-          payload.fuel || 100,
-          finalLat,
-          finalLng
-        );
+        // Insert into vehicle_history in batches
+        global.logVehicleHistory({
+          vehicleId: payload.deviceId,
+          timestamp: Date.now(),
+          speed: finalSpeed,
+          battery: payload.battery || 100,
+          fuel: payload.fuel || 100,
+          lat: finalLat,
+          lng: finalLng
+        });
 
         // --- Maintenance Alerts Notification Check ---
         try {
@@ -1175,12 +1240,7 @@ function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresen
 
 function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignition, rawBleList = '') {
   const nowMs = Date.now();
-  const vehicle = db.prepare(`
-    SELECT v.owner_id, v.name, v.lat, v.lng, v.odometer_km, v.curfew_enabled, v.curfew_start, v.curfew_end, v.curfew_days, v.curfew_allow_override, v.curfew_holiday_mode, v.override_status, v.override_expires, v.cloud_locked, v.ble_beacon_id, v.ble_beacon_rssi_threshold, v.subscription_status, u.subscription_status AS user_subscription_status
-    FROM vehicles v
-    LEFT JOIN users u ON v.owner_id = u.id
-    WHERE v.id = ?
-  `).get(deviceId);
+  const vehicle = global.getVehicleMetadata(deviceId);
 
   if (!vehicle) return null;
   const ownerId = vehicle.owner_id;
@@ -1285,10 +1345,16 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
     db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ? WHERE id = ?')
       .run(nowMs, battery || 100, fuel || 100, isLocked, lat || 0, lng || 0, newOdometer, deviceId);
 
-    db.prepare(`
-      INSERT INTO vehicle_history (vehicle_id, timestamp, speed, battery_level, fuel_level, lat, lng)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(deviceId, nowMs, speed || 0, battery || 100, fuel || 100, lat || 0, lng || 0);
+    // Batch write history
+    global.logVehicleHistory({
+      vehicleId: deviceId,
+      timestamp: nowMs,
+      speed: speed || 0,
+      battery: battery || 100,
+      fuel: fuel || 100,
+      lat: lat || 0,
+      lng: lng || 0
+    });
   } catch (dbErr) {
     console.error('[TCP DB] Failed to save telematics record:', dbErr.message);
   }
@@ -1963,6 +2029,7 @@ server.listen(PORT, () => {
           // Transition out of curfew: ALLOW_START
           console.log(`[Curfew Scheduler] Curfew start reached. Sending ALLOW_START to ${vehicle.id}`);
           db.prepare('UPDATE vehicles SET cloud_locked = 0, is_locked = 0, override_status = "NONE", override_expires = 0 WHERE id = ?').run(vehicle.id);
+          if (global.invalidateMetadataCache) global.invalidateMetadataCache(vehicle.id);
           mqttClient.publish(`/device/${vehicle.id}/command`, JSON.stringify({ command: 'ALLOW_START' }));
           mqttClient.publish(`/device/${vehicle.id}/command`, JSON.stringify({ command: 'UNLOCK' }));
 
@@ -2304,6 +2371,77 @@ function cleanInMemoryStateMaps() {
 // Clean maps every 1 hour
 setInterval(cleanInMemoryStateMaps, 60 * 60 * 1000);
 
+// ─── SERVER-SIDE "DEVICE OFFLINE" DETECTION LOOP (P1) ───────────────────
+function checkOfflineDevices() {
+  console.log('[Offline Monitor] Checking for inactive trackers...');
+  const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+  try {
+    const offlineVehicles = db.prepare(`
+      SELECT id, name, last_seen, owner_id FROM vehicles
+      WHERE last_seen IS NOT NULL AND last_seen < ?
+    `).all(tenMinutesAgo);
+
+    for (const vehicle of offlineVehicles) {
+      // Find the latest DEVICE_OFFLINE alert to prevent duplicate notifications
+      const latestOfflineAlert = db.prepare(`
+        SELECT timestamp FROM vehicle_alerts
+        WHERE vehicle_id = ? AND type = 'DEVICE_OFFLINE'
+        ORDER BY timestamp DESC LIMIT 1
+      `).get(vehicle.id);
+
+      // Only trigger if no alert exists since they were last seen online
+      if (!latestOfflineAlert || latestOfflineAlert.timestamp < vehicle.last_seen) {
+        const timeDiff = Date.now() - vehicle.last_seen;
+        const minutes = Math.floor(timeDiff / 60000);
+        let durationStr = `${minutes}m ago`;
+        if (minutes >= 60) {
+          const hours = Math.floor(minutes / 60);
+          if (hours >= 24) {
+            durationStr = `${Math.floor(hours / 24)}d ago`;
+          } else {
+            durationStr = `${hours}h ago`;
+          }
+        }
+        
+        const alertMsg = `Critical Alert: Vehicle "${vehicle.name}" is offline (last active: ${durationStr}).`;
+
+        db.prepare(`
+          INSERT INTO vehicle_alerts (vehicle_id, type, message, timestamp, status)
+          VALUES (?, 'DEVICE_OFFLINE', ?, ?, 'UNREAD')
+        `).run(vehicle.id, alertMsg, Date.now());
+
+        // Emit socket notification
+        io.to(`user_${vehicle.owner_id}`).emit('notification', {
+          id: Date.now() + Math.random(),
+          type: 'DEVICE_OFFLINE',
+          severity: 'error',
+          message: alertMsg,
+          timestamp: Date.now(),
+          is_read: false
+        });
+
+        // Publish MQTT alert topic
+        if (mqttClient && mqttClient.connected) {
+          mqttClient.publish(`/device/${vehicle.id}/alert`, JSON.stringify({
+            deviceId: vehicle.id,
+            type: 'DEVICE_OFFLINE',
+            message: alertMsg,
+            timestamp: Date.now()
+          }));
+        }
+
+        console.log(`[Offline Monitor] 🚨 Dispatched offline alert for vehicle ${vehicle.name} (${vehicle.id})`);
+      }
+    }
+  } catch (err) {
+    console.error('[Offline Monitor] Scan failed:', err.message);
+  }
+}
+// Run scan on startup after 10 seconds, then check every 5 minutes
+setTimeout(checkOfflineDevices, 10000);
+setInterval(checkOfflineDevices, 5 * 60 * 1000);
+
+
 // ─── GRACEFUL SHUTDOWN HANDLERS (P1) ────────────────────────────────────
 function handleGracefulShutdown(signal) {
   console.log(`[Shutdown] Received ${signal}. Starting graceful shutdown...`);
@@ -2337,6 +2475,10 @@ function handleGracefulShutdown(signal) {
   // Helper to cleanly close SQLite db and exit
   function closeDbAndExit() {
     try {
+      if (global.flushHistoryQueue) {
+        console.log('[Shutdown] Flushing remaining history logs before database close...');
+        global.flushHistoryQueue();
+      }
       db.close();
       console.log('[Shutdown] Database connection closed.');
     } catch (dbErr) {

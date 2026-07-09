@@ -101,6 +101,10 @@ router.post('/resolve', authMiddleware, (req, res) => {
             }
         })();
 
+        if (global.invalidateMetadataCache) {
+            global.invalidateMetadataCache(request.vehicle_id);
+        }
+
         // Log audit trail
         logAuditAction(
             userId,

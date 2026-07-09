@@ -121,11 +121,11 @@ router.put('/:id', authMiddleware, (req, res) => {
       return res.status(403).json({ error: 'Unauthorized to modify this vehicle' });
     }
 
-    db.prepare(`
-      UPDATE vehicles
-      SET name = ?, plate_number = ?, driver_name = ?, vehicle_type = ?, group_id = ?
-      WHERE id = ?
     `).run(name || vehicleId, plateNumber || null, driverName || null, vehicleType || 'car', groupId ? parseInt(groupId) : null, vehicleId);
+
+    if (global.invalidateMetadataCache) {
+      global.invalidateMetadataCache(vehicleId);
+    }
 
     logAuditAction(userId, req.user.username, 'update_vehicle', vehicleId, { name, plateNumber, driverName, vehicleType, groupId }, req);
 
@@ -195,6 +195,10 @@ router.post('/ble-settings', authMiddleware, (req, res) => {
 
     db.prepare('UPDATE vehicles SET ble_beacon_id = ?, ble_beacon_rssi_threshold = ? WHERE id = ?')
       .run(bleBeaconId || null, rssi, vehicleId);
+
+    if (global.invalidateMetadataCache) {
+      global.invalidateMetadataCache(vehicleId);
+    }
 
     if (activeTcpSockets && activeTcpSockets.has(vehicleId)) {
       const socket = activeTcpSockets.get(vehicleId);
@@ -301,6 +305,9 @@ router.post('/curfew', authMiddleware, (req, res) => {
             activeTcpSockets.get(vid).write(`$$CMD,${vid},SET_CLOUDLOCKED,0\r\n`);
           }
           console.log(`[Curfew API] Disabled curfew for ${vid}: Allow Start sent`);
+        }
+        if (global.invalidateMetadataCache) {
+          global.invalidateMetadataCache(vid);
         }
       });
     });
