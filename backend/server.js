@@ -1832,7 +1832,16 @@ app.post('/api/telematics-webhook', (req, res) => {
       if (pos.attributes?.batteryLevel !== undefined) {
         batteryPct = pos.attributes.batteryLevel;
       } else if (pos.attributes?.battery !== undefined) {
-        batteryPct = estimateBatteryPercentage(pos.attributes.battery);
+        const val = pos.attributes.battery;
+        if (val > 100) {
+          // sent in millivolts (e.g. 3787 mV) - LiPo range 3.4V (0%) to 4.2V (100%)
+          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3400) / 800) * 100)));
+        } else if (val > 1.0 && val < 6.0) {
+          // sent in Volts (e.g. 3.787 V) - LiPo range 3.4V (0%) to 4.2V (100%)
+          batteryPct = Math.round(Math.min(100, Math.max(0, ((val - 3.4) / 0.8) * 100)));
+        } else {
+          batteryPct = val;
+        }
       }
 
       // Extract harsh driving indicators from Traccar attributes
