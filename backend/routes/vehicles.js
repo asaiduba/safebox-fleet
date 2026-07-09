@@ -121,6 +121,10 @@ router.put('/:id', authMiddleware, (req, res) => {
       return res.status(403).json({ error: 'Unauthorized to modify this vehicle' });
     }
 
+    db.prepare(`
+      UPDATE vehicles
+      SET name = ?, plate_number = ?, driver_name = ?, vehicle_type = ?, group_id = ?
+      WHERE id = ?
     `).run(name || vehicleId, plateNumber || null, driverName || null, vehicleType || 'car', groupId ? parseInt(groupId) : null, vehicleId);
 
     if (global.invalidateMetadataCache) {
