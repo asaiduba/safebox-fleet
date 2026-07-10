@@ -183,7 +183,14 @@ io.on('connection', (socket) => {
           }
         }
         if (activeTcpSockets && activeTcpSockets.has(deviceId)) {
-          activeTcpSockets.get(deviceId).write(`$$CMD,${deviceId},SET_CLOUDLOCKED,${cloudLockedVal}\r\n`);
+          const clientSocket = activeTcpSockets.get(deviceId);
+          if (clientSocket.deviceType === 'teltonika') {
+            const codec12Frame = buildTeltonikaCodec12Frame(isLock ? 'setdigout 0' : 'setdigout 1');
+            clientSocket.write(codec12Frame);
+            console.log(`[TCP Command] Sent Codec 12 command "${isLock ? 'setdigout 0' : 'setdigout 1'}" to direct Teltonika device ${deviceId}`);
+          } else {
+            clientSocket.write(`$$CMD,${deviceId},SET_CLOUDLOCKED,${cloudLockedVal}\r\n`);
+          }
         }
 
         const { logAuditAction } = require('./utils/audit');
@@ -1139,6 +1146,47 @@ function calculateGT06CRC(data) {
   return reflect(crc, 16) ^ 0xFFFF;
 }
 
+function calculateTeltonikaCRC(buffer) {
+  let crc = 0x0000;
+  const polynomial = 0xA001; // Reflected 0x8005
+
+  for (let i = 0; i < buffer.length; i++) {
+    crc ^= buffer[i];
+    for (let j = 0; j < 8; j++) {
+      if ((crc & 0x0001) !== 0) {
+        crc = (crc >> 1) ^ polynomial;
+      } else {
+        crc >>= 1;
+      }
+    }
+  }
+  return crc & 0xFFFF;
+}
+
+function buildTeltonikaCodec12Frame(commandText) {
+  const cmdBuffer = Buffer.from(commandText, 'ascii');
+  const cmdLength = cmdBuffer.length;
+  const payloadSize = 8 + cmdLength;
+  const payload = Buffer.alloc(payloadSize);
+
+  payload[0] = 0x0C; // Codec ID (Codec 12)
+  payload[1] = 0x01; // Quantity of Commands 1
+  payload[2] = 0x05; // Type (0x05 for custom command)
+  payload.writeUInt32BE(cmdLength, 3); // Command size (4 bytes BE)
+  cmdBuffer.copy(payload, 7); // Copy ASCII bytes of command string
+  payload[7 + cmdLength] = 0x01; // Quantity of Commands 2 (repeat)
+
+  const crc = calculateTeltonikaCRC(payload);
+  const frame = Buffer.alloc(12 + payloadSize);
+
+  frame.writeUInt32BE(0, 0); // Preamble (4 zero bytes)
+  frame.writeUInt32BE(payloadSize, 4); // Data Field Length (4 bytes BE)
+  payload.copy(frame, 8); // Copy Payload
+  frame.writeUInt32BE(crc, 8 + payloadSize); // CRC (4 bytes BE, zero-padded, calculated CRC is 2 bytes, writeUInt32BE zero-pads on left)
+
+  return frame;
+}
+
 // Unified Security Alert Evaluator (For direct TCP and Traccar/MQTT)
 function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresent, curfewLocked, isLocked, nowMs, ownerId) {
   if (!global.alertCooldowns) global.alertCooldowns = new Map();
@@ -1336,19 +1384,41 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
 
   const shouldBeLocked = (vehicle.cloud_locked === 1 || curfewLocked || !driverPresent);
   
-  // Direct TCP Lock Safety Rule:
-  // If we should lock, but ignition is ON or vehicle is moving, we defer the lock (database state remains unlocked: 0)
-  let isLocked = 0;
-  if (shouldBeLocked) {
+  const currentDbLocked = vehicle.is_locked === 1;
+  let isLocked = currentDbLocked ? 1 : 0;
+
+  const clientSocket = activeTcpSockets.get(deviceId);
+
+  if (!shouldBeLocked && currentDbLocked) {
+    // --- TRANSITION: UNLOCK ---
+    isLocked = 0;
+    if (clientSocket && clientSocket.writable) {
+      if (clientSocket.deviceType === 'teltonika') {
+        clientSocket.write(buildTeltonikaCodec12Frame('setdigout 1'));
+        console.log(`[TCP Auto-Control] Sent Codec 12 UNLOCK (setdigout 1) to direct Teltonika device ${deviceId}`);
+      } else {
+        clientSocket.write(`$$CMD,${deviceId},SET_CLOUDLOCKED,0\r\n`);
+      }
+    }
+  } 
+  else if (shouldBeLocked && !currentDbLocked) {
+    // --- TRANSITION: LOCK (with safety checks) ---
     const accOn = ignition === 1;
     const isParked = (speed === 0 && !accOn);
+
     if (isParked) {
       isLocked = 1;
+      if (clientSocket && clientSocket.writable) {
+        if (clientSocket.deviceType === 'teltonika') {
+          clientSocket.write(buildTeltonikaCodec12Frame('setdigout 0'));
+          console.log(`[TCP Auto-Control] Sent Codec 12 LOCK (setdigout 0) to direct Teltonika device ${deviceId}`);
+        } else {
+          clientSocket.write(`$$CMD,${deviceId},SET_CLOUDLOCKED,1\r\n`);
+        }
+      }
     } else {
       isLocked = 0; // Lock deferred for safety
     }
-  } else {
-    isLocked = 0;
   }
 
   // Evaluate security alerts (Hotwire, Towing, and Unauthorized Movement)
@@ -1453,6 +1523,7 @@ const tcpServer = net.createServer((socket) => {
 
           authenticatedDeviceId = deviceId;
           deviceType = 'custom';
+          socket.deviceType = 'custom';
           activeTcpSockets.set(deviceId, socket);
           console.log(`[TCP Auth] Custom Device ${deviceId} authenticated.`);
           socket.write(`$$LOGIN,OK\r\n`);
@@ -1529,6 +1600,7 @@ const tcpServer = net.createServer((socket) => {
 
             authenticatedDeviceId = imei;
             deviceType = 'gt06';
+            socket.deviceType = 'gt06';
             activeTcpSockets.set(imei, socket);
             console.log(`[GT06 TCP] Device ${imei} authenticated.`);
 
@@ -1634,6 +1706,7 @@ const tcpServer = net.createServer((socket) => {
 
           authenticatedDeviceId = imeiStr;
           deviceType = 'teltonika';
+          socket.deviceType = 'teltonika';
           activeTcpSockets.set(imeiStr, socket);
           console.log(`[Teltonika TCP] Device ${imeiStr} authenticated.`);
           socket.write(Buffer.from([0x01])); // Accept connection
