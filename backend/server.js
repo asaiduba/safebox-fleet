@@ -420,9 +420,9 @@ mqttClient.on('message', (topic, message) => {
       console.log(`[Command Bridge] Intercepted command ${cmd} for device ${deviceId}`);
       
       if (cmd === 'BLOCK_START' || cmd === 'LOCK') {
-        sendTraccarCommand(deviceId, 'setdigout 0');
+        sendTraccarCommand(deviceId, '  setdigout 0');
       } else if (cmd === 'ALLOW_START' || cmd === 'UNLOCK') {
-        sendTraccarCommand(deviceId, 'setdigout 1');
+        sendTraccarCommand(deviceId, '  setdigout 1');
       }
     } catch (err) {
       console.error('[Command Bridge] Error parsing or forwarding command', err);
@@ -588,72 +588,83 @@ mqttClient.on('message', (topic, message) => {
         }
       }
 
-      // Enforce the calculated security policy state
-      if (shouldBeLocked) {
-        // ─── SAFETY & IMMEDIATE LOCK ENGINE ──────────────────────────────────────
-        // Rule:
-        //  1. If ACC (ignition) is ON, NEVER lock under any circumstances (keep rider safe).
-        //  2. If ACC is OFF and speed is 0, lock IMMEDIATELY (it is parked).
-        //  3. We still respect the 60-second command cooldown to avoid command loops.
-        const accOn = payload.ignition === true;
-        const isParked = (payload.speed === 0 && !accOn);
+      // Enforce the calculated security policy state based on transition from current DB state (vehicle.is_locked)
+      const currentDbLocked = vehicle.is_locked === 1;
 
-        if (!global.lockCooldowns) global.lockCooldowns = new Map();
-        const lastLockTime = global.lockCooldowns.get(payload.deviceId) || 0;
-        const lockCooldownOk = (Date.now() - lastLockTime) > 60000;
+      if (!shouldBeLocked && currentDbLocked) {
+        // --- TRANSITION: UNLOCK ENGINE ---
+        console.log(`[Security Policy] Auto-unlocking vehicle ${payload.deviceId} (Inside hours, driver present, no cloud lock). Transitioning from locked to unlocked.`);
+        mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'ALLOW_START' }));
+        mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'UNLOCK' }));
+        payload.locked = false;
 
-        if (isParked && !payload.locked && lockCooldownOk) {
-          global.lockCooldowns.set(payload.deviceId, Date.now());
-          console.log(`[Security Policy] Enforcing IMMEDIATE LOCK for parked vehicle ${payload.deviceId}. Reason: cloud_locked=${vehicle.cloud_locked}, curfew=${curfewLocked}, driverAbsent=${!driverPresent}`);
-          mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'BLOCK_START' }));
-          mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
-          payload.locked = true;
-        } else if (accOn) {
-          // Ignition/ACC is ON — NEVER immobilize.
-          console.log(`[Security Policy] 🛡️  Lock deferred for ${payload.deviceId} — ACC is ON. Vehicle is running safely.`);
-        } else if (!isParked && payload.speed > 0) {
-          // Vehicle is moving with ACC off (e.g. towing or rolling) — defer lock for safety.
-          console.log(`[Security Policy] ⚠️  Lock deferred for ${payload.deviceId} — vehicle is moving at ${payload.speed} km/h with ACC OFF.`);
-        } else {
-          payload.locked = true; // either already locked or lock cooldown active
-        }
-        
-        // Warn if running outside allowed hours
-        if (curfewLocked && payload.speed > 0) {
-          if (!global.curfewRunningAlerts) global.curfewRunningAlerts = new Map();
-          const lastAlertTime = global.curfewRunningAlerts.get(payload.deviceId);
-          if (!lastAlertTime || (Date.now() - lastAlertTime > 300000)) { // 5 min cooldown
-            const alertMsg = `Warning: Vehicle ${payload.deviceId} is running outside authorized hours!`;
-            io.to(`user_${ownerId}`).emit('notification', {
-              id: Date.now() + 10,
-              type: 'CURFEW_VIOLATION',
-              severity: 'warning',
-              message: alertMsg,
-              timestamp: Date.now(),
-              is_read: false
-            });
-            global.curfewRunningAlerts.set(payload.deviceId, Date.now());
-          }
-        }
-
-        // Curfew override tracking
-        if (curfewLocked && vehicle.override_status === 'APPROVED_ONCE' && payload.speed > 0) {
-          console.log(`[Curfew Override] Vehicle ${payload.deviceId} has started. Expiring APPROVED_ONCE override.`);
-          db.prepare("UPDATE vehicles SET override_status = 'NONE', override_expires = 0 WHERE id = ?").run(payload.deviceId);
-        }
-      } else {
         // Clear curfew override if back inside allowed hours
         if (vehicle.override_status !== 'NONE' && !curfewLocked) {
           db.prepare("UPDATE vehicles SET override_status = 'NONE', override_expires = 0 WHERE id = ?").run(payload.deviceId);
         }
-        
-        // Auto-unlock: If the device is currently locked but security policy says it should be unlocked
-        if (payload.locked) {
-          console.log(`[Security Policy] Auto-unlocking vehicle ${payload.deviceId} (Inside hours, driver present, no cloud lock).`);
-          mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'ALLOW_START' }));
-          mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'UNLOCK' }));
+      } 
+      else if (shouldBeLocked && !currentDbLocked) {
+        // --- TRANSITION: LOCK ENGINE (with safety checks) ---
+        const accOn = payload.ignition === true;
+        const isParked = (payload.speed === 0 && !accOn);
+
+        if (isParked) {
+          if (!global.lockCooldowns) global.lockCooldowns = new Map();
+          const lastLockTime = global.lockCooldowns.get(payload.deviceId) || 0;
+          const lockCooldownOk = (Date.now() - lastLockTime) > 60000;
+
+          if (lockCooldownOk) {
+            global.lockCooldowns.set(payload.deviceId, Date.now());
+            console.log(`[Security Policy] Enforcing IMMEDIATE LOCK for parked vehicle ${payload.deviceId}. Reason: cloud_locked=${vehicle.cloud_locked}, curfew=${curfewLocked}, driverAbsent=${!driverPresent}`);
+            mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'BLOCK_START' }));
+            mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
+            payload.locked = true;
+          } else {
+            // Cooldown active: defer DB update to locked until command is actually sent
+            payload.locked = false;
+          }
+        } else if (accOn) {
+          // Ignition/ACC is ON — NEVER immobilize.
+          console.log(`[Security Policy] 🛡️  Lock deferred for ${payload.deviceId} — ACC is ON. Vehicle is running safely.`);
+          payload.locked = false;
+        } else {
+          // Vehicle is moving with ACC off (e.g. towing or rolling) — defer lock for safety.
+          console.log(`[Security Policy] ⚠️  Lock deferred for ${payload.deviceId} — vehicle is moving at ${payload.speed} km/h with ACC OFF.`);
           payload.locked = false;
         }
+      } 
+      else {
+        // --- NO TRANSITION: Maintain current state ---
+        payload.locked = currentDbLocked;
+
+        // Clear curfew override if back inside allowed hours
+        if (!shouldBeLocked && vehicle.override_status !== 'NONE' && !curfewLocked) {
+          db.prepare("UPDATE vehicles SET override_status = 'NONE', override_expires = 0 WHERE id = ?").run(payload.deviceId);
+        }
+      }
+
+      // Warn if running outside allowed hours and moving
+      if (curfewLocked && payload.speed > 0) {
+        if (!global.curfewRunningAlerts) global.curfewRunningAlerts = new Map();
+        const lastAlertTime = global.curfewRunningAlerts.get(payload.deviceId);
+        if (!lastAlertTime || (Date.now() - lastAlertTime > 300000)) { // 5 min cooldown
+          const alertMsg = `Warning: Vehicle ${payload.deviceId} is running outside authorized hours!`;
+          io.to(`user_${ownerId}`).emit('notification', {
+            id: Date.now() + 10,
+            type: 'CURFEW_VIOLATION',
+            severity: 'warning',
+            message: alertMsg,
+            timestamp: Date.now(),
+            is_read: false
+          });
+          global.curfewRunningAlerts.set(payload.deviceId, Date.now());
+        }
+      }
+
+      // Curfew override tracking
+      if (curfewLocked && vehicle.override_status === 'APPROVED_ONCE' && payload.speed > 0) {
+        console.log(`[Curfew Override] Vehicle ${payload.deviceId} has started. Expiring APPROVED_ONCE override.`);
+        db.prepare("UPDATE vehicles SET override_status = 'NONE', override_expires = 0 WHERE id = ?").run(payload.deviceId);
       }
 
       // Calculate distance delta and update odometer (only if GPS is valid)
@@ -1324,7 +1335,21 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   }
 
   const shouldBeLocked = (vehicle.cloud_locked === 1 || curfewLocked || !driverPresent);
-  const isLocked = shouldBeLocked ? 1 : 0;
+  
+  // Direct TCP Lock Safety Rule:
+  // If we should lock, but ignition is ON or vehicle is moving, we defer the lock (database state remains unlocked: 0)
+  let isLocked = 0;
+  if (shouldBeLocked) {
+    const accOn = ignition === 1;
+    const isParked = (speed === 0 && !accOn);
+    if (isParked) {
+      isLocked = 1;
+    } else {
+      isLocked = 0; // Lock deferred for safety
+    }
+  } else {
+    isLocked = 0;
+  }
 
   // Evaluate security alerts (Hotwire, Towing, and Unauthorized Movement)
   evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresent, curfewLocked, isLocked, nowMs, ownerId);
