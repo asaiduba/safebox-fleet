@@ -372,7 +372,7 @@ function App() {
     const isOnline = (lastUpdate) => {
         if (!lastUpdate) return false;
         const diff = new Date() - new Date(lastUpdate);
-        return diff < 60000; // 1 minute
+        return diff < 300000; // 5 minutes
     };
 
     // Helper to format last seen timestamp cleanly

@@ -111,7 +111,7 @@ export default function SupportDashboard({ onBack }) {
     const isOnline = (lastSeen) => {
         if (!lastSeen) return false;
         const diff = Date.now() - new Date(lastSeen).getTime();
-        return diff < 60000; // 1 minute
+        return diff < 300000; // 5 minutes
     };
 
     return (
