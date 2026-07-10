@@ -420,9 +420,9 @@ mqttClient.on('message', (topic, message) => {
       console.log(`[Command Bridge] Intercepted command ${cmd} for device ${deviceId}`);
       
       if (cmd === 'BLOCK_START' || cmd === 'LOCK') {
-        sendTraccarCommand(deviceId, '  setdigout 0');
+        sendTraccarCommand(deviceId, 'setdigout 0');
       } else if (cmd === 'ALLOW_START' || cmd === 'UNLOCK') {
-        sendTraccarCommand(deviceId, '  setdigout 1');
+        sendTraccarCommand(deviceId, 'setdigout 1');
       }
     } catch (err) {
       console.error('[Command Bridge] Error parsing or forwarding command', err);
