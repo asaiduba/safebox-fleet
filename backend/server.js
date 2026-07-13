@@ -186,7 +186,7 @@ io.on('connection', (socket) => {
         // Only send the command to the physical tracker immediately if ACC is ON
         const currentVehicle = db.prepare('SELECT ignition FROM vehicles WHERE id = ?').get(deviceId);
         if (currentVehicle && currentVehicle.ignition === 1) {
-          DeviceManager.sendCommand(deviceId, isLock ? 'setdigout 1' : 'setdigout 0', socket.user.id);
+          DeviceManager.sendCommand(deviceId, isLock ? 'setdigout 0' : 'setdigout 1', socket.user.id);
         } else {
           console.log(`[Socket.io Command] Vehicle ${deviceId} ACC is OFF. Deferring physical setdigout command to save battery.`);
         }
@@ -422,9 +422,9 @@ mqttClient.on('message', (topic, message) => {
       console.log(`[Command Bridge] Intercepted command ${cmd} for device ${deviceId}`);
       
       if (cmd === 'BLOCK_START' || cmd === 'LOCK') {
-        sendTraccarCommand(deviceId, 'setdigout 1');
-      } else if (cmd === 'ALLOW_START' || cmd === 'UNLOCK') {
         sendTraccarCommand(deviceId, 'setdigout 0');
+      } else if (cmd === 'ALLOW_START' || cmd === 'UNLOCK') {
+        sendTraccarCommand(deviceId, 'setdigout 1');
       }
     } catch (err) {
       console.error('[Command Bridge] Error parsing or forwarding command', err);
@@ -1416,23 +1416,25 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   // Logical status shown on dashboard
   let isLocked = shouldBeLocked ? 1 : 0;
 
-  // Compute desired physical relay state (0 = de-energized, 1 = energized)
-  let desiredRelayState = 0;
+  // Compute desired physical relay state (0 = de-energized / wire cut / locked, 1 = energized / wire reconnected / unlocked)
+  let desiredRelayState = 0; // Default to 0 (de-energized/wire cut/locked)
   if (ignition === 1) {
-    if (shouldBeLocked) {
-      // Safety check: block start only if stationary (speed === 0) or if already blocked (relay was active)
-      const currentRelay = (dout1 !== null) ? dout1 : (vehicle.relay_state || 0);
-      if (speed === 0 || currentRelay === 1) {
-        desiredRelayState = 1;
+    const isWebOrCurfewLocked = (vehicle.cloud_locked === 1 || curfewLocked);
+    if (isWebOrCurfewLocked) {
+      desiredRelayState = 0; // Wire cut, blocked via web/curfew
+    } else if (!driverPresent) {
+      // Locked only due to missing BLE
+      if (speed <= 2) {
+        desiredRelayState = 0; // Wire cut, block start if stationary
       } else {
-        desiredRelayState = 0; // Lock deferred for safety while moving
+        desiredRelayState = 1; // Keep wire reconnected/relay energized for safety while moving (prevent cutoff from signal fluctuation)
         isLocked = 0; // Defer logical lock badge too for consistency
       }
     } else {
-      desiredRelayState = 0;
+      desiredRelayState = 1; // Both web unlocked and BLE present -> Energize relay (reconnect wire) to allow starting/moving!
     }
   } else {
-    desiredRelayState = 0; // Always de-energize relay when ACC is off to save battery
+    desiredRelayState = 0; // Always de-energize relay when ACC is OFF to save battery (wire remains cut/locked)
   }
 
   // Update physical relay state on the tracker if it differs from current state
