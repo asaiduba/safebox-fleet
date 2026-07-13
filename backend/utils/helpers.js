@@ -274,10 +274,28 @@ async function sendMaintenanceEmail(email, username, vehicleName, reminder, odom
   console.log(`✉️ [MOCK MAINTENANCE EMAIL] Sent to ${email} for vehicle ${vehicleName}`);
 }
 
+/**
+ * Evaluates connection status based on last seen timestamp
+ * @param {number|null} lastSeen - timestamp in ms
+ * @returns {'ONLINE'|'STALE'|'OFFLINE'}
+ */
+function getDeviceHeartbeatStatus(lastSeen) {
+  if (!lastSeen) return 'OFFLINE';
+  const diff = Date.now() - lastSeen;
+  if (diff < 3 * 60 * 1000) { // < 3 minutes
+    return 'ONLINE';
+  } else if (diff < 10 * 60 * 1000) { // 3-10 minutes
+    return 'STALE';
+  } else {
+    return 'OFFLINE';
+  }
+}
+
 module.exports = {
   getDistanceFromLatLonInKm,
   isPointInPolygon,
   isWithinAllowedHours,
   sendVerificationEmail,
-  sendMaintenanceEmail
+  sendMaintenanceEmail,
+  getDeviceHeartbeatStatus
 };

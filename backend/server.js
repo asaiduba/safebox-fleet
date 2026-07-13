@@ -184,7 +184,7 @@ io.on('connection', (socket) => {
           }
         }
         // Send command to the physical tracker via DeviceManager
-        DeviceManager.sendCommand(deviceId, isLock ? 'setdigout 0' : 'setdigout 1');
+        DeviceManager.sendCommand(deviceId, isLock ? 'setdigout 0' : 'setdigout 1', socket.user.id);
 
         const { logAuditAction } = require('./utils/audit');
         logAuditAction(
@@ -1321,7 +1321,7 @@ function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresen
   }
 }
 
-function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignition, rawBleList = '') {
+function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignition, rawBleList = '', dout1 = null) {
   const nowMs = Date.now();
   const vehicle = global.getVehicleMetadata(deviceId);
 
@@ -1445,8 +1445,35 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
 
   // Update database
   try {
-    db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ? WHERE id = ?')
-      .run(nowMs, battery || 100, fuel || 100, isLocked, lat || 0, lng || 0, newOdometer, deviceId);
+    if (dout1 !== null) {
+      db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ?, relay_state = ?, relay_updated_at = ? WHERE id = ?')
+        .run(nowMs, battery || 100, fuel || 100, isLocked, lat || 0, lng || 0, newOdometer, dout1, nowMs, deviceId);
+
+      // Perform command lifecycle confirmation if state matches expectation
+      const pendingCmd = db.prepare(`
+        SELECT id, command, sent_at FROM device_commands
+        WHERE vehicle_id = ? AND status IN ('SENT', 'DELIVERED')
+        ORDER BY sent_at DESC LIMIT 1
+      `).get(deviceId);
+
+      if (pendingCmd) {
+        // If command is lock ('setdigout 0'), expected DOUT is 0
+        // If command is unlock ('setdigout 1'), expected DOUT is 1
+        const expectedDout = pendingCmd.command.includes('setdigout 1') ? 1 : 0;
+        if (dout1 === expectedDout) {
+          const latencyMs = nowMs - pendingCmd.sent_at;
+          db.prepare(`
+            UPDATE device_commands
+            SET status = 'CONFIRMED', ack_at = ?, latency_ms = ?
+            WHERE id = ?
+          `).run(nowMs, latencyMs, pendingCmd.id);
+          console.log(`[Telemetry Confirmation] ✅ Confirmed command ID ${pendingCmd.id} executed successfully. Latency: ${latencyMs}ms`);
+        }
+      }
+    } else {
+      db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ? WHERE id = ?')
+        .run(nowMs, battery || 100, fuel || 100, isLocked, lat || 0, lng || 0, newOdometer, deviceId);
+    }
 
     // Batch write history
     global.logVehicleHistory({
@@ -1764,6 +1791,9 @@ const tcpServer = net.createServer((socket) => {
                 timestamp: Date.now()
               });
             }
+
+            // Resolve pending command logging in DeviceManager
+            DeviceManager.resolvePendingCommand(authenticatedDeviceId, true, responseText);
           } else {
             const numRecords = packet[9];
             console.log(`[Teltonika TCP] Parsing ${numRecords} records (Codec ${codecId})`);
@@ -1773,6 +1803,7 @@ const tcpServer = net.createServer((socket) => {
             let lastLng = null;
             let lastSpeed = null;
             let lastIgnition = 0;
+            let lastDout1 = null;
 
             for (let r = 0; r < numRecords; r++) {
               if (offset + 15 > packet.length) break;
@@ -1818,6 +1849,8 @@ const tcpServer = net.createServer((socket) => {
 
                 if (propId === 239 || propId === 1) { // ACC/Ignition
                   lastIgnition = val;
+                } else if (propId === 179) { // DOUT1 (Relay output status)
+                  lastDout1 = val;
                 }
               }
 
@@ -1850,8 +1883,8 @@ const tcpServer = net.createServer((socket) => {
             }
 
             if (lastLat !== null && lastLng !== null) {
-              console.log(`[Teltonika TCP] Telemetry parsed: Lat=${lastLat}, Lng=${lastLng}, Speed=${lastSpeed}`);
-              handleIncomingTelemetry(authenticatedDeviceId, lastLat, lastLng, lastSpeed, 100, 100, lastIgnition);
+              console.log(`[Teltonika TCP] Telemetry parsed: Lat=${lastLat}, Lng=${lastLng}, Speed=${lastSpeed}, DOUT1=${lastDout1}`);
+              handleIncomingTelemetry(authenticatedDeviceId, lastLat, lastLng, lastSpeed, 100, 100, lastIgnition, '', lastDout1);
             }
 
             // ACK response: 4-byte UInt32BE count of records
@@ -2566,6 +2599,25 @@ function checkOfflineDevices() {
 // Run scan on startup after 10 seconds, then check every 5 minutes
 setTimeout(checkOfflineDevices, 10000);
 setInterval(checkOfflineDevices, 5 * 60 * 1000);
+
+// Background Job: Command Timeout Sweeper (runs every 1 minute)
+function checkDeviceCommandTimeouts() {
+  try {
+    const cutOffTime = Date.now() - 15 * 1000;
+    const result = db.prepare(`
+      UPDATE device_commands
+      SET status = 'TIMEOUT', error = 'Command acknowledgement timed out after 15 seconds'
+      WHERE status IN ('PENDING', 'SENT') AND sent_at < ?
+    `).run(cutOffTime);
+    if (result.changes > 0) {
+      console.log(`[Command Monitor] ⏳ Marked ${result.changes} pending/sent command(s) as TIMEOUT.`);
+    }
+  } catch (err) {
+    console.error('[Command Monitor] Timeout scan failed:', err.message);
+  }
+}
+// Run command timeout check every 1 minute
+setInterval(checkDeviceCommandTimeouts, 60 * 1000);
 
 
 // ─── GRACEFUL SHUTDOWN HANDLERS (P1) ────────────────────────────────────

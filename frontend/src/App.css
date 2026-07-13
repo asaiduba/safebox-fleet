@@ -292,6 +292,12 @@ body {
   border-color: rgba(100, 116, 139, 0.2);
 }
 
+.status-badge.stale {
+  background: rgba(234, 179, 8, 0.12);
+  color: #eab308;
+  border-color: rgba(234, 179, 8, 0.2);
+}
+
 .status-badge.alert {
   background: rgba(239, 68, 68, 0.12);
   color: #ef4444;

@@ -326,8 +326,8 @@ export default function SupportDashboard({ onBack }) {
                                                         <h4>{v.name}</h4>
                                                         <span className="plate-tag">{v.plate_number || 'NO PLATE'}</span>
                                                     </div>
-                                                    <span className={`status-badge-support ${online ? 'online' : 'offline'}`}>
-                                                        {online ? 'ONLINE' : 'OFFLINE'}
+                                                    <span className={`status-badge-support ${v.deviceStatus ? v.deviceStatus.toLowerCase() : (online ? 'online' : 'offline')}`}>
+                                                        {v.deviceStatus || (online ? 'ONLINE' : 'OFFLINE')}
                                                     </span>
                                                 </div>
 

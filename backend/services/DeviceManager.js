@@ -4,11 +4,7 @@
  * Resolves a vehicle ID to its physical tracker socket and routes
  * lock/unlock commands via the correct binary protocol.
  *
- * Supported protocols:
- *   - teltonika  -> Codec 12 binary frame (setdigout 0 / setdigout 1)
- *   - sinotrack  -> GT06 text command (future)
- *   - concox     -> Concox format (future)
- *   - custom     -> Raw ASCII write (for simulator / MOKO custom firmware)
+ * Tracks the command lifecycle: PENDING -> SENT -> DELIVERED -> CONFIRMED
  */
 
 'use strict';
@@ -30,6 +26,18 @@ class DeviceManager {
       console.error('[DeviceManager] Not initialized. Call DeviceManager.init() first.');
       return;
     }
+
+    // Explicitly destroy the old stale socket if it exists to release descriptors
+    if (_activeTcpSockets.has(imei)) {
+      const oldSocket = _activeTcpSockets.get(imei);
+      try {
+        oldSocket.destroy();
+        console.log(`[DeviceManager] Cleaned up stale socket connection for IMEI ${imei}`);
+      } catch (err) {
+        console.error(`[DeviceManager] Failed to destroy stale socket for IMEI ${imei}:`, err.message);
+      }
+    }
+
     _activeTcpSockets.set(imei, socket);
     try {
       db.prepare("UPDATE devices SET status = 'ONLINE', last_seen = ? WHERE imei = ?").run(Date.now(), imei);
@@ -59,7 +67,16 @@ class DeviceManager {
     }
   }
 
-  static sendCommand(vehicleId, command) {
+  /**
+   * Sends a command to the tracker, logging the attempt in `device_commands`.
+   * Returns details of the result instead of a simple boolean.
+   *
+   * @param {string} vehicleId
+   * @param {string} command
+   * @param {number} [requestedBy]
+   * @returns {object} { success: boolean, commandId: number, sentAt: number, error?: string }
+   */
+  static sendCommand(vehicleId, command, requestedBy = null) {
     let imei = null;
     let tracker_type = 'teltonika';
 
@@ -68,21 +85,42 @@ class DeviceManager {
       imei = device.imei;
       tracker_type = device.tracker_type;
     } else {
-      // Fallback for simulated/custom devices where the socket is registered directly by vehicleId
       if (_activeTcpSockets && _activeTcpSockets.has(vehicleId)) {
         imei = vehicleId;
         tracker_type = 'custom';
       }
     }
 
+    const sentAt = Date.now();
+
+    // 1. Insert PENDING record in device_commands
+    let commandId = null;
+    try {
+      const result = db.prepare(`
+        INSERT INTO device_commands (vehicle_id, imei, command, requested_by, sent_at, status)
+        VALUES (?, ?, ?, ?, ?, 'PENDING')
+      `).run(vehicleId, imei || null, command, requestedBy, sentAt);
+      commandId = result.lastInsertRowid;
+    } catch (err) {
+      console.error('[DeviceManager] Failed to insert pending command log:', err.message);
+    }
+
     if (!imei) {
-      console.warn('[DeviceManager] No device or active socket linked to vehicle ' + vehicleId);
-      return false;
+      const errorMsg = 'No device or active socket linked to vehicle ' + vehicleId;
+      console.warn('[DeviceManager] ' + errorMsg);
+      if (commandId) {
+        db.prepare("UPDATE device_commands SET status = 'FAILED', error = ? WHERE id = ?").run(errorMsg, commandId);
+      }
+      return { success: false, commandId, sentAt, error: errorMsg };
     }
 
     if (!_activeTcpSockets || !_activeTcpSockets.has(imei)) {
-      console.warn('[DeviceManager] Device IMEI/ID ' + imei + ' (' + vehicleId + ') is not connected (OFFLINE).');
-      return false;
+      const errorMsg = 'Device IMEI/ID ' + imei + ' is not connected (OFFLINE).';
+      console.warn('[DeviceManager] ' + errorMsg);
+      if (commandId) {
+        db.prepare("UPDATE device_commands SET status = 'FAILED', error = ? WHERE id = ?").run(errorMsg, commandId);
+      }
+      return { success: false, commandId, sentAt, error: errorMsg };
     }
 
     const socket = _activeTcpSockets.get(imei);
@@ -91,30 +129,76 @@ class DeviceManager {
       switch ((tracker_type || 'teltonika').toLowerCase()) {
         case 'teltonika': {
           if (!_buildCodec12Frame) {
-            console.error('[DeviceManager] buildCodec12Frame not injected.');
-            return false;
+            throw new Error('buildCodec12Frame not injected.');
           }
           const frame = _buildCodec12Frame(command);
           socket.write(frame);
-          console.log('[DeviceManager] Sent Codec 12 command "' + command + '" to IMEI ' + imei + ' (vehicle: ' + vehicleId + ')');
-          return true;
+          break;
         }
         case 'sinotrack':
         case 'gt06': {
           const cmd = command === 'setdigout 1' ? 'RELAY,1#' : 'RELAY,0#';
           socket.write(Buffer.from(cmd, 'ascii'));
-          console.log('[DeviceManager] Sent GT06 command "' + cmd + '" to IMEI ' + imei);
-          return true;
+          break;
         }
         default: {
           socket.write(command + '\r\n');
-          console.log('[DeviceManager] Sent raw command "' + command + '" to IMEI ' + imei);
-          return true;
+          break;
         }
       }
+
+      // 2. Transition status to DELIVERED (successfully written to the network buffer)
+      if (commandId) {
+        db.prepare("UPDATE device_commands SET status = 'DELIVERED' WHERE id = ?").run(commandId);
+      }
+      console.log('[DeviceManager] Sent command "' + command + '" to IMEI ' + imei + ' (vehicle: ' + vehicleId + ')');
+      return { success: true, commandId, sentAt };
+
     } catch (err) {
       console.error('[DeviceManager] Failed to write command to socket for IMEI ' + imei + ':', err.message);
-      return false;
+      if (commandId) {
+        db.prepare("UPDATE device_commands SET status = 'FAILED', error = ? WHERE id = ?").run(err.message, commandId);
+      }
+      return { success: false, commandId, sentAt, error: err.message };
+    }
+  }
+
+  /**
+   * Resolves a pending command when the tracker responds.
+   * Calculates latency, saves tracker response, and transitions status.
+   *
+   * @param {string} imei
+   * @param {boolean} success
+   * @param {string} responseText
+   * @param {string} [errorMsg]
+   */
+  static resolvePendingCommand(imei, success, responseText, errorMsg = null) {
+    try {
+      // Find the most recent DELIVERED or SENT command for this IMEI
+      const pendingCmd = db.prepare(`
+        SELECT id, sent_at FROM device_commands
+        WHERE imei = ? AND status IN ('SENT', 'DELIVERED', 'PENDING')
+        ORDER BY sent_at DESC LIMIT 1
+      `).get(imei);
+
+      if (!pendingCmd) {
+        console.log(`[DeviceManager] No pending command found to resolve for IMEI ${imei}`);
+        return;
+      }
+
+      const now = Date.now();
+      const latencyMs = now - pendingCmd.sent_at;
+      const finalStatus = success ? 'DELIVERED' : 'FAILED'; // It transitions to CONFIRMED on standard telemetry confirmation
+
+      db.prepare(`
+        UPDATE device_commands
+        SET status = ?, ack_at = ?, latency_ms = ?, tracker_response = ?, error = ?
+        WHERE id = ?
+      `).run(finalStatus, now, latencyMs, responseText || null, errorMsg || null, pendingCmd.id);
+
+      console.log(`[DeviceManager] Resolved command ID ${pendingCmd.id} for IMEI ${imei} as ${finalStatus} (latency: ${latencyMs}ms)`);
+    } catch (err) {
+      console.error(`[DeviceManager] Failed to resolve pending command for IMEI ${imei}:`, err.message);
     }
   }
 

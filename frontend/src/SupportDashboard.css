@@ -647,6 +647,12 @@
     color: #94a3b8;
 }
 
+.status-badge-support.stale {
+    background: rgba(234, 179, 8, 0.1);
+    border: 1px solid rgba(234, 179, 8, 0.25);
+    color: #eab308;
+}
+
 .driver-row {
     display: flex;
     justify-content: space-between;

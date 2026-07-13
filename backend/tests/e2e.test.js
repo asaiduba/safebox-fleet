@@ -55,6 +55,28 @@ try {
     assert.ok(devicesCols.includes('last_seen'), 'devices table should have last_seen');
     console.log('✅ Devices table schema verified.');
 
+    // 3c. Verify Device Commands Table Schema
+    console.log('⏳ Verifying device_commands schema...');
+    const cmdInfo = db.prepare('PRAGMA table_info(device_commands)').all();
+    const cmdCols = cmdInfo.map(c => c.name);
+
+    assert.ok(cmdCols.includes('id'), 'device_commands should have id');
+    assert.ok(cmdCols.includes('vehicle_id'), 'device_commands should have vehicle_id');
+    assert.ok(cmdCols.includes('imei'), 'device_commands should have imei');
+    assert.ok(cmdCols.includes('command'), 'device_commands should have command');
+    assert.ok(cmdCols.includes('latency_ms'), 'device_commands should have latency_ms');
+    assert.ok(cmdCols.includes('status'), 'device_commands should have status');
+    assert.ok(cmdCols.includes('tracker_response'), 'device_commands should have tracker_response');
+    console.log('✅ Device commands table schema verified.');
+
+    // 3d. Verify Vehicles Table Relay Columns
+    console.log('⏳ Verifying vehicles relay_state schema...');
+    const vehiclesInfo = db.prepare('PRAGMA table_info(vehicles)').all();
+    const vehiclesCols = vehiclesInfo.map(c => c.name);
+    assert.ok(vehiclesCols.includes('relay_state'), 'vehicles table should have relay_state');
+    assert.ok(vehiclesCols.includes('relay_updated_at'), 'vehicles table should have relay_updated_at');
+    console.log('✅ Vehicles table relay columns verified.');
+
     // 4. Verify user authentication retrieval
     console.log('⏳ Verifying user settings lookup query...');
     const dummyUser = db.prepare('SELECT * FROM users LIMIT 1').get();

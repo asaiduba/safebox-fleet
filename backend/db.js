@@ -214,6 +214,12 @@ function initDb() {
     try {
         db.exec("ALTER TABLE vehicles ADD COLUMN vehicle_type TEXT DEFAULT 'car'");
     } catch (e) {}
+    try {
+        db.exec("ALTER TABLE vehicles ADD COLUMN relay_state INTEGER DEFAULT 0");
+    } catch (e) {}
+    try {
+        db.exec("ALTER TABLE vehicles ADD COLUMN relay_updated_at INTEGER");
+    } catch (e) {}
 
     // 3. Create Vehicle History Table for Analytics
     db.exec(`
@@ -514,7 +520,29 @@ function initDb() {
     try { db.exec("ALTER TABLE devices ADD COLUMN status TEXT DEFAULT 'OFFLINE'"); } catch(e) {}
     try { db.exec("ALTER TABLE devices ADD COLUMN last_seen INTEGER DEFAULT 0"); } catch(e) {}
 
+    // 20. Create Device Commands Table (Operational Robustness)
+    // Tracks status of all commands sent to the tracker with acknowledgement tracking, response, latency
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS device_commands (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicle_id       TEXT NOT NULL,
+            imei             TEXT,
+            command          TEXT NOT NULL,
+            requested_by     INTEGER,
+            sent_at          INTEGER NOT NULL,
+            ack_at           INTEGER,
+            latency_ms       INTEGER,
+            status           TEXT CHECK(status IN ('PENDING', 'SENT', 'DELIVERED', 'CONFIRMED', 'FAILED', 'TIMEOUT')) DEFAULT 'PENDING',
+            tracker_response TEXT,
+            error            TEXT,
+            FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
+        )
+    `);
+
     // Create Indexes for Performance
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_device_commands_vehicle_id ON device_commands(vehicle_id)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_device_commands_status ON device_commands(status)`);
+
 
     db.exec(`CREATE INDEX IF NOT EXISTS idx_history_vehicle_time ON vehicle_history(vehicle_id, timestamp DESC)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_vehicle_time ON vehicle_alerts(vehicle_id, timestamp DESC)`);

@@ -3,7 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const { db } = require('../db');
 const { authMiddleware, getRequestUserId } = require('../middleware/auth');
-const { isWithinAllowedHours } = require('../utils/helpers');
+const { isWithinAllowedHours, getDeviceHeartbeatStatus } = require('../utils/helpers');
 const { logAuditAction } = require('../utils/audit');
 
 // GET all vehicles for user
@@ -26,7 +26,7 @@ router.get('/', authMiddleware, (req, res) => {
         imei: v.imei || '',
         trackerType: v.tracker_type || 'teltonika',
         protocol: v.protocol || 'codec8',
-        deviceStatus: v.device_status || 'OFFLINE',
+        deviceStatus: getDeviceHeartbeatStatus(v.last_seen),
         cloudLocked: v.cloud_locked === 1,
         locked: v.is_locked === 1,
         beaconRssi: v.beacon_rssi,

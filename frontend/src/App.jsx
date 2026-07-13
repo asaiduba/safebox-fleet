@@ -1497,9 +1497,12 @@ function App() {
                                 } else if (isArmed) {
                                     statusClass = 'armed';
                                     statusText = 'ARMED';
-                                } else if (online) {
+                                } else if (v.deviceStatus === 'ONLINE' || (online && v.deviceStatus !== 'STALE')) {
                                     statusClass = 'online';
                                     statusText = 'ONLINE';
+                                } else if (v.deviceStatus === 'STALE') {
+                                    statusClass = 'stale';
+                                    statusText = 'STALE';
                                 }
 
                                 return (
