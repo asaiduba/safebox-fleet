@@ -184,7 +184,7 @@ io.on('connection', (socket) => {
           }
         }
         // Send command to the physical tracker via DeviceManager
-        DeviceManager.sendCommand(deviceId, isLock ? 'setdigout 0' : 'setdigout 1', socket.user.id);
+        DeviceManager.sendCommand(deviceId, isLock ? 'setdigout 1' : 'setdigout 0', socket.user.id);
 
         const { logAuditAction } = require('./utils/audit');
         logAuditAction(
@@ -417,9 +417,9 @@ mqttClient.on('message', (topic, message) => {
       console.log(`[Command Bridge] Intercepted command ${cmd} for device ${deviceId}`);
       
       if (cmd === 'BLOCK_START' || cmd === 'LOCK') {
-        sendTraccarCommand(deviceId, 'setdigout 0');
-      } else if (cmd === 'ALLOW_START' || cmd === 'UNLOCK') {
         sendTraccarCommand(deviceId, 'setdigout 1');
+      } else if (cmd === 'ALLOW_START' || cmd === 'UNLOCK') {
+        sendTraccarCommand(deviceId, 'setdigout 0');
       }
     } catch (err) {
       console.error('[Command Bridge] Error parsing or forwarding command', err);
@@ -1414,7 +1414,7 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   if (!shouldBeLocked && currentDbLocked) {
     // --- TRANSITION: UNLOCK ---
     isLocked = 0;
-    DeviceManager.sendCommand(deviceId, 'setdigout 1');
+    DeviceManager.sendCommand(deviceId, 'setdigout 0');
   } 
   else if (shouldBeLocked && !currentDbLocked) {
     // --- TRANSITION: LOCK (with safety checks) ---
@@ -1423,7 +1423,7 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
 
     if (isParked) {
       isLocked = 1;
-      DeviceManager.sendCommand(deviceId, 'setdigout 0');
+      DeviceManager.sendCommand(deviceId, 'setdigout 1');
     } else {
       isLocked = 0; // Lock deferred for safety
     }
