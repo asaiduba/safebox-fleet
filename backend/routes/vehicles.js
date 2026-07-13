@@ -18,6 +18,8 @@ router.get('/', authMiddleware, (req, res) => {
     const processed = vehicles.map(v => {
       const base = {
         ...v,
+        cloudLocked: v.cloud_locked === 1,
+        locked: v.is_locked === 1,
         beaconRssi: v.beacon_rssi,
         driverPresent: v.driver_present !== 0
       };

@@ -203,14 +203,11 @@ io.on('connection', (socket) => {
           socket.request
         );
 
-        io.to(userRoom).emit('device-data', {
-          topic: `/device/${deviceId}/status`,
-          payload: {
-            deviceId,
-            locked: isLock,
-            cloudLocked: isLock,
-            timestamp: Date.now()
-          }
+        broadcastDeviceData(deviceId, `/device/${deviceId}/status`, {
+          deviceId,
+          locked: isLock,
+          cloudLocked: isLock,
+          timestamp: Date.now()
         });
       } catch (err) {
         console.error('[Socket.io Command] Command execution error:', err.message);
@@ -558,7 +555,21 @@ mqttClient.on('message', (topic, message) => {
       payload.driverPresent = driverPresent;
 
       const shouldBeLocked = (vehicle.cloud_locked === 1 || curfewLocked || !driverPresent);
-      const isLocked = shouldBeLocked ? 1 : 0;
+      
+      const currentDbLocked = vehicle.is_locked === 1;
+      let isLocked = currentDbLocked ? 1 : 0;
+
+      if (!shouldBeLocked && currentDbLocked) {
+        isLocked = 0;
+      } else if (shouldBeLocked && !currentDbLocked) {
+        const accOn = payload.ignition === true;
+        const isParked = (payload.speed === 0 && !accOn);
+        if (isParked) {
+          isLocked = 1;
+        } else {
+          isLocked = 0;
+        }
+      }
 
       // Evaluate unified security alerts (Hotwire, Towing, and Unauthorized Movement)
       evaluateSecurityAlerts(
@@ -980,7 +991,7 @@ mqttClient.on('message', (topic, message) => {
         console.error("DB Update/History Insert failed", dbErr);
       }
 
-      io.to(`user_${ownerId}`).emit('device-data', { topic: topic, payload });
+      broadcastDeviceData(payload.deviceId, topic, payload);
 
       // Broadcast to any active shared tracking viewers
       broadcastToSharedTrackers(payload.deviceId, payload.lat, payload.lng, payload.speed, payload.timestamp || Date.now());
@@ -1113,6 +1124,29 @@ mqttClient.on('message', (topic, message) => {
     }
   }
 });
+
+// Helper to broadcast telemetry and lock status updates to the owner and all administrators for multi-browser sync
+function broadcastDeviceData(deviceId, topic, payload) {
+  try {
+    const vehicle = db.prepare('SELECT owner_id FROM vehicles WHERE id = ?').get(deviceId);
+    if (!vehicle) return;
+
+    const ownerId = vehicle.owner_id;
+    const admins = db.prepare("SELECT id FROM users WHERE role = 'admin'").all();
+
+    // Emit to owner
+    io.to(`user_${ownerId}`).emit('device-data', { topic, payload });
+
+    // Emit to all admins
+    for (const admin of admins) {
+      if (admin.id !== ownerId) {
+        io.to(`user_${admin.id}`).emit('device-data', { topic, payload });
+      }
+    }
+  } catch (err) {
+    console.error(`[Socket Broadcast Error] Failed to broadcast status update for ${deviceId}:`, err.message);
+  }
+}
 
 // --- Multi-Protocol TCP Helper Functions ---
 
@@ -1455,18 +1489,15 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   }
 
   // Update frontend
-  io.to(`user_${ownerId}`).emit('device-data', {
-    topic: `/device/${deviceId}/status`,
-    payload: {
-      deviceId,
-      lat,
-      lng,
-      speed,
-      battery,
-      fuel,
-      locked: isLocked === 1,
-      timestamp: nowMs
-    }
+  broadcastDeviceData(deviceId, `/device/${deviceId}/status`, {
+    deviceId,
+    lat,
+    lng,
+    speed,
+    battery,
+    fuel,
+    locked: isLocked === 1,
+    timestamp: nowMs
   });
 
   // Broadcast to any active shared tracking viewers
@@ -1735,99 +1766,124 @@ const tcpServer = net.createServer((socket) => {
           }
 
           const codecId = packet[8];
-          const numRecords = packet[9];
-          console.log(`[Teltonika TCP] Parsing ${numRecords} records (Codec ${codecId})`);
+          if (codecId === 0x0C) {
+            const respLength = packet.readUInt32BE(11);
+            const responseText = packet.subarray(15, 15 + respLength).toString('ascii').trim();
+            console.log(`[Teltonika TCP] Received Codec 12 Response from ${authenticatedDeviceId}: "${responseText}"`);
+            
+            // Check if response contains setdigout feedback and update DB is_locked / socket status if needed
+            // e.g. "DOUT1:1" or "DOUT1:0"
+            const isUnlockResponse = responseText.includes('DOUT1:1') || responseText.includes('DOUT1:Already set to 1');
+            const isLockResponse = responseText.includes('DOUT1:0') || responseText.includes('DOUT1:Already set to 0');
+            
+            if (isUnlockResponse || isLockResponse) {
+              const lockedState = isLockResponse ? 1 : 0;
+              db.prepare('UPDATE vehicles SET is_locked = ? WHERE id = ?').run(lockedState, authenticatedDeviceId);
+              if (global.invalidateMetadataCache) global.invalidateMetadataCache(authenticatedDeviceId);
+              console.log(`[Teltonika TCP] Confirmed relay state from response. is_locked is now ${lockedState}`);
+              
+              // Broadcast lock change update to all browser windows
+              broadcastDeviceData(authenticatedDeviceId, `/device/${authenticatedDeviceId}/status`, {
+                deviceId: authenticatedDeviceId,
+                locked: lockedState === 1,
+                timestamp: Date.now()
+              });
+            }
+          } else {
+            const numRecords = packet[9];
+            console.log(`[Teltonika TCP] Parsing ${numRecords} records (Codec ${codecId})`);
 
-          let offset = 10;
-          let lastLat = null;
-          let lastLng = null;
-          let lastSpeed = null;
-          let lastIgnition = 0;
+            let offset = 10;
+            let lastLat = null;
+            let lastLng = null;
+            let lastSpeed = null;
+            let lastIgnition = 0;
 
-          for (let r = 0; r < numRecords; r++) {
-            if (offset + 15 > packet.length) break;
+            for (let r = 0; r < numRecords; r++) {
+              if (offset + 15 > packet.length) break;
 
-            // Timestamp (8 bytes)
-            const tsMs = Number(packet.readBigUInt64BE(offset));
-            offset += 8;
+              // Timestamp (8 bytes)
+              const tsMs = Number(packet.readBigUInt64BE(offset));
+              offset += 8;
 
-            // Priority (1 byte)
-            const priority = packet[offset];
-            offset += 1;
-
-            // GPS Element (15 bytes)
-            const rawLng = packet.readInt32BE(offset);
-            const rawLat = packet.readInt32BE(offset + 4);
-            const altitude = packet.readInt16BE(offset + 8);
-            const angle = packet.readInt16BE(offset + 10);
-            const satellites = packet[offset + 12];
-            const speed = packet.readInt16BE(offset + 13);
-
-            lastLng = rawLng / 10000000.0;
-            lastLat = rawLat / 10000000.0;
-            lastSpeed = speed;
-
-            offset += 15;
-
-            // I/O Element (Variable length)
-            const isExtended = codecId === 0x8E;
-            const eventId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
-            offset += isExtended ? 2 : 1;
-
-            const totalIoCount = isExtended ? packet.readUInt16BE(offset) : packet[offset];
-            offset += isExtended ? 2 : 1;
-
-            // 1-byte properties
-            const io1Count = isExtended ? packet.readUInt16BE(offset) : packet[offset];
-            offset += isExtended ? 2 : 1;
-            for (let i = 0; i < io1Count; i++) {
-              const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
-              offset += isExtended ? 2 : 1;
-              const val = packet[offset];
+              // Priority (1 byte)
+              const priority = packet[offset];
               offset += 1;
 
-              if (propId === 239 || propId === 1) { // ACC/Ignition
-                lastIgnition = val;
+              // GPS Element (15 bytes)
+              const rawLng = packet.readInt32BE(offset);
+              const rawLat = packet.readInt32BE(offset + 4);
+              const altitude = packet.readInt16BE(offset + 8);
+              const angle = packet.readInt16BE(offset + 10);
+              const satellites = packet[offset + 12];
+              const speed = packet.readInt16BE(offset + 13);
+
+              lastLng = rawLng / 10000000.0;
+              lastLat = rawLat / 10000000.0;
+              lastSpeed = speed;
+
+              offset += 15;
+
+              // I/O Element (Variable length)
+              const isExtended = codecId === 0x8E;
+              const eventId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+              offset += isExtended ? 2 : 1;
+
+              const totalIoCount = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+              offset += isExtended ? 2 : 1;
+
+              // 1-byte properties
+              const io1Count = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+              offset += isExtended ? 2 : 1;
+              for (let i = 0; i < io1Count; i++) {
+                const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+                offset += isExtended ? 2 : 1;
+                const val = packet[offset];
+                offset += 1;
+
+                if (propId === 239 || propId === 1) { // ACC/Ignition
+                  lastIgnition = val;
+                }
+              }
+
+              // 2-byte properties
+              const io2Count = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+              offset += isExtended ? 2 : 1;
+              for (let i = 0; i < io2Count; i++) {
+                const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+                offset += isExtended ? 2 : 1;
+                offset += 2;
+              }
+
+              // 4-byte properties
+              const io4Count = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+              offset += isExtended ? 2 : 1;
+              for (let i = 0; i < io4Count; i++) {
+                const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+                offset += isExtended ? 2 : 1;
+                offset += 4;
+              }
+
+              // 8-byte properties
+              const io8Count = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+              offset += isExtended ? 2 : 1;
+              for (let i = 0; i < io8Count; i++) {
+                const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
+                offset += isExtended ? 2 : 1;
+                offset += 8;
               }
             }
 
-            // 2-byte properties
-            const io2Count = isExtended ? packet.readUInt16BE(offset) : packet[offset];
-            offset += isExtended ? 2 : 1;
-            for (let i = 0; i < io2Count; i++) {
-              const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
-              offset += isExtended ? 2 : 1;
-              offset += 2;
+            if (lastLat !== null && lastLng !== null) {
+              console.log(`[Teltonika TCP] Telemetry parsed: Lat=${lastLat}, Lng=${lastLng}, Speed=${lastSpeed}`);
+              handleIncomingTelemetry(authenticatedDeviceId, lastLat, lastLng, lastSpeed, 100, 100, lastIgnition);
             }
 
-            // 4-byte properties
-            const io4Count = isExtended ? packet.readUInt16BE(offset) : packet[offset];
-            offset += isExtended ? 2 : 1;
-            for (let i = 0; i < io4Count; i++) {
-              const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
-              offset += isExtended ? 2 : 1;
-              offset += 4;
-            }
-
-            // 8-byte properties
-            const io8Count = isExtended ? packet.readUInt16BE(offset) : packet[offset];
-            offset += isExtended ? 2 : 1;
-            for (let i = 0; i < io8Count; i++) {
-              const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
-              offset += isExtended ? 2 : 1;
-              offset += 8;
-            }
+            // ACK response: 4-byte UInt32BE count of records
+            const ack = Buffer.alloc(4);
+            ack.writeUInt32BE(numRecords, 0);
+            socket.write(ack);
           }
-
-          if (lastLat !== null && lastLng !== null) {
-            console.log(`[Teltonika TCP] Telemetry parsed: Lat=${lastLat}, Lng=${lastLng}, Speed=${lastSpeed}`);
-            handleIncomingTelemetry(authenticatedDeviceId, lastLat, lastLng, lastSpeed, 100, 100, lastIgnition);
-          }
-
-          // ACK response: 4-byte UInt32BE count of records
-          const ack = Buffer.alloc(4);
-          ack.writeUInt32BE(numRecords, 0);
-          socket.write(ack);
         } catch (telErr) {
           console.error(`[Teltonika TCP] Parse error:`, telErr.message);
         }
@@ -2132,13 +2188,10 @@ server.listen(PORT, () => {
           mqttClient.publish(`/device/${vehicle.id}/command`, JSON.stringify({ command: 'UNLOCK' }));
 
           // Broadcast to frontend
-          io.to(`user_${vehicle.owner_id}`).emit('device-data', {
-            topic: `/device/${vehicle.id}/status`,
-            payload: {
-              deviceId: vehicle.id,
-              locked: false,
-              timestamp: Date.now()
-            }
+          broadcastDeviceData(vehicle.id, `/device/${vehicle.id}/status`, {
+            deviceId: vehicle.id,
+            locked: false,
+            timestamp: Date.now()
           });
         }
       });
