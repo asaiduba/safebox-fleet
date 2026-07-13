@@ -220,6 +220,9 @@ function initDb() {
     try {
         db.exec("ALTER TABLE vehicles ADD COLUMN relay_updated_at INTEGER");
     } catch (e) {}
+    try {
+        db.exec("ALTER TABLE vehicles ADD COLUMN ignition INTEGER DEFAULT 0");
+    } catch (e) {}
 
     // 3. Create Vehicle History Table for Analytics
     db.exec(`

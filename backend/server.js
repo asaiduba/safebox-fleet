@@ -183,8 +183,13 @@ io.on('connection', (socket) => {
             mqttClient.publish(`/device/${deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
           }
         }
-        // Send command to the physical tracker via DeviceManager
-        DeviceManager.sendCommand(deviceId, isLock ? 'setdigout 1' : 'setdigout 0', socket.user.id);
+        // Only send the command to the physical tracker immediately if ACC is ON
+        const currentVehicle = db.prepare('SELECT ignition FROM vehicles WHERE id = ?').get(deviceId);
+        if (currentVehicle && currentVehicle.ignition === 1) {
+          DeviceManager.sendCommand(deviceId, isLock ? 'setdigout 1' : 'setdigout 0', socket.user.id);
+        } else {
+          console.log(`[Socket.io Command] Vehicle ${deviceId} ACC is OFF. Deferring physical setdigout command to save battery.`);
+        }
 
         const { logAuditAction } = require('./utils/audit');
         logAuditAction(
@@ -1408,25 +1413,33 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
 
   const shouldBeLocked = (vehicle.cloud_locked === 1 || curfewLocked || !driverPresent);
   
-  const currentDbLocked = vehicle.is_locked === 1;
-  let isLocked = currentDbLocked ? 1 : 0;
+  // Logical status shown on dashboard
+  let isLocked = shouldBeLocked ? 1 : 0;
 
-  if (!shouldBeLocked && currentDbLocked) {
-    // --- TRANSITION: UNLOCK ---
-    isLocked = 0;
-    DeviceManager.sendCommand(deviceId, 'setdigout 0');
-  } 
-  else if (shouldBeLocked && !currentDbLocked) {
-    // --- TRANSITION: LOCK (with safety checks) ---
-    const accOn = ignition === 1;
-    const isParked = (speed === 0 && !accOn);
-
-    if (isParked) {
-      isLocked = 1;
-      DeviceManager.sendCommand(deviceId, 'setdigout 1');
+  // Compute desired physical relay state (0 = de-energized, 1 = energized)
+  let desiredRelayState = 0;
+  if (ignition === 1) {
+    if (shouldBeLocked) {
+      // Safety check: block start only if stationary (speed === 0) or if already blocked (relay was active)
+      const currentRelay = (dout1 !== null) ? dout1 : (vehicle.relay_state || 0);
+      if (speed === 0 || currentRelay === 1) {
+        desiredRelayState = 1;
+      } else {
+        desiredRelayState = 0; // Lock deferred for safety while moving
+        isLocked = 0; // Defer logical lock badge too for consistency
+      }
     } else {
-      isLocked = 0; // Lock deferred for safety
+      desiredRelayState = 0;
     }
+  } else {
+    desiredRelayState = 0; // Always de-energize relay when ACC is off to save battery
+  }
+
+  // Update physical relay state on the tracker if it differs from current state
+  const currentRelay = (dout1 !== null) ? dout1 : (vehicle.relay_state || 0);
+  if (currentRelay !== desiredRelayState) {
+    console.log(`[Relay Controller] Relay state mismatch on vehicle ${deviceId}: current=${currentRelay}, desired=${desiredRelayState}. Dispatching setdigout ${desiredRelayState}`);
+    DeviceManager.sendCommand(deviceId, `setdigout ${desiredRelayState}`);
   }
 
   // Evaluate security alerts (Hotwire, Towing, and Unauthorized Movement)
@@ -1446,8 +1459,8 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   // Update database
   try {
     if (dout1 !== null) {
-      db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ?, relay_state = ?, relay_updated_at = ? WHERE id = ?')
-        .run(nowMs, battery || 100, fuel || 100, isLocked, lat || 0, lng || 0, newOdometer, dout1, nowMs, deviceId);
+      db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ?, relay_state = ?, relay_updated_at = ?, ignition = ? WHERE id = ?')
+        .run(nowMs, battery || 100, fuel || 100, isLocked, lat || 0, lng || 0, newOdometer, dout1, nowMs, ignition, deviceId);
 
       // Perform command lifecycle confirmation if state matches expectation
       const pendingCmd = db.prepare(`
@@ -1457,8 +1470,8 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
       `).get(deviceId);
 
       if (pendingCmd) {
-        // If command is lock ('setdigout 0'), expected DOUT is 0
-        // If command is unlock ('setdigout 1'), expected DOUT is 1
+        // If command is lock ('setdigout 1'), expected DOUT is 1
+        // If command is unlock ('setdigout 0'), expected DOUT is 0
         const expectedDout = pendingCmd.command.includes('setdigout 1') ? 1 : 0;
         if (dout1 === expectedDout) {
           const latencyMs = nowMs - pendingCmd.sent_at;
@@ -1471,8 +1484,8 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
         }
       }
     } else {
-      db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ? WHERE id = ?')
-        .run(nowMs, battery || 100, fuel || 100, isLocked, lat || 0, lng || 0, newOdometer, deviceId);
+      db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ?, ignition = ? WHERE id = ?')
+        .run(nowMs, battery || 100, fuel || 100, isLocked, lat || 0, lng || 0, newOdometer, ignition, deviceId);
     }
 
     // Batch write history

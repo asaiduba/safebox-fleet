@@ -18,6 +18,7 @@ try {
     assert.ok(columns.includes('group_id'), 'vehicles table should have group_id column');
     assert.ok(columns.includes('ble_beacon_id'), 'vehicles table should have ble_beacon_id');
     assert.ok(columns.includes('ble_beacon_rssi_threshold'), 'vehicles table should have ble_beacon_rssi_threshold');
+    assert.ok(columns.includes('ignition'), 'vehicles table should have ignition');
     console.log('✅ Vehicles table schema verified.');
 
     // 2. Verify Geofences Table Schema
