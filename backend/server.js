@@ -606,9 +606,6 @@ mqttClient.on('message', (topic, message) => {
         }
       }
 
-      // Enforce the calculated security policy state based on transition from current DB state (vehicle.is_locked)
-      const currentDbLocked = vehicle.is_locked === 1;
-
       if (!shouldBeLocked && currentDbLocked) {
         // --- TRANSITION: UNLOCK ENGINE ---
         console.log(`[Security Policy] Auto-unlocking vehicle ${payload.deviceId} (Inside hours, driver present, no cloud lock). Transitioning from locked to unlocked.`);
