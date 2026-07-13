@@ -261,9 +261,20 @@ router.get('/logs', authMiddleware, adminMiddleware, (req, res) => {
 router.get('/devices', authMiddleware, adminMiddleware, (req, res) => {
   try {
     const devices = db.prepare(`
-      SELECT ad.id, ad.created_at, v.name as vehicle_name, u.username as owner_username, u.company_name
+      SELECT 
+        ad.id, 
+        ad.created_at, 
+        v.name as vehicle_name, 
+        v.id as vehicle_id,
+        u.username as owner_username, 
+        u.company_name,
+        d.imei as linked_imei,
+        d.tracker_type,
+        d.status as device_status,
+        d.last_seen
       FROM authorized_devices ad
       LEFT JOIN vehicles v ON v.id = ad.id
+      LEFT JOIN devices d ON d.imei = ad.id OR d.vehicle_id = v.id
       LEFT JOIN users u ON u.id = v.owner_id
       ORDER BY ad.created_at DESC
     `).all();

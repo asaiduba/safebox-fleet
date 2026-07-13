@@ -41,6 +41,20 @@ try {
     assert.ok(fuelCols.includes('fuel_efficiency'), 'fuel_settings table should have fuel_efficiency');
     console.log('✅ Fuel settings table schema verified.');
 
+    // 3b. Verify Devices Table Schema
+    console.log('⏳ Verifying devices schema...');
+    const devicesInfo = db.prepare('PRAGMA table_info(devices)').all();
+    const devicesCols = devicesInfo.map(c => c.name);
+
+    assert.ok(devicesCols.includes('id'), 'devices table should have id');
+    assert.ok(devicesCols.includes('vehicle_id'), 'devices table should have vehicle_id');
+    assert.ok(devicesCols.includes('imei'), 'devices table should have imei');
+    assert.ok(devicesCols.includes('tracker_type'), 'devices table should have tracker_type');
+    assert.ok(devicesCols.includes('protocol'), 'devices table should have protocol');
+    assert.ok(devicesCols.includes('status'), 'devices table should have status');
+    assert.ok(devicesCols.includes('last_seen'), 'devices table should have last_seen');
+    console.log('✅ Devices table schema verified.');
+
     // 4. Verify user authentication retrieval
     console.log('⏳ Verifying user settings lookup query...');
     const dummyUser = db.prepare('SELECT * FROM users LIMIT 1').get();

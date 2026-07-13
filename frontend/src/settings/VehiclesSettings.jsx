@@ -29,6 +29,10 @@ export default function VehiclesSettings({
     setEditDriverName,
     editVehicleType,
     setEditVehicleType,
+    editImei,
+    setEditImei,
+    editTrackerType,
+    setEditTrackerType,
     vehicleSuccess,
     vehicleError,
     vehicleLoading,
@@ -269,6 +273,32 @@ export default function VehiclesSettings({
                                         <option value="bus">🚌 Bus</option>
                                         <option value="truck">🚚 Truck</option>
                                         <option value="van">🚐 Van</option>
+                                    </select>
+                                </div>
+
+                                {/* Tracker IMEI */}
+                                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                    <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Tracker IMEI (Optional)</label>
+                                    <input 
+                                        type="text" 
+                                        value={editImei} 
+                                        onChange={(e) => setEditImei(e.target.value)}
+                                        placeholder="e.g. 353742375523461"
+                                        style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none' }}
+                                    />
+                                </div>
+
+                                {/* Tracker Type */}
+                                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                    <label style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Tracker Model</label>
+                                    <select 
+                                        value={editTrackerType} 
+                                        onChange={(e) => setEditTrackerType(e.target.value)}
+                                        style={{ background: '#0f172a', color: 'white', border: '1px solid #334155', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', outline: 'none', cursor: 'pointer' }}
+                                    >
+                                        <option value="teltonika">📡 Teltonika (FMB920/etc)</option>
+                                        <option value="sinotrack">📡 Sinotrack / GT06</option>
+                                        <option value="custom">📡 Simulator / Custom</option>
                                     </select>
                                 </div>
 

@@ -11,6 +11,8 @@ export default function AddVehicleModal({ user, groups = [], onClose, onVehicleA
     const [driverName, setDriverName] = useState('');
     const [vehicleType, setVehicleType] = useState('car');
     const [groupId, setGroupId] = useState('');
+    const [imei, setImei] = useState('');
+    const [trackerType, setTrackerType] = useState('teltonika');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -23,11 +25,18 @@ export default function AddVehicleModal({ user, groups = [], onClose, onVehicleA
         const cleanName = name.trim();
         const cleanPlate = plateNumber.trim().toUpperCase();
         const cleanDriver = driverName.trim();
+        const cleanImei = imei.trim();
 
         // Client-side format validation
         const idPattern = /^((MOTO|SAFEBOX)_\d{3}|\d{15})$/;
         if (!idPattern.test(cleanId)) {
             setError('Invalid ID Format. Must be MOTO_XXX, SAFEBOX_XXX, or a 15-digit IMEI number.');
+            setLoading(false);
+            return;
+        }
+
+        if (cleanImei && !/^\d{15}$/.test(cleanImei)) {
+            setError('Invalid Tracker IMEI Format. Must be a 15-digit number.');
             setLoading(false);
             return;
         }
@@ -40,6 +49,8 @@ export default function AddVehicleModal({ user, groups = [], onClose, onVehicleA
                 driverName: cleanDriver || null,
                 vehicleType,
                 groupId: groupId || null,
+                imei: cleanImei || null,
+                trackerType,
                 ownerId: user.id
             });
 
@@ -74,6 +85,38 @@ export default function AddVehicleModal({ user, groups = [], onClose, onVehicleA
                             required
                         />
                         <small className="help-text">Must match MOTO_XXX, SAFEBOX_XXX, or a 15-digit IMEI number.</small>
+                    </div>
+
+                    <div className="form-group">
+                        <label>Tracker IMEI (Optional)</label>
+                        <input 
+                            type="text" 
+                            value={imei} 
+                            onChange={(e) => setImei(e.target.value)} 
+                            placeholder="e.g. 353742375523461"
+                        />
+                        <small className="help-text">Enter the 15-digit physical tracker IMEI if this is a live vehicle.</small>
+                    </div>
+
+                    <div className="form-group">
+                        <label>Tracker Type</label>
+                        <select 
+                            value={trackerType} 
+                            onChange={(e) => setTrackerType(e.target.value)}
+                            style={{ 
+                                width: '100%', 
+                                padding: '0.75rem', 
+                                borderRadius: '0.5rem', 
+                                background: '#1e293b', 
+                                border: '1px solid rgba(255, 255, 255, 0.1)', 
+                                color: 'white',
+                                outline: 'none'
+                            }}
+                        >
+                            <option value="teltonika">📡 Teltonika (FMB920/etc)</option>
+                            <option value="sinotrack">📡 Sinotrack / GT06</option>
+                            <option value="custom">📡 Simulator / Custom</option>
+                        </select>
                     </div>
 
                     <div className="form-group">

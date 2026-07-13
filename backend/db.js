@@ -492,11 +492,36 @@ function initDb() {
         // Column already exists
     }
 
+    // 19. Create Devices Table (Device Abstraction Layer)
+    // Links a physical tracker (identified by IMEI) to a vehicle record.
+    // This decouples vehicle IDs (e.g. 'HONDA_CJ') from tracker IMEIs (e.g. '353742375523461').
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS devices (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicle_id   TEXT NOT NULL,
+            imei         TEXT UNIQUE NOT NULL,
+            tracker_type TEXT DEFAULT 'teltonika',
+            protocol     TEXT DEFAULT 'codec8',
+            firmware     TEXT,
+            status       TEXT DEFAULT 'OFFLINE',
+            last_seen    INTEGER DEFAULT 0,
+            FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
+        )
+    `);
+
+    // Schema Migration: ensure devices table columns exist if table was created earlier without them
+    try { db.exec("ALTER TABLE devices ADD COLUMN firmware TEXT"); } catch(e) {}
+    try { db.exec("ALTER TABLE devices ADD COLUMN status TEXT DEFAULT 'OFFLINE'"); } catch(e) {}
+    try { db.exec("ALTER TABLE devices ADD COLUMN last_seen INTEGER DEFAULT 0"); } catch(e) {}
+
     // Create Indexes for Performance
+
     db.exec(`CREATE INDEX IF NOT EXISTS idx_history_vehicle_time ON vehicle_history(vehicle_id, timestamp DESC)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_vehicle_time ON vehicle_alerts(vehicle_id, timestamp DESC)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_type ON vehicle_alerts(type)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicles_group_id ON vehicles(group_id)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_devices_vehicle_id ON devices(vehicle_id)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_devices_imei ON devices(imei)`);
 
     // Seed default admin user if not exists (MUST run before vehicles referencing owner_id = 1)
     try {

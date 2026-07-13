@@ -13,11 +13,20 @@ router.get('/', authMiddleware, (req, res) => {
     const user = db.prepare('SELECT subscription_status, role FROM users WHERE id = ?').get(userId);
     const isUserSuspended = user && user.subscription_status === 'SUSPENDED' && user.role !== 'admin';
 
-    const vehicles = db.prepare('SELECT * FROM vehicles WHERE owner_id = ?').all(userId);
+    const vehicles = db.prepare(`
+      SELECT v.*, d.imei, d.tracker_type, d.protocol, d.status as device_status
+      FROM vehicles v
+      LEFT JOIN devices d ON v.id = d.vehicle_id
+      WHERE v.owner_id = ?
+    `).all(userId);
 
     const processed = vehicles.map(v => {
       const base = {
         ...v,
+        imei: v.imei || '',
+        trackerType: v.tracker_type || 'teltonika',
+        protocol: v.protocol || 'codec8',
+        deviceStatus: v.device_status || 'OFFLINE',
         cloudLocked: v.cloud_locked === 1,
         locked: v.is_locked === 1,
         beaconRssi: v.beacon_rssi,
@@ -44,13 +53,21 @@ router.get('/', authMiddleware, (req, res) => {
 
 // POST register a new vehicle
 router.post('/', authMiddleware, async (req, res) => {
-  const { id, name, plateNumber, driverName, vehicleType, groupId } = req.body;
+  const { id, name, plateNumber, driverName, vehicleType, groupId, imei, trackerType } = req.body;
   const ownerId = getRequestUserId(req);
 
   try {
     const idPattern = /^((MOTO|SAFEBOX)_\d{3}|\d{15})$/;
     if (!idPattern.test(id)) {
       return res.status(400).json({ error: 'Invalid ID Format. Must be MOTO_XXX, SAFEBOX_XXX, or a 15-digit IMEI number.' });
+    }
+
+    if (imei) {
+      if (!/^\d{15}$/.test(imei)) {
+        return res.status(400).json({ error: 'Invalid Tracker IMEI Format. Must be a 15-digit number.' });
+      }
+      // Ensure this IMEI is in the authorized_devices whitelist
+      db.prepare('INSERT OR IGNORE INTO authorized_devices (id) VALUES (?)').run(imei);
     }
 
     const isAuthorized = db.prepare('SELECT 1 FROM authorized_devices WHERE id = ?').get(id);
@@ -91,10 +108,25 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'This vehicle is already registered by another organization.' });
     }
 
+    // If imei is set, also check if it's already registered to another vehicle
+    if (imei) {
+      const existingImei = db.prepare('SELECT vehicle_id FROM devices WHERE imei = ?').get(imei);
+      if (existingImei) {
+        return res.status(400).json({ error: `Tracker IMEI ${imei} is already registered under vehicle ID ${existingImei.vehicle_id}.` });
+      }
+    }
+
     db.prepare(`
       INSERT INTO vehicles (id, name, owner_id, is_locked, cloud_locked, last_seen, battery_level, fuel_level, lat, lng, plate_number, driver_name, subscription_status, vehicle_type, group_id)
       VALUES (?, ?, ?, 1, 1, ?, 100, 100, 0.0, 0.0, ?, ?, 'ACTIVE', ?, ?)
     `).run(id, name || id, ownerId, Date.now(), plateNumber || null, driverName || null, vehicleType || 'car', groupId ? parseInt(groupId) : null);
+
+    if (imei) {
+      db.prepare(`
+        INSERT INTO devices (vehicle_id, imei, tracker_type, protocol, status)
+        VALUES (?, ?, ?, 'codec8', 'OFFLINE')
+      `).run(id, imei, trackerType || 'teltonika');
+    }
 
     const io = req.app.get('io');
     if (io) {
@@ -112,7 +144,7 @@ router.post('/', authMiddleware, async (req, res) => {
 router.put('/:id', authMiddleware, (req, res) => {
   const userId = getRequestUserId(req);
   const vehicleId = req.params.id;
-  const { name, plateNumber, driverName, vehicleType, groupId } = req.body;
+  const { name, plateNumber, driverName, vehicleType, groupId, imei, trackerType } = req.body;
 
   try {
     const vehicle = db.prepare('SELECT owner_id FROM vehicles WHERE id = ?').get(vehicleId);
@@ -121,6 +153,31 @@ router.put('/:id', authMiddleware, (req, res) => {
     }
     if (vehicle.owner_id !== userId) {
       return res.status(403).json({ error: 'Unauthorized to modify this vehicle' });
+    }
+
+    if (imei) {
+      if (!/^\d{15}$/.test(imei)) {
+        return res.status(400).json({ error: 'Invalid Tracker IMEI Format. Must be a 15-digit number.' });
+      }
+
+      // Check if IMEI is already registered to a DIFFERENT vehicle
+      const existingImei = db.prepare('SELECT vehicle_id FROM devices WHERE imei = ?').get(imei);
+      if (existingImei && existingImei.vehicle_id !== vehicleId) {
+        return res.status(400).json({ error: `Tracker IMEI ${imei} is already registered under vehicle ID ${existingImei.vehicle_id}.` });
+      }
+
+      // Whitelist IMEI
+      db.prepare('INSERT OR IGNORE INTO authorized_devices (id) VALUES (?)').run(imei);
+
+      // Upsert into devices table
+      db.prepare('DELETE FROM devices WHERE vehicle_id = ?').run(vehicleId);
+      db.prepare(`
+        INSERT INTO devices (vehicle_id, imei, tracker_type, protocol, status)
+        VALUES (?, ?, ?, 'codec8', 'OFFLINE')
+      `).run(vehicleId, imei, trackerType || 'teltonika');
+    } else {
+      // If imei is empty, unlink the device
+      db.prepare('DELETE FROM devices WHERE vehicle_id = ?').run(vehicleId);
     }
 
     db.prepare(`
@@ -133,7 +190,7 @@ router.put('/:id', authMiddleware, (req, res) => {
       global.invalidateMetadataCache(vehicleId);
     }
 
-    logAuditAction(userId, req.user.username, 'update_vehicle', vehicleId, { name, plateNumber, driverName, vehicleType, groupId }, req);
+    logAuditAction(userId, req.user.username, 'update_vehicle', vehicleId, { name, plateNumber, driverName, vehicleType, groupId, imei, trackerType }, req);
 
     const io = req.app.get('io');
     if (io) {

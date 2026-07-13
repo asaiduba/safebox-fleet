@@ -25,6 +25,7 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { db, initDb } = require('./db');
 const { isWithinAllowedHours } = require('./utils/helpers');
+const DeviceManager = require('./services/DeviceManager');
 const mqtt = require('mqtt');
 const net = require('net');
 const nodemailer = require('nodemailer');
@@ -182,16 +183,8 @@ io.on('connection', (socket) => {
             mqttClient.publish(`/device/${deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
           }
         }
-        if (activeTcpSockets && activeTcpSockets.has(deviceId)) {
-          const clientSocket = activeTcpSockets.get(deviceId);
-          if (clientSocket.deviceType === 'teltonika') {
-            const codec12Frame = buildTeltonikaCodec12Frame(isLock ? 'setdigout 0' : 'setdigout 1');
-            clientSocket.write(codec12Frame);
-            console.log(`[TCP Command] Sent Codec 12 command "${isLock ? 'setdigout 0' : 'setdigout 1'}" to direct Teltonika device ${deviceId}`);
-          } else {
-            clientSocket.write(`$$CMD,${deviceId},SET_CLOUDLOCKED,${cloudLockedVal}\r\n`);
-          }
-        }
+        // Send command to the physical tracker via DeviceManager
+        DeviceManager.sendCommand(deviceId, isLock ? 'setdigout 0' : 'setdigout 1');
 
         const { logAuditAction } = require('./utils/audit');
         logAuditAction(
@@ -1418,19 +1411,10 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   const currentDbLocked = vehicle.is_locked === 1;
   let isLocked = currentDbLocked ? 1 : 0;
 
-  const clientSocket = activeTcpSockets.get(deviceId);
-
   if (!shouldBeLocked && currentDbLocked) {
     // --- TRANSITION: UNLOCK ---
     isLocked = 0;
-    if (clientSocket && clientSocket.writable) {
-      if (clientSocket.deviceType === 'teltonika') {
-        clientSocket.write(buildTeltonikaCodec12Frame('setdigout 1'));
-        console.log(`[TCP Auto-Control] Sent Codec 12 UNLOCK (setdigout 1) to direct Teltonika device ${deviceId}`);
-      } else {
-        clientSocket.write(`$$CMD,${deviceId},SET_CLOUDLOCKED,0\r\n`);
-      }
-    }
+    DeviceManager.sendCommand(deviceId, 'setdigout 1');
   } 
   else if (shouldBeLocked && !currentDbLocked) {
     // --- TRANSITION: LOCK (with safety checks) ---
@@ -1439,14 +1423,7 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
 
     if (isParked) {
       isLocked = 1;
-      if (clientSocket && clientSocket.writable) {
-        if (clientSocket.deviceType === 'teltonika') {
-          clientSocket.write(buildTeltonikaCodec12Frame('setdigout 0'));
-          console.log(`[TCP Auto-Control] Sent Codec 12 LOCK (setdigout 0) to direct Teltonika device ${deviceId}`);
-        } else {
-          clientSocket.write(`$$CMD,${deviceId},SET_CLOUDLOCKED,1\r\n`);
-        }
-      }
+      DeviceManager.sendCommand(deviceId, 'setdigout 0');
     } else {
       isLocked = 0; // Lock deferred for safety
     }
@@ -1506,6 +1483,7 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
 // --- TCP Telematics Ingestion Server (Multi-Protocol support) ---
 const activeTcpSockets = new Map(); // Maps deviceId -> net.Socket
 app.set('activeTcpSockets', activeTcpSockets);
+DeviceManager.init(activeTcpSockets, buildTeltonikaCodec12Frame);
 
 const TCP_PORT = process.env.PORT_TCP || 5000;
 const tcpServer = net.createServer((socket) => {
@@ -1552,7 +1530,7 @@ const tcpServer = net.createServer((socket) => {
           authenticatedDeviceId = deviceId;
           deviceType = 'custom';
           socket.deviceType = 'custom';
-          activeTcpSockets.set(deviceId, socket);
+          DeviceManager.registerSocket(deviceId, socket);
           console.log(`[TCP Auth] Custom Device ${deviceId} authenticated.`);
           socket.write(`$$LOGIN,OK\r\n`);
 
@@ -1629,7 +1607,7 @@ const tcpServer = net.createServer((socket) => {
             authenticatedDeviceId = imei;
             deviceType = 'gt06';
             socket.deviceType = 'gt06';
-            activeTcpSockets.set(imei, socket);
+            DeviceManager.registerSocket(imei, socket);
             console.log(`[GT06 TCP] Device ${imei} authenticated.`);
 
             // Response ACK
@@ -1735,7 +1713,7 @@ const tcpServer = net.createServer((socket) => {
           authenticatedDeviceId = imeiStr;
           deviceType = 'teltonika';
           socket.deviceType = 'teltonika';
-          activeTcpSockets.set(imeiStr, socket);
+          DeviceManager.registerSocket(imeiStr, socket);
           console.log(`[Teltonika TCP] Device ${imeiStr} authenticated.`);
           socket.write(Buffer.from([0x01])); // Accept connection
         } else {
@@ -1900,7 +1878,7 @@ const tcpServer = net.createServer((socket) => {
   socket.on('close', () => {
     if (authenticatedDeviceId) {
       console.log(`🔌 Connection closed for Device: ${authenticatedDeviceId} (${deviceType})`);
-      activeTcpSockets.delete(authenticatedDeviceId);
+      DeviceManager.deregisterSocket(authenticatedDeviceId);
     } else {
       console.log('🔌 Unauthenticated TCP socket closed.');
     }

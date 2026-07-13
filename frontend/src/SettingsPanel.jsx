@@ -146,6 +146,8 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
     const [editPlateNumber, setEditPlateNumber] = useState('');
     const [editDriverName, setEditDriverName] = useState('');
     const [editVehicleType, setEditVehicleType] = useState('car');
+    const [editImei, setEditImei] = useState('');
+    const [editTrackerType, setEditTrackerType] = useState('teltonika');
     const [vehicleLoading, setVehicleLoading] = useState(false);
     const [vehicleSuccess, setVehicleSuccess] = useState('');
     const [vehicleError, setVehicleError] = useState('');
@@ -156,6 +158,8 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
         setEditPlateNumber(vehicle.plate_number || '');
         setEditDriverName(vehicle.driver_name || '');
         setEditVehicleType(vehicle.vehicle_type || 'car');
+        setEditImei(vehicle.imei || '');
+        setEditTrackerType(vehicle.trackerType || 'teltonika');
         setVehicleSuccess('');
         setVehicleError('');
     };
@@ -165,12 +169,21 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
         setVehicleSuccess('');
         setVehicleError('');
 
+        const cleanImei = editImei.trim();
+        if (cleanImei && !/^\d{15}$/.test(cleanImei)) {
+            setVehicleError('Invalid Tracker IMEI Format. Must be a 15-digit number.');
+            setVehicleLoading(false);
+            return;
+        }
+
         try {
             await axios.put(`${API_BASE}/api/vehicles/${vehicleId}`, {
                 name: editName.trim(),
                 plateNumber: editPlateNumber.trim().toUpperCase(),
                 driverName: editDriverName.trim(),
-                vehicleType: editVehicleType
+                vehicleType: editVehicleType,
+                imei: cleanImei || null,
+                trackerType: editTrackerType
             });
 
             setVehicleSuccess('Vehicle details updated successfully!');
@@ -1298,6 +1311,10 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                                 setEditDriverName={setEditDriverName}
                                 editVehicleType={editVehicleType}
                                 setEditVehicleType={setEditVehicleType}
+                                editImei={editImei}
+                                setEditImei={setEditImei}
+                                editTrackerType={editTrackerType}
+                                setEditTrackerType={setEditTrackerType}
                                 vehicleSuccess={vehicleSuccess}
                                 vehicleError={vehicleError}
                                 vehicleLoading={vehicleLoading}
