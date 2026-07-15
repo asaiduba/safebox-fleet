@@ -591,21 +591,36 @@ function App() {
         setMobileSidebarOpen(false);
     }, []);
 
-    const sendCommand = useCallback((deviceId, command) => {
-        if (socket) {
-            socket.emit('send-command', { deviceId, command });
-        }
-        // Optimistically update UI immediately — server confirms via Socket.IO broadcast
+    const sendCommand = useCallback(async (deviceId, command) => {
+        // Optimistically update UI immediately
         const isLock = command === 'LOCK';
         setVehicles(prev => prev.map(v =>
             v.id === deviceId ? {
                 ...v,
                 cloudLocked: isLock,
-                locked: isLock,           // clear ARMED badge instantly on UNLOCK
+                locked: isLock,
                 relayState: isLock ? 0 : 1
             } : v
         ));
-    }, []);
+
+        try {
+            // Primary path: REST API (reliable, uses standard HTTP Bearer auth)
+            const token = user?.token;
+            const resp = await axios.post(
+                `${API_BASE}/api/vehicles/${deviceId}/command`,
+                { command },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            console.log(`[Command] ${command} sent → `, resp.data);
+        } catch (err) {
+            console.error(`[Command] REST API failed for ${command}:`, err.response?.data || err.message);
+            // Fallback: try Socket.io if REST fails
+            if (socket) {
+                console.log('[Command] Falling back to Socket.io...');
+                socket.emit('send-command', { deviceId, command });
+            }
+        }
+    }, [user]);
 
     const handleDeleteGeofence = useCallback(async (id) => {
         const previousGeofences = [...geofences];

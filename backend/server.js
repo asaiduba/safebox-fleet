@@ -419,6 +419,9 @@ const sendTraccarCommand = async (imei, commandText) => {
   }
 };
 
+// Register on Express app so routes (vehicles.js etc.) can use them via req.app.get(...)
+app.set('sendTraccarCommand', sendTraccarCommand);
+
 // MQTT Publish Event (Handle Telemetry, Alerts & Commands)
 mqttClient.on('message', (topic, message) => {
   const payloadStr = message.toString();

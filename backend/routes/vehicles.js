@@ -235,6 +235,85 @@ router.delete('/:id', authMiddleware, (req, res) => {
   }
 });
 
+// POST LOCK / UNLOCK command via REST API
+// This is the primary, most reliable command path for web-initiated lock/unlock.
+// It uses standard HTTP auth (JWT Bearer token) which is always working when the
+// user is logged in — unlike the Socket.io channel which can silently fail if the
+// WS handshake auth token is stale.
+router.post('/:id/command', authMiddleware, async (req, res) => {
+  const userId = req.user.id;
+  const vehicleId = req.params.id;
+  const { command } = req.body;
+
+  if (!command || !['LOCK', 'UNLOCK'].includes(command)) {
+    return res.status(400).json({ error: 'command must be LOCK or UNLOCK' });
+  }
+
+  try {
+    const vehicle = db.prepare('SELECT owner_id, name, ignition FROM vehicles WHERE id = ?').get(vehicleId);
+    if (!vehicle) {
+      return res.status(404).json({ error: 'Vehicle not found' });
+    }
+    if (vehicle.owner_id !== userId && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const isLock = command === 'LOCK';
+
+    // 1. Update database
+    if (isLock) {
+      db.prepare('UPDATE vehicles SET cloud_locked = 1, is_locked = 1 WHERE id = ?').run(vehicleId);
+    } else {
+      db.prepare('UPDATE vehicles SET cloud_locked = 0, is_locked = 0, override_status = \'NONE\', override_expires = 0 WHERE id = ?').run(vehicleId);
+    }
+
+    // 2. Invalidate metadata cache immediately so next telemetry sees the new state
+    if (global.invalidateMetadataCache) {
+      global.invalidateMetadataCache(vehicleId);
+    }
+
+    // 3. Send physical relay command
+    const relayCmd = isLock ? 'setdigout 0' : 'setdigout 1';
+    console.log(`[REST Command] ${command} for vehicle ${vehicleId} (${vehicle.name}) → ${relayCmd}`);
+
+    const DeviceManager = req.app.get('DeviceManager');
+    const sendTraccarCommand = req.app.get('sendTraccarCommand');
+
+    const isDirectSocket = DeviceManager && DeviceManager.getStatus(vehicleId) === 'ONLINE';
+    if (isDirectSocket) {
+      DeviceManager.sendCommand(vehicleId, relayCmd, userId);
+      console.log(`[REST Command] Sent via direct TCP socket for ${vehicleId}`);
+    } else if (sendTraccarCommand) {
+      await sendTraccarCommand(vehicleId, relayCmd);
+      console.log(`[REST Command] Sent via Traccar API for ${vehicleId}`);
+    } else {
+      console.warn(`[REST Command] No command channel available for ${vehicleId}`);
+    }
+
+    // 4. Broadcast new state to all connected dashboards
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${userId}`).emit('device-data', {
+        topic: `/device/${vehicleId}/status`,
+        payload: {
+          deviceId: vehicleId,
+          locked: isLock,
+          cloudLocked: isLock,
+          relayState: isLock ? 0 : 1,
+          timestamp: Date.now()
+        }
+      });
+    }
+
+    logAuditAction(userId, req.user.username, isLock ? 'lock_vehicle' : 'unlock_vehicle', vehicleId, { source: 'rest_api', vehicleName: vehicle.name }, req);
+
+    res.json({ success: true, command, vehicleId, relayCmd });
+  } catch (err) {
+    console.error('[REST Command] Error:', err);
+    res.status(500).json({ error: 'Command failed: ' + err.message });
+  }
+});
+
 // POST Update BLE settings
 router.post('/ble-settings', authMiddleware, (req, res) => {
   const userId = req.user.id;
