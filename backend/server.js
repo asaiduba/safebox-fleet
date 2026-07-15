@@ -323,6 +323,26 @@ app.use('/api/groups', groupsRouter);
 // Serve reports public directory statically
 app.use('/reports', express.static(path.join(__dirname, 'public', 'reports')));
 
+// --- Health Check Endpoint (used by Railway and uptime monitors) ---
+app.get('/api/health', (req, res) => {
+  try {
+    const dbOk = !!db.prepare('SELECT 1').get();
+    const mqttOk = mqttClient ? mqttClient.connected : false;
+    const uptime = Math.round(process.uptime());
+    const memMb = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+    res.json({
+      status: dbOk && mqttOk ? 'ok' : 'degraded',
+      db: dbOk,
+      mqtt: mqttOk,
+      uptime_seconds: uptime,
+      memory_mb: memMb,
+      env: process.env.NODE_ENV || 'development'
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
 // MQTT Broker Setup — Private HiveMQ Cloud (TLS + Credentials)
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.emqx.io'; // fallback for local dev only
 const mqttOptions = process.env.MQTT_BROKER_USER ? {
@@ -361,7 +381,12 @@ global.traccarDeviceIds = global.traccarDeviceIds || new Map();
 const sendTraccarCommand = async (imei, commandText) => {
   const traccarUrl = process.env.TRACCAR_URL || 'https://traccar-production-e4f0.up.railway.app';
   const traccarUser = process.env.TRACCAR_USER || 'admin@safebox.com';
-  const traccarPass = process.env.TRACCAR_PASS || 'adminpassword';
+  // No hardcoded fallback — fail loudly if the password is not set in Railway env vars.
+  const traccarPass = process.env.TRACCAR_PASS;
+  if (!traccarPass) {
+    console.error('[Traccar Command] TRACCAR_PASS env var not set — cannot send command to device.');
+    return;
+  }
 
   if (!traccarUrl || !traccarUser || !traccarPass) {
     console.log('[Traccar Command] Traccar API credentials not configured. Skipping command forward.');
@@ -532,7 +557,9 @@ mqttClient.on('message', (topic, message) => {
           const cleanMac = b.mac.replace(/:/g, '').toUpperCase().replace(/^0+/, '');
           const cleanDb = normalizedBeaconId.replace(/^0+/, '');
           const isMatch = cleanMac === cleanDb || cleanMac.endsWith(cleanDb) || cleanDb.endsWith(cleanMac);
-          console.log(`[BLE MQTT]   comparing cleanMac="${cleanMac}" vs cleanDb="${cleanDb}" → ${isMatch ? '✅ MATCH' : '❌ no match'}`);
+          if (process.env.BLE_DEBUG) {
+            console.log(`[BLE MQTT]   comparing cleanMac="${cleanMac}" vs cleanDb="${cleanDb}" → ${isMatch ? '✅ MATCH' : '❌ no match'}`);
+          }
           return isMatch;
         });
         if (matchedTag) {
@@ -2232,12 +2259,16 @@ app.post('/api/telematics-webhook', (req, res) => {
           // (rapid ON↔OFF transitions). We only act on ignition after it has
           // been stable for 3 seconds. This prevents relay flicker.
           if (!global.ignitionDebounce) global.ignitionDebounce = new Map();
-          const lastDebounce = global.ignitionDebounce.get(deviceId) || { state: ignitionOn, since: Date.now() };
+          if (!global.ignitionDebounce.has(deviceId)) {
+            // First packet for this device (or after server restart).
+            // Pre-seed the timer 5s in the past so the debounce passes immediately
+            // — we don't want a cold-start to block relay commands for 3 seconds.
+            global.ignitionDebounce.set(deviceId, { state: ignitionOn, since: Date.now() - 5000 });
+          }
+          const lastDebounce = global.ignitionDebounce.get(deviceId);
           if (lastDebounce.state !== ignitionOn) {
             // State just changed — reset debounce timer
             global.ignitionDebounce.set(deviceId, { state: ignitionOn, since: Date.now() });
-          } else {
-            // State unchanged — update object in place (no-op on Map entry)
           }
           const debounce = global.ignitionDebounce.get(deviceId);
           const ignitionStableMs = Date.now() - debounce.since;

@@ -290,6 +290,14 @@ router.post('/:id/command', authMiddleware, async (req, res) => {
       console.warn(`[REST Command] No command channel available for ${vehicleId}`);
     }
 
+    // Update relay_state optimistically + reset auto-relay cooldown
+    // so the next telemetry packet doesn't send a duplicate setdigout command.
+    const desiredRelay = isLock ? 0 : 1;
+    db.prepare('UPDATE vehicles SET relay_state = ?, relay_updated_at = ? WHERE id = ?')
+      .run(desiredRelay, Date.now(), vehicleId);
+    if (!global.relayCmdCooldown) global.relayCmdCooldown = new Map();
+    global.relayCmdCooldown.set(`${vehicleId}-relay`, Date.now());
+
     // 4. Broadcast new state to all connected dashboards
     const io = req.app.get('io');
     if (io) {

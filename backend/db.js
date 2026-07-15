@@ -714,7 +714,21 @@ function initDb() {
         console.error("Failed to seed mock companies/payments:", e.message);
     }
 
+    // ─── Performance Indexes for Hot Query Paths ────────────────────────────
+    // These run once at startup (CREATE INDEX IF NOT EXISTS is idempotent).
+    // They dramatically speed up queries that run on every telemetry packet.
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_vehicles_id        ON vehicles(id);
+        CREATE INDEX IF NOT EXISTS idx_vehicles_owner_id  ON vehicles(owner_id);
+        CREATE INDEX IF NOT EXISTS idx_history_vehicle_ts ON vehicle_history(vehicle_id, timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_alerts_vehicle     ON vehicle_alerts(vehicle_id);
+        CREATE INDEX IF NOT EXISTS idx_alerts_ts          ON vehicle_alerts(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_devices_vehicle    ON devices(vehicle_id);
+    `);
+    // ─────────────────────────────────────────────────────────────────────────
+
     console.log('Database initialized successfully with new GTM and Reports schemas');
+
 }
 
 module.exports = { db, initDb };
