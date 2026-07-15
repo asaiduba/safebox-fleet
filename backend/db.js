@@ -722,7 +722,7 @@ function initDb() {
         CREATE INDEX IF NOT EXISTS idx_vehicles_owner_id  ON vehicles(owner_id);
         CREATE INDEX IF NOT EXISTS idx_history_vehicle_ts ON vehicle_history(vehicle_id, timestamp DESC);
         CREATE INDEX IF NOT EXISTS idx_alerts_vehicle     ON vehicle_alerts(vehicle_id);
-        CREATE INDEX IF NOT EXISTS idx_alerts_ts          ON vehicle_alerts(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_alerts_ts          ON vehicle_alerts(timestamp DESC);
         CREATE INDEX IF NOT EXISTS idx_devices_vehicle    ON devices(vehicle_id);
     `);
     // ─────────────────────────────────────────────────────────────────────────

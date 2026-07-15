@@ -81,7 +81,7 @@ router.post('/register', registerLimiter, async (req, res) => {
       success: true,
       needsVerification: true,
       email,
-      devVerificationCode: (emailResult && emailResult.success) ? null : verificationCode
+      devVerificationCode: (process.env.NODE_ENV !== 'production' && (!emailResult || !emailResult.success)) ? verificationCode : null
     });
   } catch (err) {
     console.error('Registration error:', err);
@@ -124,7 +124,7 @@ router.post('/login', authLimiter, async (req, res) => {
         error: 'Please verify your email address. A verification code has been sent.', 
         needsVerification: true, 
         email: user.email,
-        devVerificationCode: emailSent ? null : verificationCode
+        devVerificationCode: (process.env.NODE_ENV !== 'production' && !emailSent) ? verificationCode : null
       });
     }
 
@@ -196,7 +196,7 @@ router.post('/resend-verification', otpLimiter, async (req, res) => {
     res.json({
       success: true,
       message: 'Verification code resent successfully.',
-      devVerificationCode: (emailResult && emailResult.success) ? null : verificationCode
+      devVerificationCode: (process.env.NODE_ENV !== 'production' && (!emailResult || !emailResult.success)) ? verificationCode : null
     });
   } catch (err) {
     console.error('Failed to resend verification code:', err);
@@ -227,7 +227,7 @@ router.post('/forgot-password', otpLimiter, async (req, res) => {
     res.json({
       success: true,
       message: 'Password reset code sent to your email.',
-      devVerificationCode: (emailResult && emailResult.success) ? null : verificationCode
+      devVerificationCode: (process.env.NODE_ENV !== 'production' && (!emailResult || !emailResult.success)) ? verificationCode : null
     });
   } catch (err) {
     console.error('Forgot password request failed:', err);

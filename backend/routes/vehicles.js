@@ -78,7 +78,7 @@ router.post('/', authMiddleware, async (req, res) => {
     if (/^\d{15}$/.test(id)) {
       const traccarUrl = process.env.TRACCAR_URL || 'https://traccar-production-e4f0.up.railway.app';
       const traccarUser = process.env.TRACCAR_USER || 'admin@safebox.com';
-      const traccarPass = process.env.TRACCAR_PASS || 'adminpassword';
+      const traccarPass = process.env.TRACCAR_PASS;
 
       if (traccarUrl && traccarUser && traccarPass) {
         (async () => {

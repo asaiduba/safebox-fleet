@@ -181,12 +181,6 @@ io.on('connection', (socket) => {
           global.invalidateMetadataCache(deviceId);
         }
 
-        if (mqttClient) {
-          mqttClient.publish(`/device/${deviceId}/command`, JSON.stringify({ command: isLock ? 'BLOCK_START' : 'UNLOCK' }));
-          if (isLock) {
-            mqttClient.publish(`/device/${deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
-          }
-        }
         // Send the physical relay command immediately.
         // Route to direct TCP socket if available, otherwise fall back to Traccar API.
         const currentVehicle = db.prepare('SELECT ignition FROM vehicles WHERE id = ?').get(deviceId);
@@ -345,6 +339,9 @@ app.get('/api/health', (req, res) => {
 
 // MQTT Broker Setup — Private HiveMQ Cloud (TLS + Credentials)
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.emqx.io'; // fallback for local dev only
+if (process.env.NODE_ENV === 'production' && (!process.env.MQTT_BROKER_URL || MQTT_BROKER_URL.includes('broker.emqx.io'))) {
+  console.warn('⚠️ WARNING: Using fallback PUBLIC unencrypted MQTT Broker in production! Ensure MQTT_BROKER_URL is configured.');
+}
 const mqttOptions = process.env.MQTT_BROKER_USER ? {
   username: process.env.MQTT_BROKER_USER,
   password: process.env.MQTT_BROKER_PASS,

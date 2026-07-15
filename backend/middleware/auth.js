@@ -50,7 +50,8 @@ function adminMiddleware(req, res, next) {
 
 function getRequestUserId(req) {
   if (req.user && req.user.role === 'admin' && req.headers['x-impersonate-user-id']) {
-    return parseInt(req.headers['x-impersonate-user-id'], 10);
+    const parsed = parseInt(req.headers['x-impersonate-user-id'], 10);
+    return isNaN(parsed) ? req.user.id : parsed;
   }
   return req.user.id;
 }
