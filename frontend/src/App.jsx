@@ -594,11 +594,14 @@ function App() {
         if (socket) {
             socket.emit('send-command', { deviceId, command });
         }
+        // Optimistically update UI immediately — server confirms via Socket.IO broadcast
+        const isLock = command === 'LOCK';
         setVehicles(prev => prev.map(v =>
             v.id === deviceId ? {
                 ...v,
-                cloudLocked: command === 'LOCK',
-                locked: command === 'LOCK' ? true : v.locked
+                cloudLocked: isLock,
+                locked: isLock,           // clear ARMED badge instantly on UNLOCK
+                relayState: isLock ? 0 : 1
             } : v
         ));
     }, []);
@@ -825,10 +828,11 @@ function App() {
                 const index = prev.findIndex(v => v.id === data.payload.deviceId);
                 if (index > -1) {
                     const newVehicles = [...prev];
-                    // Preserve cloudLocked unless it is explicitly sent in the socket payload (e.g. from lock/unlock commands)
-                    const { cloudLocked, ...telemetry } = data.payload;
+                    // Extract lock fields separately — preserve existing values only when server doesn't send them
+                    const { cloudLocked, locked, relayState, ...telemetry } = data.payload;
                     const existingVehicle = newVehicles[index];
                     const updatedCloudLocked = cloudLocked !== undefined ? cloudLocked : existingVehicle.cloudLocked;
+                    const updatedLocked = locked !== undefined ? locked : existingVehicle.locked;
 
                     // Preserve beaconRssi and driverPresent — most telemetry packets have NO beacon
                     // data and carry beaconRssi=null. We must not let those null values erase a
@@ -844,6 +848,8 @@ function App() {
                         ...existingVehicle,
                         ...telemetry,
                         cloudLocked: updatedCloudLocked,
+                        locked: updatedLocked,
+                        ...(relayState !== undefined ? { relayState } : {}),
                         lastUpdate: new Date()
                     };
                     return newVehicles;

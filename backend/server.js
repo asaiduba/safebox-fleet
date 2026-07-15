@@ -203,8 +203,9 @@ io.on('connection', (socket) => {
 
         broadcastDeviceData(deviceId, `/device/${deviceId}/status`, {
           deviceId,
-          locked: isLock,
-          cloudLocked: isLock,
+          locked: isLock,        // true = armed, false = disarmed
+          cloudLocked: isLock,   // mirrors the web lock button state
+          relayState: isLock ? 0 : 1, // 0 = wire cut, 1 = wire reconnected
           timestamp: Date.now()
         });
       } catch (err) {
@@ -1411,36 +1412,46 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
     }
   }
 
-  const shouldBeLocked = (vehicle.cloud_locked === 1 || curfewLocked || !driverPresent);
-  
+  // cloud_locked/curfew = master relay switch (web authority)
+  // driverPresent (BLE) = startup-only guard — never overrides an explicit web unlock on the relay
+  const isWebOrCurfewLocked = (vehicle.cloud_locked === 1 || curfewLocked);
+  const shouldBeLocked = (isWebOrCurfewLocked || !driverPresent);
+
   // Logical status shown on dashboard
   let isLocked = shouldBeLocked ? 1 : 0;
 
-  // Compute desired physical relay state (0 = de-energized / wire cut / locked, 1 = energized / wire reconnected / unlocked)
-  let desiredRelayState = 0; // Default to 0 (de-energized/wire cut/locked)
+  // Compute desired physical relay state
+  // 0 = de-energized / wire cut  → engine blocked
+  // 1 = energized  / wire reconnected → engine allowed
+  let desiredRelayState = 0;
+
   if (ignition === 1) {
-    const isWebOrCurfewLocked = (vehicle.cloud_locked === 1 || curfewLocked);
     if (isWebOrCurfewLocked) {
-      desiredRelayState = 0; // Wire cut, blocked via web/curfew
+      // Explicit web/curfew lock: always cut the wire regardless of BLE or speed
+      desiredRelayState = 0;
     } else if (!driverPresent) {
-      // Locked only due to missing BLE
+      // Web is UNLOCKED but BLE keyfob is missing
       if (speed <= 2) {
-        desiredRelayState = 0; // Wire cut, block start if stationary
+        // Stationary: block startup — BLE keyfob must be present to start
+        desiredRelayState = 0;
       } else {
-        desiredRelayState = 1; // Keep wire reconnected/relay energized for safety while moving (prevent cutoff from signal fluctuation)
-        isLocked = 0; // Defer logical lock badge too for consistency
+        // Moving: keep relay energized — BLE signal can fluctuate, don't cut engine
+        desiredRelayState = 1;
+        isLocked = 0; // Don't show ARMED badge while safely moving
       }
     } else {
-      desiredRelayState = 1; // Both web unlocked and BLE present -> Energize relay (reconnect wire) to allow starting/moving!
+      // Web UNLOCKED + BLE present → energize relay, allow engine
+      desiredRelayState = 1;
     }
   } else {
-    desiredRelayState = 0; // Always de-energize relay when ACC is OFF to save battery (wire remains cut/locked)
+    // ACC/Ignition OFF: always de-energize to save vehicle battery
+    desiredRelayState = 0;
   }
 
-  // Update physical relay state on the tracker if it differs from current state
+  // Send command only when physical state differs from desired state
   const currentRelay = (dout1 !== null) ? dout1 : (vehicle.relay_state || 0);
   if (currentRelay !== desiredRelayState) {
-    console.log(`[Relay Controller] Relay state mismatch on vehicle ${deviceId}: current=${currentRelay}, desired=${desiredRelayState}. Dispatching setdigout ${desiredRelayState}`);
+    console.log(`[Relay Controller] Vehicle ${deviceId}: current DOUT1=${currentRelay}, desired=${desiredRelayState} → dispatching setdigout ${desiredRelayState}`);
     DeviceManager.sendCommand(deviceId, `setdigout ${desiredRelayState}`);
   }
 
