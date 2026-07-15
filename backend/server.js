@@ -2226,6 +2226,25 @@ app.post('/api/telematics-webhook', (req, res) => {
           }
 
           const speed = normalizedPayload.speed || 0;
+
+          // ── Ignition Debounce (3 seconds) ───────────────────────────────
+          // Breadboard connections and vehicle EMI can cause DIN1 to bounce
+          // (rapid ON↔OFF transitions). We only act on ignition after it has
+          // been stable for 3 seconds. This prevents relay flicker.
+          if (!global.ignitionDebounce) global.ignitionDebounce = new Map();
+          const lastDebounce = global.ignitionDebounce.get(deviceId) || { state: ignitionOn, since: Date.now() };
+          if (lastDebounce.state !== ignitionOn) {
+            // State just changed — reset debounce timer
+            global.ignitionDebounce.set(deviceId, { state: ignitionOn, since: Date.now() });
+          } else {
+            // State unchanged — update object in place (no-op on Map entry)
+          }
+          const debounce = global.ignitionDebounce.get(deviceId);
+          const ignitionStableMs = Date.now() - debounce.since;
+          const IGNITION_DEBOUNCE_MS = 3000; // 3 seconds stable before acting
+          const ignitionStable = ignitionStableMs >= IGNITION_DEBOUNCE_MS;
+          // ────────────────────────────────────────────────────────────────
+
           let desiredRelay = 0;
           if (ignitionOn) {
             if (isWebOrCurfewLocked) {
@@ -2239,7 +2258,7 @@ app.post('/api/telematics-webhook', (req, res) => {
 
           const currentRelay = (vehicle.relay_state !== null && vehicle.relay_state !== undefined) ? vehicle.relay_state : 0;
 
-          if (currentRelay !== desiredRelay) {
+          if (currentRelay !== desiredRelay && ignitionStable) {
             if (!global.relayCmdCooldown) global.relayCmdCooldown = new Map();
             const cooldownKey = `${deviceId}-relay`;
             const lastSent = global.relayCmdCooldown.get(cooldownKey) || 0;
