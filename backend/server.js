@@ -669,8 +669,8 @@ mqttClient.on('message', (topic, message) => {
       // If we let the device overwrite it, the dashboard lock button would revert
       // every time the device sends a telemetry packet (every 2 seconds).
       try {
-        const stmt = db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ?, beacon_rssi = ?, driver_present = ? WHERE id = ?');
-        stmt.run(Date.now(), payload.battery || 100, payload.fuel || 100, payload.locked ? 1 : 0, finalLat, finalLng, newOdometer, matchedRssi, driverPresent ? 1 : 0, payload.deviceId);
+        const stmt = db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ?, beacon_rssi = ?, driver_present = ?, ignition = ? WHERE id = ?');
+        stmt.run(Date.now(), payload.battery || 100, payload.fuel || 100, payload.locked ? 1 : 0, finalLat, finalLng, newOdometer, matchedRssi, driverPresent ? 1 : 0, payload.ignition ? 1 : 0, payload.deviceId);
 
         // Insert into vehicle_history in batches
         global.logVehicleHistory({
@@ -1486,6 +1486,7 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
     battery,
     fuel,
     locked: isLocked === 1,
+    ignition: ignition === 1 ? 1 : 0,
     timestamp: nowMs
   });
 

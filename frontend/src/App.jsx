@@ -79,7 +79,8 @@ import {
     XIcon,
     CheckIcon,
     InfoIcon,
-    AlertTriangleIcon
+    AlertTriangleIcon,
+    KeyIcon
 } from './settings/Icons';
 
 // Fix Leaflet default icon issue
@@ -1524,8 +1525,11 @@ function App() {
                                                     <span title={v.cloudLocked ? "Web Locked" : "Web Unlocked"} style={{ display: 'flex', alignItems: 'center' }}>
                                                         {v.cloudLocked ? <LockIcon size={14} style={{ color: '#ef4444' }} /> : <UnlockIcon size={14} style={{ color: '#10b981' }} />}
                                                     </span>
-                                                    <span title={v.locked ? "Engine Cut" : "Engine Running"} style={{ display: 'flex', alignItems: 'center' }}>
+                                                    <span title={v.locked ? "Engine Cut" : "Engine Allowed"} style={{ display: 'flex', alignItems: 'center' }}>
                                                         {v.locked ? <PowerIcon size={14} style={{ color: '#ef4444' }} /> : <ZapIcon size={14} style={{ color: '#10b981' }} />}
+                                                    </span>
+                                                    <span title={v.ignition === 1 || v.ignition === true ? "ACC (Ignition) ON" : "ACC (Ignition) OFF"} style={{ display: 'flex', alignItems: 'center' }}>
+                                                        <KeyIcon size={14} style={{ color: (v.ignition === 1 || v.ignition === true) ? '#3b82f6' : '#64748b' }} />
                                                     </span>
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.1rem' }}>
@@ -1800,6 +1804,11 @@ function App() {
                                                         Engine: {selectedVehicle.locked ?
                                                             <span style={{ color: '#ff4444' }}>CUT</span> :
                                                             <span style={{ color: '#22c55e' }}>RUNNING</span>}
+                                                    </p>
+                                                    <p>
+                                                        Ignition (ACC): {selectedVehicle.ignition === 1 || selectedVehicle.ignition === true ?
+                                                            <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>ON</span> :
+                                                            <span style={{ color: '#94a3b8', fontWeight: 'bold' }}>OFF</span>}
                                                     </p>
                                                     <p>Speed: {selectedVehicle.speed} km/h</p>
                                                     <p>Battery: {selectedVehicle.battery}%</p>
