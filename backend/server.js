@@ -1413,8 +1413,16 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   // Send command ONLY when physical state differs from desired state
   const currentRelay = (dout1 !== null) ? dout1 : (vehicle.relay_state || 0);
   if (currentRelay !== desiredRelayState) {
-    console.log(`[Relay Controller] Vehicle ${deviceId}: DOUT1 current=${currentRelay} desired=${desiredRelayState} ignition=${ignition} speed=${speed} webLocked=${isWebOrCurfewLocked} blePresent=${driverPresent} → setdigout ${desiredRelayState}`);
-    DeviceManager.sendCommand(deviceId, `setdigout ${desiredRelayState}`);
+    const cmdText = `setdigout ${desiredRelayState}`;
+    console.log(`[Relay Controller] Vehicle ${deviceId}: DOUT1 current=${currentRelay} desired=${desiredRelayState} ignition=${ignition} speed=${speed} webLocked=${isWebOrCurfewLocked} blePresent=${driverPresent} → ${cmdText}`);
+    
+    // Dynamically route the command depending on device connection type
+    const isDirectSocket = DeviceManager.getStatus(deviceId) === 'ONLINE';
+    if (isDirectSocket) {
+      DeviceManager.sendCommand(deviceId, cmdText);
+    } else {
+      sendTraccarCommand(deviceId, cmdText);
+    }
   }
 
   // Evaluate security alerts (Hotwire, Towing, and Unauthorized Movement)
@@ -2066,7 +2074,24 @@ app.post('/api/telematics-webhook', (req, res) => {
       const isHarshBrake = pos.attributes?.harshBraking === true || pos.attributes?.io254 !== undefined;
 
       // Normalize the payload to match the SafeBox MQTT status schema
-      const ignitionOn = pos.attributes?.ignition === true || pos.attributes?.io239 === 1 || pos.attributes?.io239 === '1';
+      console.log(`[Webhook Bridge] Telemetry attributes for ${deviceId}:`, JSON.stringify(pos.attributes || {}));
+      
+      const ignitionOn = pos.attributes?.ignition === true || 
+                         pos.attributes?.ignition === 1 || 
+                         pos.attributes?.ignition === '1' || 
+                         pos.attributes?.ignition === 'true' || 
+                         pos.attributes?.io239 === 1 || 
+                         pos.attributes?.io239 === '1' || 
+                         pos.attributes?.din1 === 1 || 
+                         pos.attributes?.din1 === '1' || 
+                         pos.attributes?.din1 === true || 
+                         pos.attributes?.di1 === 1 || 
+                         pos.attributes?.di1 === '1' || 
+                         pos.attributes?.di1 === true || 
+                         pos.attributes?.io1 === 1 || 
+                         pos.attributes?.io1 === '1' || 
+                         pos.attributes?.io1 === true;
+
       const normalizedPayload = {
         deviceId: deviceId,
         lat: pos.latitude || 0,
