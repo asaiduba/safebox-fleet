@@ -171,7 +171,7 @@ io.on('connection', (socket) => {
         if (isLock) {
           db.prepare('UPDATE vehicles SET cloud_locked = 1, is_locked = 1 WHERE id = ?').run(deviceId);
         } else {
-          db.prepare('UPDATE vehicles SET cloud_locked = 0, is_locked = 0, override_status = "NONE", override_expires = 0 WHERE id = ?').run(deviceId);
+          db.prepare("UPDATE vehicles SET cloud_locked = 0, is_locked = 0, override_status = 'NONE', override_expires = 0 WHERE id = ?").run(deviceId);
         }
         if (global.invalidateMetadataCache) {
           global.invalidateMetadataCache(deviceId);
@@ -2219,7 +2219,7 @@ server.listen(PORT, () => {
         } else if (nowStr === vehicle.curfew_start) {
           // Transition out of curfew: ALLOW_START
           console.log(`[Curfew Scheduler] Curfew start reached. Sending ALLOW_START to ${vehicle.id}`);
-          db.prepare('UPDATE vehicles SET cloud_locked = 0, is_locked = 0, override_status = "NONE", override_expires = 0 WHERE id = ?').run(vehicle.id);
+          db.prepare("UPDATE vehicles SET cloud_locked = 0, is_locked = 0, override_status = 'NONE', override_expires = 0 WHERE id = ?").run(vehicle.id);
           if (global.invalidateMetadataCache) global.invalidateMetadataCache(vehicle.id);
           mqttClient.publish(`/device/${vehicle.id}/command`, JSON.stringify({ command: 'ALLOW_START' }));
           mqttClient.publish(`/device/${vehicle.id}/command`, JSON.stringify({ command: 'UNLOCK' }));
