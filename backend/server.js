@@ -553,22 +553,11 @@ mqttClient.on('message', (topic, message) => {
       payload.beaconRssi = matchedRssi;
       payload.driverPresent = driverPresent;
 
-      const shouldBeLocked = (vehicle.cloud_locked === 1 || curfewLocked || !driverPresent);
-      
+      // Dashboard badge / DB is_locked is driven ONLY by cloud_locked + curfew.
+      // BLE (driverPresent) is a startup-only guard and must NOT control is_locked.
+      const isWebOrCurfewLocked = (vehicle.cloud_locked === 1 || curfewLocked);
       const currentDbLocked = vehicle.is_locked === 1;
-      let isLocked = currentDbLocked ? 1 : 0;
-
-      if (!shouldBeLocked && currentDbLocked) {
-        isLocked = 0;
-      } else if (shouldBeLocked && !currentDbLocked) {
-        const accOn = payload.ignition === true;
-        const isParked = (payload.speed === 0 && !accOn);
-        if (isParked) {
-          isLocked = 1;
-        } else {
-          isLocked = 0;
-        }
-      }
+      let isLocked = isWebOrCurfewLocked ? 1 : 0;
 
       // Evaluate unified security alerts (Hotwire, Towing, and Unauthorized Movement)
       evaluateSecurityAlerts(
@@ -605,54 +594,27 @@ mqttClient.on('message', (topic, message) => {
         }
       }
 
-      if (!shouldBeLocked && currentDbLocked) {
-        // --- TRANSITION: UNLOCK ENGINE ---
-        console.log(`[Security Policy] Auto-unlocking vehicle ${payload.deviceId} (Inside hours, driver present, no cloud lock). Transitioning from locked to unlocked.`);
-        mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'ALLOW_START' }));
-        mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'UNLOCK' }));
+      if (!isWebOrCurfewLocked && currentDbLocked) {
+        // --- TRANSITION: UNLOCK ENGINE (web unlocked or curfew ended) ---
+        console.log(`[Security Policy] Auto-unlocking vehicle ${payload.deviceId} (web unlocked / curfew ended).`);
         payload.locked = false;
 
         // Clear curfew override if back inside allowed hours
         if (vehicle.override_status !== 'NONE' && !curfewLocked) {
           db.prepare("UPDATE vehicles SET override_status = 'NONE', override_expires = 0 WHERE id = ?").run(payload.deviceId);
         }
-      } 
-      else if (shouldBeLocked && !currentDbLocked) {
-        // --- TRANSITION: LOCK ENGINE (with safety checks) ---
-        const accOn = payload.ignition === true;
-        const isParked = (payload.speed === 0 && !accOn);
-
-        if (isParked) {
-          if (!global.lockCooldowns) global.lockCooldowns = new Map();
-          const lastLockTime = global.lockCooldowns.get(payload.deviceId) || 0;
-          const lockCooldownOk = (Date.now() - lastLockTime) > 60000;
-
-          if (lockCooldownOk) {
-            global.lockCooldowns.set(payload.deviceId, Date.now());
-            console.log(`[Security Policy] Enforcing IMMEDIATE LOCK for parked vehicle ${payload.deviceId}. Reason: cloud_locked=${vehicle.cloud_locked}, curfew=${curfewLocked}, driverAbsent=${!driverPresent}`);
-            mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'BLOCK_START' }));
-            mqttClient.publish(`/device/${payload.deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
-            payload.locked = true;
-          } else {
-            // Cooldown active: defer DB update to locked until command is actually sent
-            payload.locked = false;
-          }
-        } else if (accOn) {
-          // Ignition/ACC is ON — NEVER immobilize.
-          console.log(`[Security Policy] 🛡️  Lock deferred for ${payload.deviceId} — ACC is ON. Vehicle is running safely.`);
-          payload.locked = false;
-        } else {
-          // Vehicle is moving with ACC off (e.g. towing or rolling) — defer lock for safety.
-          console.log(`[Security Policy] ⚠️  Lock deferred for ${payload.deviceId} — vehicle is moving at ${payload.speed} km/h with ACC OFF.`);
-          payload.locked = false;
-        }
-      } 
+      }
+      else if (isWebOrCurfewLocked && !currentDbLocked) {
+        // --- TRANSITION: LOCK ENGINE (web locked or curfew started) ---
+        console.log(`[Security Policy] Enforcing LOCK for vehicle ${payload.deviceId}. Reason: cloud_locked=${vehicle.cloud_locked}, curfew=${curfewLocked}`);
+        payload.locked = true;
+      }
       else {
-        // --- NO TRANSITION: Maintain current state ---
+        // --- NO TRANSITION: Maintain current web/curfew lock state ---
         payload.locked = currentDbLocked;
 
         // Clear curfew override if back inside allowed hours
-        if (!shouldBeLocked && vehicle.override_status !== 'NONE' && !curfewLocked) {
+        if (!isWebOrCurfewLocked && vehicle.override_status !== 'NONE' && !curfewLocked) {
           db.prepare("UPDATE vehicles SET override_status = 'NONE', override_expires = 0 WHERE id = ?").run(payload.deviceId);
         }
       }
@@ -1412,46 +1374,46 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
     }
   }
 
-  // cloud_locked/curfew = master relay switch (web authority)
-  // driverPresent (BLE) = startup-only guard — never overrides an explicit web unlock on the relay
+  // ── Web/Curfew = master switch for dashboard badge AND physical relay ──────
+  // ── BLE = startup-only guard, NEVER overwrites the web lock state in DB ───
   const isWebOrCurfewLocked = (vehicle.cloud_locked === 1 || curfewLocked);
-  const shouldBeLocked = (isWebOrCurfewLocked || !driverPresent);
 
-  // Logical status shown on dashboard
-  let isLocked = shouldBeLocked ? 1 : 0;
+  // Dashboard badge / DB column: ONLY reflects cloud_locked + curfew.
+  // BLE missing must NOT set is_locked=1 in the DB — that was causing the
+  // "always ARMED on refresh" bug because telemetry kept overwriting it.
+  let isLocked = isWebOrCurfewLocked ? 1 : 0;
 
-  // Compute desired physical relay state
+  // Physical relay desired state
   // 0 = de-energized / wire cut  → engine blocked
-  // 1 = energized  / wire reconnected → engine allowed
+  // 1 = energized / wire reconnected → engine allowed
   let desiredRelayState = 0;
 
   if (ignition === 1) {
     if (isWebOrCurfewLocked) {
-      // Explicit web/curfew lock: always cut the wire regardless of BLE or speed
+      // Web/curfew lock: always cut the wire regardless of BLE or speed
       desiredRelayState = 0;
     } else if (!driverPresent) {
       // Web is UNLOCKED but BLE keyfob is missing
       if (speed <= 2) {
-        // Stationary: block startup — BLE keyfob must be present to start
+        // Stationary: block startup — keyfob must be present to start
         desiredRelayState = 0;
       } else {
-        // Moving: keep relay energized — BLE signal can fluctuate, don't cut engine
+        // Moving: keep relay energized — BLE signal can fluctuate, never cut engine
         desiredRelayState = 1;
-        isLocked = 0; // Don't show ARMED badge while safely moving
       }
     } else {
-      // Web UNLOCKED + BLE present → energize relay, allow engine
+      // Web UNLOCKED + BLE present (or no BLE configured) → energize relay
       desiredRelayState = 1;
     }
   } else {
-    // ACC/Ignition OFF: always de-energize to save vehicle battery
+    // ACC/Ignition OFF: de-energize relay to save vehicle battery
     desiredRelayState = 0;
   }
 
-  // Send command only when physical state differs from desired state
+  // Send command ONLY when physical state differs from desired state
   const currentRelay = (dout1 !== null) ? dout1 : (vehicle.relay_state || 0);
   if (currentRelay !== desiredRelayState) {
-    console.log(`[Relay Controller] Vehicle ${deviceId}: current DOUT1=${currentRelay}, desired=${desiredRelayState} → dispatching setdigout ${desiredRelayState}`);
+    console.log(`[Relay Controller] Vehicle ${deviceId}: DOUT1 current=${currentRelay} desired=${desiredRelayState} ignition=${ignition} speed=${speed} webLocked=${isWebOrCurfewLocked} blePresent=${driverPresent} → setdigout ${desiredRelayState}`);
     DeviceManager.sendCommand(deviceId, `setdigout ${desiredRelayState}`);
   }
 
