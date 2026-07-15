@@ -55,7 +55,11 @@ global.getVehicleMetadata = (deviceId) => {
   
   // Cache miss or expired: Query Database
   const vehicle = db.prepare(`
-    SELECT v.owner_id, v.name, v.lat, v.lng, v.odometer_km, v.curfew_enabled, v.curfew_start, v.curfew_end, v.curfew_days, v.curfew_allow_override, v.curfew_holiday_mode, v.override_status, v.override_expires, v.cloud_locked, v.ble_beacon_id, v.ble_beacon_rssi_threshold, v.subscription_status, u.subscription_status AS user_subscription_status
+    SELECT v.owner_id, v.name, v.lat, v.lng, v.odometer_km, v.is_locked, v.relay_state,
+           v.curfew_enabled, v.curfew_start, v.curfew_end, v.curfew_days, v.curfew_allow_override,
+           v.curfew_holiday_mode, v.override_status, v.override_expires, v.cloud_locked,
+           v.ble_beacon_id, v.ble_beacon_rssi_threshold, v.subscription_status,
+           u.subscription_status AS user_subscription_status
     FROM vehicles v
     LEFT JOIN users u ON v.owner_id = u.id
     WHERE v.id = ?
@@ -632,6 +636,70 @@ mqttClient.on('message', (topic, message) => {
           db.prepare("UPDATE vehicles SET override_status = 'NONE', override_expires = 0 WHERE id = ?").run(payload.deviceId);
         }
       }
+
+      // ─── Automatic Relay State Machine ────────────────────────────────────────
+      // On every telemetry packet, check if the physical relay state needs to change.
+      //
+      // Rules:
+      //   ACC OFF                                  → relay OFF (setdigout 0)
+      //   ACC ON + web/curfew LOCKED               → relay OFF (setdigout 0)
+      //   ACC ON + web UNLOCKED + BLE absent       → relay OFF if stationary, ON if moving
+      //   ACC ON + web UNLOCKED + BLE present      → relay ON  (setdigout 1)
+      //   ACC ON + web UNLOCKED + no BLE enrolled  → relay ON  (setdigout 1)
+      //
+      // The web lock state is NEVER changed here — fleet manager keeps full control.
+      // Only the PHYSICAL relay wire is controlled automatically.
+      // A 15-second cooldown prevents spamming Traccar with repeated commands.
+      {
+        const ignitionOn = payload.ignition ? 1 : 0;
+        let autoDesiredRelay = 0;
+
+        if (ignitionOn === 1) {
+          if (isWebOrCurfewLocked) {
+            autoDesiredRelay = 0; // Web/curfew says LOCKED — always block
+          } else if (vehicle.ble_beacon_id && !driverPresent) {
+            // BLE is enrolled but key fob not seen
+            autoDesiredRelay = (payload.speed > 2) ? 1 : 0; // Keep alive if moving, block if parked
+          } else {
+            autoDesiredRelay = 1; // Web unlocked + BLE ok (or no BLE) → energize
+          }
+        } else {
+          autoDesiredRelay = 0; // ACC OFF → always de-energize relay
+        }
+
+        // Compare against last known relay state (optimistic, from DB)
+        const currentRelayState = (vehicle.relay_state !== null && vehicle.relay_state !== undefined)
+          ? vehicle.relay_state
+          : 0;
+
+        if (currentRelayState !== autoDesiredRelay) {
+          // Cooldown: don't spam Traccar — max 1 command per 15 seconds per device
+          if (!global.relayCmdCooldown) global.relayCmdCooldown = new Map();
+          const cooldownKey = `${payload.deviceId}-relay`;
+          const lastSent = global.relayCmdCooldown.get(cooldownKey) || 0;
+          const RELAY_COOLDOWN_MS = 15000;
+
+          if (Date.now() - lastSent > RELAY_COOLDOWN_MS) {
+            const cmdText = `setdigout ${autoDesiredRelay}`;
+            console.log(`[Auto Relay] ${payload.deviceId}: ignition=${ignitionOn} webLocked=${isWebOrCurfewLocked} blePresent=${driverPresent} relay ${currentRelayState}→${autoDesiredRelay} → ${cmdText}`);
+
+            // Update DB optimistically so next packet doesn't re-trigger
+            db.prepare('UPDATE vehicles SET relay_state = ?, relay_updated_at = ? WHERE id = ?')
+              .run(autoDesiredRelay, Date.now(), payload.deviceId);
+            if (global.invalidateMetadataCache) global.invalidateMetadataCache(payload.deviceId);
+            global.relayCmdCooldown.set(cooldownKey, Date.now());
+
+            // Send the command via appropriate channel
+            const isDirectSocket = DeviceManager.getStatus(payload.deviceId) === 'ONLINE';
+            if (isDirectSocket) {
+              DeviceManager.sendCommand(payload.deviceId, cmdText);
+            } else {
+              sendTraccarCommand(payload.deviceId, cmdText);
+            }
+          }
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────────
 
       // Warn if running outside allowed hours and moving
       if (curfewLocked && payload.speed > 0) {
