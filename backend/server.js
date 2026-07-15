@@ -2190,7 +2190,79 @@ app.post('/api/telematics-webhook', (req, res) => {
         harshBrake: isHarshBrake
       };
 
-      // Publish to MQTT broker (HiveMQ / EMQX)
+      // ─── Fast-path Relay State Machine (no MQTT round-trip) ────────────────
+      // Execute relay logic HERE in the webhook handler so the setdigout command
+      // is sent in the same HTTP request cycle — ~300ms faster than waiting for
+      // the MQTT broker round-trip (webhook → HiveMQ → subscriber → sendTraccarCommand).
+      //
+      // The MQTT publish below still fires for Socket.io UI updates.
+      // The MQTT subscriber's relay block is a safety net for duplicate processing;
+      // it won't re-send because relay_state in DB will already match.
+      {
+        const vehicle = global.getVehicleMetadata(deviceId);
+        if (vehicle && vehicle.subscription_status !== 'SUSPENDED') {
+          const curfewLocked = (() => {
+            if (vehicle.curfew_enabled !== 1) return false;
+            const now = new Date();
+            const { isWithinAllowedHours } = require('./utils/helpers');
+            const isAllowed = isWithinAllowedHours(now, vehicle.curfew_start, vehicle.curfew_end, vehicle.curfew_days, vehicle.curfew_holiday_mode);
+            if (isAllowed) return false;
+            if (vehicle.override_status === 'APPROVED_MIDNIGHT' || vehicle.override_status === 'APPROVED_ONCE') {
+              if (Date.now() < vehicle.override_expires) return false;
+            }
+            return true;
+          })();
+
+          const isWebOrCurfewLocked = (vehicle.cloud_locked === 1 || curfewLocked);
+
+          // BLE: use same grace-period logic as the MQTT handler
+          let driverPresent = !vehicle.ble_beacon_id; // true when no BLE enrolled
+          if (vehicle.ble_beacon_id) {
+            const lastSeen = (global.lastBeaconSeen || new Map()).get(deviceId) || 0;
+            const lastMoving = (global.lastMovingTime || new Map()).get(deviceId) || 0;
+            const beaconSeenRecently = (Date.now() - lastSeen) < 3 * 60 * 1000;
+            const wasMovingRecently = (Date.now() - lastMoving) < 5 * 60 * 1000;
+            driverPresent = beaconSeenRecently || wasMovingRecently;
+          }
+
+          const speed = normalizedPayload.speed || 0;
+          let desiredRelay = 0;
+          if (ignitionOn) {
+            if (isWebOrCurfewLocked) {
+              desiredRelay = 0;
+            } else if (vehicle.ble_beacon_id && !driverPresent) {
+              desiredRelay = speed > 2 ? 1 : 0;
+            } else {
+              desiredRelay = 1;
+            }
+          }
+
+          const currentRelay = (vehicle.relay_state !== null && vehicle.relay_state !== undefined) ? vehicle.relay_state : 0;
+
+          if (currentRelay !== desiredRelay) {
+            if (!global.relayCmdCooldown) global.relayCmdCooldown = new Map();
+            const cooldownKey = `${deviceId}-relay`;
+            const lastSent = global.relayCmdCooldown.get(cooldownKey) || 0;
+            if (Date.now() - lastSent > 15000) {
+              const cmdText = `setdigout ${desiredRelay}`;
+              console.log(`[Auto Relay Fast] ${deviceId}: ignition=${ignitionOn ? 1 : 0} webLocked=${isWebOrCurfewLocked} relay ${currentRelay}→${desiredRelay} → ${cmdText}`);
+              db.prepare('UPDATE vehicles SET relay_state = ?, relay_updated_at = ? WHERE id = ?')
+                .run(desiredRelay, Date.now(), deviceId);
+              if (global.invalidateMetadataCache) global.invalidateMetadataCache(deviceId);
+              global.relayCmdCooldown.set(cooldownKey, Date.now());
+              const isDirectSocket = DeviceManager.getStatus(deviceId) === 'ONLINE';
+              if (isDirectSocket) {
+                DeviceManager.sendCommand(deviceId, cmdText);
+              } else {
+                sendTraccarCommand(deviceId, cmdText);
+              }
+            }
+          }
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────────
+
+      // Publish to MQTT broker (HiveMQ / EMQX) — for Socket.io UI updates
       const topic = `/device/${deviceId}/status`;
       mqttClient.publish(topic, JSON.stringify(normalizedPayload), { qos: 1 }, (mqttErr) => {
         if (mqttErr) {
@@ -2199,6 +2271,7 @@ app.post('/api/telematics-webhook', (req, res) => {
           console.log(`[Webhook Bridge] Published status to MQTT for ${deviceId}`);
         }
       });
+
     }
 
     res.sendStatus(200);
