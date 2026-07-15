@@ -183,12 +183,23 @@ io.on('connection', (socket) => {
             mqttClient.publish(`/device/${deviceId}/command`, JSON.stringify({ command: 'LOCK' }));
           }
         }
-        // Only send the command to the physical tracker immediately if ACC is ON
+        // Send the physical relay command immediately.
+        // Route to direct TCP socket if available, otherwise fall back to Traccar API.
         const currentVehicle = db.prepare('SELECT ignition FROM vehicles WHERE id = ?').get(deviceId);
-        if (currentVehicle && currentVehicle.ignition === 1) {
-          DeviceManager.sendCommand(deviceId, isLock ? 'setdigout 0' : 'setdigout 1', socket.user.id);
+        const ignitionOn = currentVehicle && currentVehicle.ignition === 1;
+        const relayCmd = isLock ? 'setdigout 0' : 'setdigout 1';
+        
+        if (ignitionOn || !isLock) {
+          const isDirectSocket = DeviceManager.getStatus(deviceId) === 'ONLINE';
+          if (isDirectSocket) {
+            DeviceManager.sendCommand(deviceId, relayCmd, socket.user.id);
+          } else {
+            // Device is connected via Traccar — send through Traccar REST API
+            sendTraccarCommand(deviceId, relayCmd);
+          }
         } else {
-          console.log(`[Socket.io Command] Vehicle ${deviceId} ACC is OFF. Deferring physical setdigout command to save battery.`);
+          console.log(`[Socket.io Command] Vehicle ${deviceId} ACC is OFF. Still queuing setdigout via Traccar for when engine starts.`);
+          sendTraccarCommand(deviceId, relayCmd);
         }
 
         const { logAuditAction } = require('./utils/audit');
@@ -563,7 +574,7 @@ mqttClient.on('message', (topic, message) => {
       evaluateSecurityAlerts(
         payload.deviceId, 
         vehicle, 
-        payload.ignition === true ? 1 : 0, 
+        payload.ignition ? 1 : 0,  // truthy check: accepts boolean true, number 1, string '1'
         payload.speed || 0, 
         driverPresent, 
         curfewLocked, 
@@ -1183,14 +1194,14 @@ function buildTeltonikaCodec12Frame(commandText) {
 function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresent, curfewLocked, isLocked, nowMs, ownerId) {
   if (!global.alertCooldowns) global.alertCooldowns = new Map();
 
-  // 1. Hotwiring / Unauthorized Startup Detection Alert (ACC ON while locked)
-  if (ignition === 1 && isLocked === 1) {
+  // 1. Hotwiring / Unauthorized Startup Detection Alert
+  // Only fire when cloud_locked=1 or curfew is active — not just because BLE is absent.
+  // (BLE absence alone while web-unlocked is a normal scenario, not a security breach.)
+  if (ignition === 1 && isLocked === 1 && (vehicle.cloud_locked === 1 || curfewLocked)) {
     const hotwireKey = `${deviceId}-hotwire`;
     const lastHotwire = global.alertCooldowns.get(hotwireKey);
     if (!lastHotwire || (nowMs - lastHotwire > 300000)) { // 5 min cooldown
-      let cause = "cloud locked";
-      if (curfewLocked) cause = "curfew locked";
-      else if (!driverPresent) cause = "driver beacon absent";
+      const cause = curfewLocked ? 'curfew locked' : 'cloud locked';
 
       const alertMsg = `Critical Security: Hotwiring / Unauthorized startup detected on vehicle "${vehicle.name || deviceId}"! ACC turned ON while vehicle is ${cause}.`;
       console.warn(`[SECURITY ALERT] ${alertMsg}`);
@@ -1216,14 +1227,13 @@ function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresen
     }
   }
 
-  // 2. Towing / Unauthorized Movement Detection Alert (ACC OFF but moving while locked)
-  if (ignition === 0 && speed > 2 && isLocked === 1) {
+  // 2. Towing / Unauthorized Movement Detection Alert
+  // Only fire when cloud_locked=1 or curfew is active — not just BLE absence.
+  if (ignition === 0 && speed > 2 && isLocked === 1 && (vehicle.cloud_locked === 1 || curfewLocked)) {
     const towingKey = `${deviceId}-towing`;
     const lastTowing = global.alertCooldowns.get(towingKey);
     if (!lastTowing || (nowMs - lastTowing > 300000)) { // 5 min cooldown
-      let cause = "cloud locked";
-      if (curfewLocked) cause = "curfew locked";
-      else if (!driverPresent) cause = "driver beacon absent";
+      const cause = curfewLocked ? 'curfew locked' : 'cloud locked';
 
       const alertMsg = `Critical Alert: Towing / Unauthorized movement detected on vehicle "${vehicle.name || deviceId}"! Vehicle moving (${speed} km/h) with ignition OFF while ${cause}.`;
       console.warn(`[SECURITY ALERT] ${alertMsg}`);
@@ -1249,8 +1259,10 @@ function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresen
     }
   }
 
-  // 3. Unauthorized Movement Alert (Any movement or ACC turned on without authorized beacon)
-  if (!driverPresent && (ignition === 1 || speed > 2)) {
+  // 3. Unauthorized Movement Alert (movement without BLE keyfob)
+  // ONLY fire if a BLE beacon is actually configured for this vehicle.
+  // If no beacon is configured, BLE guard is disabled entirely.
+  if (vehicle.ble_beacon_id && !driverPresent && (ignition === 1 || speed > 2)) {
     const alertType = 'UNAUTHORIZED_MOVEMENT';
     const alertMsg = `Critical Alert: Unauthorized movement detected on vehicle "${vehicle.name || deviceId}" without the authorized BLE Beacon keyfob!`;
     const alertCooldownKey = `${deviceId}_${alertType}`;
