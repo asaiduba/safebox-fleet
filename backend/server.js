@@ -26,6 +26,7 @@ const rateLimit = require('express-rate-limit');
 const { db, initDb } = require('./db');
 const { isWithinAllowedHours } = require('./utils/helpers');
 const DeviceManager = require('./services/DeviceManager');
+const RelayManager = require('./services/relayManager');
 const mqtt = require('mqtt');
 const net = require('net');
 const nodemailer = require('nodemailer');
@@ -661,68 +662,8 @@ mqttClient.on('message', (topic, message) => {
         }
       }
 
-      // ─── Automatic Relay State Machine ────────────────────────────────────────
-      // On every telemetry packet, check if the physical relay state needs to change.
-      //
-      // Rules:
-      //   ACC OFF                                  → relay OFF (setdigout 0)
-      //   ACC ON + web/curfew LOCKED               → relay OFF (setdigout 0)
-      //   ACC ON + web UNLOCKED + BLE absent       → relay OFF if stationary, ON if moving
-      //   ACC ON + web UNLOCKED + BLE present      → relay ON  (setdigout 1)
-      //   ACC ON + web UNLOCKED + no BLE enrolled  → relay ON  (setdigout 1)
-      //
-      // The web lock state is NEVER changed here — fleet manager keeps full control.
-      // Only the PHYSICAL relay wire is controlled automatically.
-      // A 15-second cooldown prevents spamming Traccar with repeated commands.
-      {
-        const ignitionOn = payload.ignition ? 1 : 0;
-        let autoDesiredRelay = 0;
-
-        if (ignitionOn === 1) {
-          if (isWebOrCurfewLocked) {
-            autoDesiredRelay = 0; // Web/curfew says LOCKED — always block
-          } else if (vehicle.ble_beacon_id && !driverPresent) {
-            // BLE is enrolled but key fob not seen
-            autoDesiredRelay = (payload.speed > 2) ? 1 : 0; // Keep alive if moving, block if parked
-          } else {
-            autoDesiredRelay = 1; // Web unlocked + BLE ok (or no BLE) → energize
-          }
-        } else {
-          autoDesiredRelay = 0; // ACC OFF → always de-energize relay
-        }
-
-        // Compare against last known relay state (optimistic, from DB)
-        const currentRelayState = (vehicle.relay_state !== null && vehicle.relay_state !== undefined)
-          ? vehicle.relay_state
-          : 0;
-
-        if (currentRelayState !== autoDesiredRelay) {
-          // Cooldown: don't spam Traccar — max 1 command per 15 seconds per device
-          if (!global.relayCmdCooldown) global.relayCmdCooldown = new Map();
-          const cooldownKey = `${payload.deviceId}-relay`;
-          const lastSent = global.relayCmdCooldown.get(cooldownKey) || 0;
-          const RELAY_COOLDOWN_MS = 15000;
-
-          if (Date.now() - lastSent > RELAY_COOLDOWN_MS) {
-            const cmdText = `setdigout ${autoDesiredRelay}`;
-            console.log(`[Auto Relay] ${payload.deviceId}: ignition=${ignitionOn} webLocked=${isWebOrCurfewLocked} blePresent=${driverPresent} relay ${currentRelayState}→${autoDesiredRelay} → ${cmdText}`);
-
-            // Update DB optimistically so next packet doesn't re-trigger
-            db.prepare('UPDATE vehicles SET relay_state = ?, relay_updated_at = ? WHERE id = ?')
-              .run(autoDesiredRelay, Date.now(), payload.deviceId);
-            if (global.invalidateMetadataCache) global.invalidateMetadataCache(payload.deviceId);
-            global.relayCmdCooldown.set(cooldownKey, Date.now());
-
-            // Send the command via appropriate channel
-            const isDirectSocket = DeviceManager.getStatus(payload.deviceId) === 'ONLINE';
-            if (isDirectSocket) {
-              DeviceManager.sendCommand(payload.deviceId, cmdText);
-            } else {
-              sendTraccarCommand(payload.deviceId, cmdText);
-            }
-          }
-        }
-      }
+      // ─── Automatic Relay State Machine (Unified via RelayManager) ────────────
+      RelayManager.evaluateAutomaticRelay(payload.deviceId, payload.ignition ? 1 : 0, payload.speed || 0, payload.rawBleList || '', vehicle);
       // ─────────────────────────────────────────────────────────────────────────
 
       // Warn if running outside allowed hours and moving
@@ -1615,6 +1556,7 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
 const activeTcpSockets = new Map(); // Maps deviceId -> net.Socket
 app.set('activeTcpSockets', activeTcpSockets);
 DeviceManager.init(activeTcpSockets, buildTeltonikaCodec12Frame);
+RelayManager.init(DeviceManager, sendTraccarCommand);
 
 const TCP_PORT = process.env.PORT_TCP || 5000;
 const tcpServer = net.createServer((socket) => {
@@ -2214,99 +2156,8 @@ app.post('/api/telematics-webhook', (req, res) => {
         harshBrake: isHarshBrake
       };
 
-      // ─── Fast-path Relay State Machine (no MQTT round-trip) ────────────────
-      // Execute relay logic HERE in the webhook handler so the setdigout command
-      // is sent in the same HTTP request cycle — ~300ms faster than waiting for
-      // the MQTT broker round-trip (webhook → HiveMQ → subscriber → sendTraccarCommand).
-      //
-      // The MQTT publish below still fires for Socket.io UI updates.
-      // The MQTT subscriber's relay block is a safety net for duplicate processing;
-      // it won't re-send because relay_state in DB will already match.
-      {
-        const vehicle = global.getVehicleMetadata(deviceId);
-        if (vehicle && vehicle.subscription_status !== 'SUSPENDED') {
-          const curfewLocked = (() => {
-            if (vehicle.curfew_enabled !== 1) return false;
-            const now = new Date();
-            const { isWithinAllowedHours } = require('./utils/helpers');
-            const isAllowed = isWithinAllowedHours(now, vehicle.curfew_start, vehicle.curfew_end, vehicle.curfew_days, vehicle.curfew_holiday_mode);
-            if (isAllowed) return false;
-            if (vehicle.override_status === 'APPROVED_MIDNIGHT' || vehicle.override_status === 'APPROVED_ONCE') {
-              if (Date.now() < vehicle.override_expires) return false;
-            }
-            return true;
-          })();
-
-          const isWebOrCurfewLocked = (vehicle.cloud_locked === 1 || curfewLocked);
-
-          // BLE: use same grace-period logic as the MQTT handler
-          let driverPresent = !vehicle.ble_beacon_id; // true when no BLE enrolled
-          if (vehicle.ble_beacon_id) {
-            const lastSeen = (global.lastBeaconSeen || new Map()).get(deviceId) || 0;
-            const lastMoving = (global.lastMovingTime || new Map()).get(deviceId) || 0;
-            const beaconSeenRecently = (Date.now() - lastSeen) < 3 * 60 * 1000;
-            const wasMovingRecently = (Date.now() - lastMoving) < 5 * 60 * 1000;
-            driverPresent = beaconSeenRecently || wasMovingRecently;
-          }
-
-          const speed = normalizedPayload.speed || 0;
-
-          // ── Ignition Debounce (3 seconds) ───────────────────────────────
-          // Breadboard connections and vehicle EMI can cause DIN1 to bounce
-          // (rapid ON↔OFF transitions). We only act on ignition after it has
-          // been stable for 3 seconds. This prevents relay flicker.
-          if (!global.ignitionDebounce) global.ignitionDebounce = new Map();
-          if (!global.ignitionDebounce.has(deviceId)) {
-            // First packet for this device (or after server restart).
-            // Pre-seed the timer 5s in the past so the debounce passes immediately
-            // — we don't want a cold-start to block relay commands for 3 seconds.
-            global.ignitionDebounce.set(deviceId, { state: ignitionOn, since: Date.now() - 5000 });
-          }
-          const lastDebounce = global.ignitionDebounce.get(deviceId);
-          if (lastDebounce.state !== ignitionOn) {
-            // State just changed — reset debounce timer
-            global.ignitionDebounce.set(deviceId, { state: ignitionOn, since: Date.now() });
-          }
-          const debounce = global.ignitionDebounce.get(deviceId);
-          const ignitionStableMs = Date.now() - debounce.since;
-          const IGNITION_DEBOUNCE_MS = 3000; // 3 seconds stable before acting
-          const ignitionStable = ignitionStableMs >= IGNITION_DEBOUNCE_MS;
-          // ────────────────────────────────────────────────────────────────
-
-          let desiredRelay = 0;
-          if (ignitionOn) {
-            if (isWebOrCurfewLocked) {
-              desiredRelay = 0;
-            } else if (vehicle.ble_beacon_id && !driverPresent) {
-              desiredRelay = speed > 2 ? 1 : 0;
-            } else {
-              desiredRelay = 1;
-            }
-          }
-
-          const currentRelay = (vehicle.relay_state !== null && vehicle.relay_state !== undefined) ? vehicle.relay_state : 0;
-
-          if (currentRelay !== desiredRelay && ignitionStable) {
-            if (!global.relayCmdCooldown) global.relayCmdCooldown = new Map();
-            const cooldownKey = `${deviceId}-relay`;
-            const lastSent = global.relayCmdCooldown.get(cooldownKey) || 0;
-            if (Date.now() - lastSent > 15000) {
-              const cmdText = `setdigout ${desiredRelay}`;
-              console.log(`[Auto Relay Fast] ${deviceId}: ignition=${ignitionOn ? 1 : 0} webLocked=${isWebOrCurfewLocked} relay ${currentRelay}→${desiredRelay} → ${cmdText}`);
-              db.prepare('UPDATE vehicles SET relay_state = ?, relay_updated_at = ? WHERE id = ?')
-                .run(desiredRelay, Date.now(), deviceId);
-              if (global.invalidateMetadataCache) global.invalidateMetadataCache(deviceId);
-              global.relayCmdCooldown.set(cooldownKey, Date.now());
-              const isDirectSocket = DeviceManager.getStatus(deviceId) === 'ONLINE';
-              if (isDirectSocket) {
-                DeviceManager.sendCommand(deviceId, cmdText);
-              } else {
-                sendTraccarCommand(deviceId, cmdText);
-              }
-            }
-          }
-        }
-      }
+      // ─── Fast-path Relay State Machine (Unified via RelayManager) ──────────
+      RelayManager.evaluateAutomaticRelay(deviceId, ignitionOn ? 1 : 0, normalizedPayload.speed || 0, rawBleList || '', vehicle);
       // ────────────────────────────────────────────────────────────────────────
 
       // Publish to MQTT broker (HiveMQ / EMQX) — for Socket.io UI updates

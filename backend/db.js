@@ -378,6 +378,18 @@ function initDb() {
         )
     `);
 
+    // Create Device Runtime State Table (for persisting BLE grace periods, debounce, and cooldowns across server restarts)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS device_state (
+            device_id TEXT PRIMARY KEY,
+            last_beacon_seen INTEGER DEFAULT 0,
+            last_moving_time INTEGER DEFAULT 0,
+            last_ignition_state INTEGER DEFAULT 0,
+            last_ignition_time INTEGER DEFAULT 0,
+            last_relay_time INTEGER DEFAULT 0
+        )
+    `);
+
     // 13. Create Report History Table
     db.exec(`
         CREATE TABLE IF NOT EXISTS report_history (
