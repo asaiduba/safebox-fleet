@@ -1228,6 +1228,39 @@ function buildTeltonikaCodec12Frame(commandText) {
   return frame;
 }
 
+function buildGT06CommandFrame(commandText) {
+  const cmdBytes = Buffer.from(commandText, 'ascii');
+  const serverFlag = Buffer.from([0x00, 0x00, 0x00, 0x01]); // 4 bytes
+  const language = Buffer.from([0x00, 0x02]); // 2 bytes (English)
+  const serialNo = Buffer.from([0x00, 0x01]); // 2 bytes
+  
+  // Information content length = serverFlag (4) + cmdBytes (M) = 4 + M
+  const infoLenByte = Buffer.from([4 + cmdBytes.length]);
+  
+  // Assemble info content: infoLenByte (1) + serverFlag (4) + cmdBytes (M) + language (2)
+  const infoContent = Buffer.concat([infoLenByte, serverFlag, cmdBytes, language]);
+  
+  // Package Length = Agreement (1) + InfoContent (7+M) + SerialNo (2) = 10 + M
+  const packageLenByte = Buffer.from([1 + infoContent.length + 2]);
+  
+  // Assemble the body for CRC calculation: Package Length + Agreement + InfoContent + SerialNo
+  const crcBody = Buffer.concat([packageLenByte, Buffer.from([0x80]), infoContent, serialNo]);
+  
+  const crcVal = calculateGT06CRC(crcBody);
+  const crcBytes = Buffer.alloc(2);
+  crcBytes.writeUInt16BE(crcVal, 0);
+  
+  // Complete frame: Start Bit (2) + crcBody + CRC (2) + Stop Bit (2)
+  const frame = Buffer.concat([
+    Buffer.from([0x78, 0x78]),
+    crcBody,
+    crcBytes,
+    Buffer.from([0x0D, 0x0A])
+  ]);
+  
+  return frame;
+}
+
 // Unified Security Alert Evaluator (For direct TCP and Traccar/MQTT)
 function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresent, curfewLocked, isLocked, nowMs, ownerId) {
   if (!global.alertCooldowns) global.alertCooldowns = new Map();
@@ -1557,7 +1590,7 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
 // --- TCP Telematics Ingestion Server (Multi-Protocol support) ---
 const activeTcpSockets = new Map(); // Maps deviceId -> net.Socket
 app.set('activeTcpSockets', activeTcpSockets);
-DeviceManager.init(activeTcpSockets, buildTeltonikaCodec12Frame);
+DeviceManager.init(activeTcpSockets, buildTeltonikaCodec12Frame, buildGT06CommandFrame);
 RelayManager.init(DeviceManager, sendTraccarCommand);
 
 const TCP_PORT = process.env.PORT_TCP || 5000;
@@ -1692,8 +1725,8 @@ const tcpServer = net.createServer((socket) => {
             socket.write(response);
           }
 
-          // 0x12, 0x16, 0x22: Location Data / Alarm Data Message
-          else if (protocolNumber === 0x12 || protocolNumber === 0x16 || protocolNumber === 0x22) {
+          // 0x12, 0x16, 0x22, 0x31, 0x32: Location Data / Alarm Data Message
+          else if (protocolNumber === 0x12 || protocolNumber === 0x16 || protocolNumber === 0x22 || protocolNumber === 0x31 || protocolNumber === 0x32) {
             if (!authenticatedDeviceId) {
               console.warn(`[GT06 TCP] Location/Alarm packet received before Login.`);
               socket.destroy();
@@ -1717,10 +1750,13 @@ const tcpServer = net.createServer((socket) => {
             // Determine if ignition is ON/OFF
             let ignition = 1; // Default to ON for basic location updates
             
-            // For alarm packets (0x16), the terminal information status byte is often at offset 31 + offset
+            // For standard alarm packets (0x16), status is at 31 + offset.
+            // For 0x31 and 0x32 packets, ACC status is directly at offset 32 + offset.
             if (protocolNumber === 0x16 && packet.length > 31 + offset) {
               const terminalInfo = packet[31 + offset];
               ignition = (terminalInfo & 0x02) !== 0 ? 1 : 0;
+            } else if ((protocolNumber === 0x31 || protocolNumber === 0x32) && packet.length > 32 + offset) {
+              ignition = packet[32 + offset] === 0x01 ? 1 : 0;
             }
 
             console.log(`[GT06 TCP] Location for ${authenticatedDeviceId} (Protocol 0x${protocolNumber.toString(16)}): Lat=${lat}, Lng=${lng}, Speed=${speed}, Ignition=${ignition}`);

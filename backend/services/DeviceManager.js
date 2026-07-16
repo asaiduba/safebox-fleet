@@ -13,11 +13,13 @@ const { db } = require('../db');
 
 let _activeTcpSockets = null;
 let _buildCodec12Frame = null;
+let _buildGT06CommandFrame = null;
 
 class DeviceManager {
-  static init(activeTcpSockets, buildCodec12Frame) {
+  static init(activeTcpSockets, buildCodec12Frame, buildGT06CommandFrame) {
     _activeTcpSockets = activeTcpSockets;
     _buildCodec12Frame = buildCodec12Frame;
+    _buildGT06CommandFrame = buildGT06CommandFrame;
     console.log('[DeviceManager] Initialized.');
   }
 
@@ -137,8 +139,13 @@ class DeviceManager {
         }
         case 'sinotrack':
         case 'gt06': {
-          const cmd = command === 'setdigout 1' ? 'RELAY,1#' : 'RELAY,0#';
-          socket.write(Buffer.from(cmd, 'ascii'));
+          const cmdStr = command === 'setdigout 1' ? 'RELAY,0#' : 'RELAY,1#';
+          if (_buildGT06CommandFrame) {
+            const frame = _buildGT06CommandFrame(cmdStr);
+            socket.write(frame);
+          } else {
+            socket.write(Buffer.from(cmdStr, 'ascii'));
+          }
           break;
         }
         default: {
