@@ -373,10 +373,23 @@ function initDb() {
             fuel_type TEXT,
             fuel_price REAL,
             fuel_efficiency REAL,
+            min_voltage INTEGER DEFAULT 0,
+            max_voltage INTEGER DEFAULT 0,
             updated_at INTEGER,
             FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
         )
     `);
+
+    try {
+        db.exec("ALTER TABLE fuel_settings ADD COLUMN min_voltage INTEGER DEFAULT 0");
+    } catch (e) {
+        // Column already exists
+    }
+    try {
+        db.exec("ALTER TABLE fuel_settings ADD COLUMN max_voltage INTEGER DEFAULT 0");
+    } catch (e) {
+        // Column already exists
+    }
 
     // Create Device Runtime State Table (for persisting BLE grace periods, debounce, and cooldowns across server restarts)
     db.exec(`

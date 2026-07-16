@@ -247,7 +247,7 @@ router.get('/fuel-settings', authMiddleware, (req, res) => {
   const userId = getRequestUserId(req);
   try {
     const settings = db.prepare(`
-      SELECT v.id, v.name, v.driver_name, f.fuel_type, f.fuel_price, f.fuel_efficiency 
+      SELECT v.id, v.name, v.driver_name, f.fuel_type, f.fuel_price, f.fuel_efficiency, f.min_voltage, f.max_voltage 
       FROM vehicles v 
       LEFT JOIN fuel_settings f ON v.id = f.vehicle_id 
       WHERE v.owner_id = ?
@@ -262,7 +262,7 @@ router.get('/fuel-settings', authMiddleware, (req, res) => {
 // POST Update Fuel & Cost Setting
 router.post('/fuel-settings', authMiddleware, (req, res) => {
   const userId = getRequestUserId(req);
-  const { vehicleId, vehicleIds, fuelType, fuelPrice, fuelEfficiency } = req.body;
+  const { vehicleId, vehicleIds, fuelType, fuelPrice, fuelEfficiency, minVoltage, maxVoltage } = req.body;
 
   const idsToProcess = vehicleIds && Array.isArray(vehicleIds) ? vehicleIds : (vehicleId ? [vehicleId] : []);
 
@@ -272,12 +272,14 @@ router.post('/fuel-settings', authMiddleware, (req, res) => {
 
   try {
     const stmt = db.prepare(`
-      INSERT INTO fuel_settings (vehicle_id, fuel_type, fuel_price, fuel_efficiency, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO fuel_settings (vehicle_id, fuel_type, fuel_price, fuel_efficiency, min_voltage, max_voltage, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(vehicle_id) DO UPDATE SET
         fuel_type = excluded.fuel_type,
         fuel_price = excluded.fuel_price,
         fuel_efficiency = excluded.fuel_efficiency,
+        min_voltage = excluded.min_voltage,
+        max_voltage = excluded.max_voltage,
         updated_at = excluded.updated_at
     `);
 
@@ -287,21 +289,28 @@ router.post('/fuel-settings', authMiddleware, (req, res) => {
         if (!vehicle || vehicle.owner_id !== userId) {
           throw new Error(`Unauthorized configuration attempt for vehicle ${id}`);
         }
-        stmt.run(id, fuelType || 'Premium Petrol', fuelPrice || 1000.0, fuelEfficiency || 12.0, Date.now());
+        const existing = db.prepare('SELECT min_voltage, max_voltage, fuel_type, fuel_price, fuel_efficiency FROM fuel_settings WHERE vehicle_id = ?').get(id) || { min_voltage: 0, max_voltage: 0, fuel_type: 'Premium Petrol', fuel_price: 1000.0, fuel_efficiency: 12.0 };
+        
+        const finalMinV = minVoltage !== undefined ? minVoltage : existing.min_voltage;
+        const finalMaxV = maxVoltage !== undefined ? maxVoltage : existing.max_voltage;
+        const finalType = fuelType !== undefined ? fuelType : existing.fuel_type;
+        const finalPrice = fuelPrice !== undefined ? fuelPrice : existing.fuel_price;
+        const finalEff = fuelEfficiency !== undefined ? fuelEfficiency : existing.fuel_efficiency;
+
+        stmt.run(id, finalType, finalPrice, finalEff, finalMinV, finalMaxV, Date.now());
       }
     });
 
     runTransaction(idsToProcess);
 
-    const io = req.app.get('io');
-    if (io) {
-      io.to(`user_${userId}`).emit('sync-data', { type: 'vehicles' });
+    for (const id of idsToProcess) {
+      if (global.invalidateMetadataCache) global.invalidateMetadataCache(id);
     }
 
-    res.json({ message: 'Fuel & Cost configurations saved' });
+    res.json({ success: true, message: 'Fuel configurations updated successfully' });
   } catch (err) {
-    console.error('Save fuel configuration failed:', err);
-    res.status(500).json({ error: err.message || 'Failed to save configuration' });
+    console.error('Update fuel settings failed:', err);
+    res.status(500).json({ error: 'Failed to update fuel configurations: ' + err.message });
   }
 });
 

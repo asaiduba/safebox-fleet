@@ -125,6 +125,8 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
     const [fuelType, setFuelType] = useState('Premium Petrol');
     const [fuelPrice, setFuelPrice] = useState(1000);
     const [fuelEfficiency, setFuelEfficiency] = useState(12);
+    const [minVoltage, setMinVoltage] = useState(0);
+    const [maxVoltage, setMaxVoltage] = useState(0);
 
     // Bulk Fuel settings states
     const [selectedFuelVehicles, setSelectedFuelVehicles] = useState([]);
@@ -268,7 +270,9 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                 vehicleId: vId,
                 fuelType,
                 fuelPrice: parseFloat(fuelPrice),
-                fuelEfficiency: parseFloat(fuelEfficiency)
+                fuelEfficiency: parseFloat(fuelEfficiency),
+                minVoltage: parseInt(minVoltage, 10),
+                maxVoltage: parseInt(maxVoltage, 10)
             });
             setFuelSuccess('Fuel settings updated successfully!');
             setEditingFuelVehicleId(null);
@@ -1274,6 +1278,10 @@ export default function SettingsPanel({ user, vehicles = [], groups = [], onGrou
                                 setFuelEfficiency={setFuelEfficiency}
                                 fuelPrice={fuelPrice}
                                 setFuelPrice={setFuelPrice}
+                                minVoltage={minVoltage}
+                                setMinVoltage={setMinVoltage}
+                                maxVoltage={maxVoltage}
+                                setMaxVoltage={setMaxVoltage}
                                 handleSaveFuelSetting={handleSaveFuelSetting}
                                 currency={currency}
                             />

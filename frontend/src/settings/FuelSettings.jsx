@@ -32,6 +32,10 @@ export default function FuelSettings({
     setFuelEfficiency,
     fuelPrice,
     setFuelPrice,
+    minVoltage,
+    setMinVoltage,
+    maxVoltage,
+    setMaxVoltage,
     handleSaveFuelSetting,
     currency
 }) {
@@ -221,6 +225,34 @@ export default function FuelSettings({
                                         </div>
                                     </div>
 
+                                    <div className="form-group-title" style={{ fontSize: '0.8rem', color: '#3b82f6', fontWeight: 'bold', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.5rem', marginTop: '0.25rem' }}>
+                                        Analog Fuel Calibration (AIN1)
+                                    </div>
+                                    <div className="form-row" style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <div className="form-group" style={{ flex: 1 }}>
+                                            <label style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Empty Tank (mV)</label>
+                                            <input 
+                                                type="number" 
+                                                value={minVoltage}
+                                                onChange={(e) => setMinVoltage(e.target.value)}
+                                                className="settings-input"
+                                                placeholder="e.g. 8000"
+                                                style={{ width: '100%', padding: '0.4rem', borderRadius: '0.25rem', background: '#1e293b', border: '1px solid #475569', color: 'white', fontSize: '0.85rem' }}
+                                            />
+                                        </div>
+                                        <div className="form-group" style={{ flex: 1 }}>
+                                            <label style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Full Tank (mV)</label>
+                                            <input 
+                                                type="number" 
+                                                value={maxVoltage}
+                                                onChange={(e) => setMaxVoltage(e.target.value)}
+                                                className="settings-input"
+                                                placeholder="e.g. 500"
+                                                style={{ width: '100%', padding: '0.4rem', borderRadius: '0.25rem', background: '#1e293b', border: '1px solid #475569', color: 'white', fontSize: '0.85rem' }}
+                                            />
+                                        </div>
+                                    </div>
+
                                     <div className="fuel-actions" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
                                         <button 
                                             type="button" 
@@ -255,6 +287,13 @@ export default function FuelSettings({
                                         <strong style={{ color: '#f1f5f9' }}>{CURRENCY_SYMBOLS[currency] || '₦'}{(item.fuel_price || 1000.0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
                                     </div>
                                     
+                                    {((item.min_voltage !== undefined && item.min_voltage > 0) || (item.max_voltage !== undefined && item.max_voltage > 0)) && (
+                                        <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '0.4rem', marginTop: '0.2rem', marginBottom: '0.4rem' }}>
+                                            <span style={{ color: '#94a3b8' }}>Calibration (Empty/Full):</span>
+                                            <strong style={{ color: '#3b82f6' }}>{item.min_voltage || 0}mV / {item.max_voltage || 0}mV</strong>
+                                        </div>
+                                    )}
+
                                     <button 
                                         type="button" 
                                         className="edit-trigger-btn"
@@ -263,6 +302,8 @@ export default function FuelSettings({
                                             setFuelType(item.fuel_type || 'Premium Petrol');
                                             setFuelPrice(item.fuel_price || 1000.0);
                                             setFuelEfficiency(item.fuel_efficiency || 12.0);
+                                            setMinVoltage(item.min_voltage || 0);
+                                            setMaxVoltage(item.max_voltage || 0);
                                         }}
                                         style={{ width: '100%', padding: '0.4rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', marginTop: '0.25rem' }}
                                     >

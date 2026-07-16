@@ -60,9 +60,11 @@ global.getVehicleMetadata = (deviceId) => {
            v.curfew_enabled, v.curfew_start, v.curfew_end, v.curfew_days, v.curfew_allow_override,
            v.curfew_holiday_mode, v.override_status, v.override_expires, v.cloud_locked,
            v.ble_beacon_id, v.ble_beacon_rssi_threshold, v.subscription_status,
+           f.min_voltage, f.max_voltage,
            u.subscription_status AS user_subscription_status
     FROM vehicles v
     LEFT JOIN users u ON v.owner_id = u.id
+    LEFT JOIN fuel_settings f ON v.id = f.vehicle_id
     WHERE v.id = ?
   `).get(deviceId);
   
@@ -1850,6 +1852,7 @@ const tcpServer = net.createServer((socket) => {
             let lastSpeed = null;
             let lastIgnition = 0;
             let lastDout1 = null;
+            let lastAin1 = null;
 
             for (let r = 0; r < numRecords; r++) {
               if (offset + 15 > packet.length) break;
@@ -1906,7 +1909,12 @@ const tcpServer = net.createServer((socket) => {
               for (let i = 0; i < io2Count; i++) {
                 const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
                 offset += isExtended ? 2 : 1;
+                const val = packet.readUInt16BE(offset);
                 offset += 2;
+
+                if (propId === 9) {
+                  lastAin1 = val; // AIN1 (mV)
+                }
               }
 
               // 4-byte properties
@@ -1929,8 +1937,19 @@ const tcpServer = net.createServer((socket) => {
             }
 
             if (lastLat !== null && lastLng !== null) {
-              console.log(`[Teltonika TCP] Telemetry parsed: Lat=${lastLat}, Lng=${lastLng}, Speed=${lastSpeed}, DOUT1=${lastDout1}`);
-              handleIncomingTelemetry(authenticatedDeviceId, lastLat, lastLng, lastSpeed, 100, 100, lastIgnition, '', lastDout1);
+              const vehicle = global.getVehicleMetadata(authenticatedDeviceId);
+              let fuelPct = 100;
+              if (lastAin1 !== null && vehicle && vehicle.min_voltage !== undefined && vehicle.max_voltage !== undefined && vehicle.min_voltage > 0 && vehicle.max_voltage > 0) {
+                const minV = vehicle.min_voltage;
+                const maxV = vehicle.max_voltage;
+                if (minV !== maxV) {
+                  const rawPct = ((lastAin1 - minV) / (maxV - minV)) * 100;
+                  fuelPct = Math.round(Math.min(100, Math.max(0, rawPct)));
+                  console.log(`[Fuel Cal TCP] Vehicle ${authenticatedDeviceId}: raw AIN1=${lastAin1}mV Empty=${minV}mV Full=${maxV}mV → Calibrated=${fuelPct}%`);
+                }
+              }
+              console.log(`[Teltonika TCP] Telemetry parsed: Lat=${lastLat}, Lng=${lastLng}, Speed=${lastSpeed}, DOUT1=${lastDout1}, AIN1=${lastAin1}mV`);
+              handleIncomingTelemetry(authenticatedDeviceId, lastLat, lastLng, lastSpeed, 100, fuelPct, lastIgnition, '', lastDout1);
             }
 
             // ACK response: 4-byte UInt32BE count of records
@@ -2141,13 +2160,32 @@ app.post('/api/telematics-webhook', (req, res) => {
                          pos.attributes?.io1 === '1' || 
                          pos.attributes?.io1 === true;
 
+      const vehicle = global.getVehicleMetadata(deviceId);
+
+      // Calibrated Fuel Calculation from Analog Input 1 (AIN1)
+      let fuelPct = 100;
+      // In Traccar, AIN1 usually maps to attributes.adc1 or attributes.io9
+      const rawAnalog = pos.attributes?.adc1 !== undefined ? pos.attributes.adc1 : (pos.attributes?.io9 !== undefined ? pos.attributes.io9 : null);
+
+      if (rawAnalog !== null && vehicle && vehicle.min_voltage !== undefined && vehicle.max_voltage !== undefined && vehicle.min_voltage > 0 && vehicle.max_voltage > 0) {
+        const minV = vehicle.min_voltage;
+        const maxV = vehicle.max_voltage;
+        if (minV !== maxV) {
+          const rawPct = ((rawAnalog - minV) / (maxV - minV)) * 100;
+          fuelPct = Math.round(Math.min(100, Math.max(0, rawPct)));
+          console.log(`[Fuel Cal Webhook] Vehicle ${deviceId}: raw AIN1=${rawAnalog}mV Empty=${minV}mV Full=${maxV}mV → Calibrated=${fuelPct}%`);
+        }
+      } else if (pos.attributes?.fuel !== undefined) {
+        fuelPct = pos.attributes.fuel;
+      }
+
       const normalizedPayload = {
         deviceId: deviceId,
         lat: pos.latitude || 0,
         lng: pos.longitude || 0,
         speed: pos.speed ? Math.round(pos.speed * 1.852) : 0, // Knots to km/h conversion
         battery: batteryPct,
-        fuel: pos.attributes?.fuel || 100,
+        fuel: fuelPct,
         locked: !ignitionOn, // Default state to locked if ignition is off
         ignition: ignitionOn, // Explicit ACC state
         rawBleList: rawBleList,
