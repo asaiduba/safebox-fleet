@@ -2189,6 +2189,10 @@ app.post('/api/telematics-webhook', (req, res) => {
                          pos.attributes?.din1 === 1 || 
                          pos.attributes?.din1 === '1' || 
                          pos.attributes?.din1 === true || 
+                         pos.attributes?.in1 === 1 || 
+                         pos.attributes?.in1 === '1' || 
+                         pos.attributes?.in1 === true || 
+                         pos.attributes?.in1 === 'true' || 
                          pos.attributes?.di1 === 1 || 
                          pos.attributes?.di1 === '1' || 
                          pos.attributes?.di1 === true || 
