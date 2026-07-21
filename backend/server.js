@@ -184,22 +184,12 @@ io.on('connection', (socket) => {
           global.invalidateMetadataCache(deviceId);
         }
 
-        // Send the physical relay command immediately.
-        // Route to direct TCP socket if available, otherwise fall back to Traccar API.
-        const currentVehicle = db.prepare('SELECT ignition FROM vehicles WHERE id = ?').get(deviceId);
-        const ignitionOn = currentVehicle && currentVehicle.ignition === 1;
+        // Send the physical relay command immediately via best available route
         const relayCmd = isLock ? 'setdigout 0' : 'setdigout 1';
-        
-        if (ignitionOn || !isLock) {
-          const isDirectSocket = DeviceManager.getStatus(deviceId) === 'ONLINE';
-          if (isDirectSocket) {
-            DeviceManager.sendCommand(deviceId, relayCmd, socket.user.id);
-          } else {
-            // Device is connected via Traccar — send through Traccar REST API
-            sendTraccarCommand(deviceId, relayCmd);
-          }
+        const isDirectSocket = DeviceManager.getStatus(deviceId) === 'ONLINE';
+        if (isDirectSocket) {
+          DeviceManager.sendCommand(deviceId, relayCmd, socket.user.id);
         } else {
-          console.log(`[Socket.io Command] Vehicle ${deviceId} ACC is OFF. Still queuing setdigout via Traccar for when engine starts.`);
           sendTraccarCommand(deviceId, relayCmd);
         }
 
@@ -1461,53 +1451,26 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
     }
   }
 
-  // ── Web/Curfew = master switch for dashboard badge AND physical relay ──────
+  // ── Relay is controlled ONLY by Web Dashboard (cloud_locked) + Curfew ─────
+  // ACC/Ignition and BLE do NOT influence the relay — they are reporting/alert only.
   const isWebOrCurfewLocked = (vehicle.cloud_locked === 1 || curfewLocked);
   let isLocked = isWebOrCurfewLocked ? 1 : 0;
 
-  // ── Ignition Debounce Check (5 seconds stable state required) ─────────────
-  if (!global.ignitionDebounce) global.ignitionDebounce = new Map();
-  const lastDebounce = global.ignitionDebounce.get(deviceId);
-  if (!lastDebounce || lastDebounce.state !== ignition) {
-    global.ignitionDebounce.set(deviceId, { state: ignition, since: nowMs });
-  }
-  const debounce = global.ignitionDebounce.get(deviceId);
-  const ignitionStableMs = nowMs - debounce.since;
-  const ignitionStable = ignitionStableMs >= 5000; // 5 seconds stable required
+  // Physical relay: 0 = engine blocked, 1 = engine allowed
+  const desiredRelayState = isWebOrCurfewLocked ? 0 : 1;
 
-  // Physical relay desired state
-  // 0 = de-energized / wire cut  → engine blocked
-  // 1 = energized / wire reconnected → engine allowed
-  let desiredRelayState = 0;
-
-  if (ignition === 1) {
-    if (isWebOrCurfewLocked) {
-      desiredRelayState = 0;
-    } else if (!driverPresent) {
-      if (speed <= 2) {
-        desiredRelayState = 0;
-      } else {
-        desiredRelayState = 1;
-      }
-    } else {
-      desiredRelayState = 1;
-    }
-  } else {
-    desiredRelayState = 0;
-  }
-
-  // Send command ONLY when physical state differs from desired state (Instant response on ACC ON, 2s anti-chatter filter)
+  // Send command ONLY when physical state differs from desired (2s anti-chatter)
   const currentRelay = (dout1 !== null) ? dout1 : (vehicle.relay_state || 0);
   if (currentRelay !== desiredRelayState) {
     const cooldownKey = `${deviceId}-relay-cooldown`;
     if (!global.relayCmdCooldown) global.relayCmdCooldown = new Map();
     const lastSent = global.relayCmdCooldown.get(cooldownKey) || 0;
-    const RELAY_COOLDOWN_MS = 2000; // 2s anti-chatter window to filter duplicate packet bursts
+    const RELAY_COOLDOWN_MS = 2000;
 
     if (nowMs - lastSent >= RELAY_COOLDOWN_MS) {
       global.relayCmdCooldown.set(cooldownKey, nowMs);
       const cmdText = `setdigout ${desiredRelayState}`;
-      console.log(`[Relay Controller] Vehicle ${deviceId}: DOUT1 current=${currentRelay} desired=${desiredRelayState} ignition=${ignition} speed=${speed} webLocked=${isWebOrCurfewLocked} blePresent=${driverPresent} → ${cmdText}`);
+      console.log(`[Relay Controller] Vehicle ${deviceId}: DOUT1 current=${currentRelay} desired=${desiredRelayState} webLocked=${isWebOrCurfewLocked} → ${cmdText}`);
       
       const isDirectSocket = DeviceManager.getStatus(deviceId) === 'ONLINE';
       if (isDirectSocket) {

@@ -65,8 +65,9 @@ class RelayManager {
   }
 
   /**
-   * Main Automatic Relay State Machine
-   * Evaluates if the relay state needs to change and sends the setdigout command.
+   * Evaluate and send relay commands based on web lock + curfew ONLY.
+   * ACC/Ignition and BLE do NOT influence the relay — they are reporting/alert only.
+   * This method is only called for devices NOT connected via direct TCP.
    */
   static evaluateAutomaticRelay(deviceId, ignitionOn, speed, rawBleList, vehicle) {
     if (!vehicle || vehicle.subscription_status === 'SUSPENDED') return;
@@ -85,98 +86,28 @@ class RelayManager {
       return true;
     })();
 
+    // 2. Relay controlled ONLY by Web Dashboard (cloud_locked) + Curfew
     const isWebOrCurfewLocked = (vehicle.cloud_locked === 1 || curfewLocked);
-
-    // 2. Parse BLE beacons and track driver presence
-    const bleBeacons = [];
-    if (rawBleList) {
-      rawBleList.split(';').forEach(pair => {
-        const [mac, rssi] = pair.split(':');
-        if (mac && rssi) {
-          bleBeacons.push({ mac: mac.trim(), rssi: parseInt(rssi.trim(), 10) });
-        }
-      });
-    }
-
-    // Keep track of moving time (persisted)
-    if (speed > 0) {
-      global.lastMovingTime.set(deviceId, nowMs);
-      this._saveState(deviceId, 'last_moving_time', nowMs);
-    }
-    const lastMoving = global.lastMovingTime.get(deviceId) || 0;
-    const wasMovingRecently = (ignitionOn && speed > 2 && (nowMs - lastMoving) < 90 * 1000); // 90-second active moving grace
-
-    let driverPresent = !vehicle.ble_beacon_id;
-    if (vehicle.ble_beacon_id) {
-      const normalizedBeaconId = vehicle.ble_beacon_id.replace(/:/g, '').toUpperCase();
-      const matchedTag = bleBeacons.find(b => {
-        const cleanMac = b.mac.replace(/:/g, '').toUpperCase().replace(/^0+/, '');
-        const cleanDb = normalizedBeaconId.replace(/^0+/, '');
-        return cleanMac === cleanDb || cleanMac.endsWith(cleanDb) || cleanDb.endsWith(cleanMac);
-      });
-
-      if (matchedTag && matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold) {
-        global.lastBeaconSeen.set(deviceId, nowMs);
-        this._saveState(deviceId, 'last_beacon_seen', nowMs);
-        driverPresent = true;
-      }
-      // No grace period: real-time detection only
-    }
-
-    // 3. Ignition Debounce Check (5 seconds stable state required)
-    if (!global.ignitionDebounce.has(deviceId)) {
-      // Seed initial state
-      const seedTime = nowMs - 6000;
-      global.ignitionDebounce.set(deviceId, { state: ignitionOn, since: seedTime });
-      this._saveState(deviceId, 'last_ignition_state', ignitionOn ? 1 : 0);
-      this._saveState(deviceId, 'last_ignition_time', seedTime);
-    }
-
-    const lastDebounce = global.ignitionDebounce.get(deviceId);
-    if (lastDebounce.state !== ignitionOn) {
-      global.ignitionDebounce.set(deviceId, { state: ignitionOn, since: nowMs });
-      this._saveState(deviceId, 'last_ignition_state', ignitionOn ? 1 : 0);
-      this._saveState(deviceId, 'last_ignition_time', nowMs);
-    }
-
-    const debounce = global.ignitionDebounce.get(deviceId);
-    const ignitionStableMs = nowMs - debounce.since;
-    const ignitionStable = ignitionStableMs >= 5000; // 5 seconds stable state required
-
-    // 4. Calculate Desired Physical Relay State
-    let desiredRelay = 0;
-    if (ignitionOn) {
-      if (isWebOrCurfewLocked) {
-        desiredRelay = 0;
-      } else if (vehicle.ble_beacon_id && !driverPresent) {
-        desiredRelay = speed > 2 ? 1 : 0;
-      } else {
-        desiredRelay = 1;
-      }
-    } else {
-      desiredRelay = 0;
-    }
-
+    const desiredRelay = isWebOrCurfewLocked ? 0 : 1;
     const currentRelay = (vehicle.relay_state !== null && vehicle.relay_state !== undefined) ? vehicle.relay_state : 0;
 
-    // 5. Cooldown & Command Dispatch (Instant response on ACC ON, 2s anti-chatter filter)
+    // 3. Cooldown & Command Dispatch (2s anti-chatter)
     if (currentRelay !== desiredRelay) {
       const cooldownKey = `${deviceId}-relay`;
       const lastSent = global.relayCmdCooldown.get(cooldownKey) || 0;
-      const RELAY_COOLDOWN_MS = 2000; // 2s anti-chatter window
+      const RELAY_COOLDOWN_MS = 2000;
 
       if (nowMs - lastSent > RELAY_COOLDOWN_MS) {
         const cmdText = `setdigout ${desiredRelay}`;
-        console.log(`[RelayManager Auto] ${deviceId}: ignition=${ignitionOn ? 1 : 0} webLocked=${isWebOrCurfewLocked} blePresent=${driverPresent} relay ${currentRelay}→${desiredRelay} → ${cmdText}`);
+        console.log(`[RelayManager Auto] ${deviceId}: webLocked=${isWebOrCurfewLocked} relay ${currentRelay}→${desiredRelay} → ${cmdText}`);
 
         // Update DB optimistically
         db.prepare('UPDATE vehicles SET relay_state = ?, relay_updated_at = ? WHERE id = ?')
           .run(desiredRelay, nowMs, deviceId);
         if (global.invalidateMetadataCache) global.invalidateMetadataCache(deviceId);
 
-        // Update Cooldown and persist
+        // Update Cooldown
         global.relayCmdCooldown.set(cooldownKey, nowMs);
-        this._saveState(deviceId, 'last_relay_time', nowMs);
 
         // Dispatch command via direct socket or Traccar API
         const isDirectSocket = _DeviceManager && _DeviceManager.getStatus(deviceId) === 'ONLINE';
