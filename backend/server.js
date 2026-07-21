@@ -885,35 +885,10 @@ mqttClient.on('message', (topic, message) => {
           }
         }
 
-        // 4. Dynamic Fuel Theft Detection (>10% drop in <60s while stopped)
-        if (!global.fuelTracker) global.fuelTracker = new Map();
-        const fuelRecord = global.fuelTracker.get(payload.deviceId);
-        if (fuelRecord && payload.speed === 0 && fuelRecord.speed === 0) {
-          const fuelDrop = fuelRecord.fuel - (payload.fuel || 100);
-          const timeDiff = now - fuelRecord.timestamp;
-          if (fuelDrop > 10 && timeDiff < 60000) {
-            const theftKey = `${payload.deviceId}-fuel-theft-server`;
-            const lastTheftAlert = global.alertCooldowns.get(theftKey);
-            if (!lastTheftAlert || (now - lastTheftAlert > 120000)) { // 2 min cooldown
-              const theftMsg = `Critical: Possible fuel theft on ${payload.deviceId}! Fuel dropped ${Math.round(fuelDrop)}% in ${Math.round(timeDiff / 1000)}s while stopped.`;
-              io.to(`user_${ownerId}`).emit('notification', {
-                id: now + 4,
-                type: 'FUEL_THEFT',
-                message: theftMsg,
-                timestamp: now,
-                is_read: false
-              });
-              io.to(`user_${ownerId}`).emit('geofence-alert', {
-                vehicleId: payload.deviceId,
-                message: theftMsg,
-                timestamp: now
-              });
-              global.alertCooldowns.set(theftKey, now);
-              saveAndNotifyAlert(payload.deviceId, 'FUEL_THEFT', theftMsg, now);
-            }
-          }
+        // 4. Dynamic Fuel Theft / Siphoning Detection
+        if (payload.fuel !== undefined && payload.fuel !== null) {
+          evaluateFuelTheftAlert(payload.deviceId, vehicle, payload.fuel, payload.speed || 0, ignitionOn ? 1 : 0, now, ownerId);
         }
-        global.fuelTracker.set(payload.deviceId, { fuel: payload.fuel || 100, speed: payload.speed || 0, timestamp: now });
 
         // Check Geofences (supports both circle and polygon types)
         if (payload.lat && payload.lng) {
@@ -1261,6 +1236,71 @@ function buildGT06CommandFrame(commandText) {
   return frame;
 }
 
+// Unified Fuel Theft / Siphoning Alert Evaluator
+function evaluateFuelTheftAlert(deviceId, vehicle, currentFuel, speed, ignition, nowMs, ownerId) {
+  if (currentFuel === null || currentFuel === undefined) return;
+  if (!global.fuelTracker) global.fuelTracker = new Map();
+  if (!global.alertCooldowns) global.alertCooldowns = new Map();
+
+  const fuelRecord = global.fuelTracker.get(deviceId);
+
+  if (fuelRecord && fuelRecord.fuel !== null && fuelRecord.fuel !== undefined) {
+    const fuelDrop = fuelRecord.fuel - currentFuel;
+    const timeDiffMs = nowMs - fuelRecord.timestamp;
+
+    // Fuel siphoning criteria:
+    // 1. Drop of 5% or more in fuel level
+    // 2. Occurred within a 5-minute window (300,000 ms)
+    // 3. Vehicle is stationary or idling (speed <= 2 km/h)
+    // 4. Valid non-negative readings
+    if (fuelRecord.fuel > 0 && currentFuel >= 0 && fuelDrop >= 5 && timeDiffMs > 0 && timeDiffMs <= 300000 && speed <= 2) {
+      const theftKey = `${deviceId}-fuel-theft`;
+      const lastTheftAlert = global.alertCooldowns.get(theftKey) || 0;
+
+      if (nowMs - lastTheftAlert > 120000) { // 2 min cooldown between alerts
+        const theftMsg = `Critical Alert: Possible fuel siphoning/theft on vehicle "${vehicle.name || deviceId}"! Fuel level dropped ${Math.round(fuelDrop)}% (from ${Math.round(fuelRecord.fuel)}% to ${Math.round(currentFuel)}%) in ${Math.round(timeDiffMs / 1000)}s while stationary.`;
+        console.warn(`[FUEL THEFT ALERT] ${theftMsg}`);
+
+        global.alertCooldowns.set(theftKey, nowMs);
+        saveAndNotifyAlert(deviceId, 'FUEL_THEFT', theftMsg, nowMs);
+
+        io.to(`user_${ownerId}`).emit('notification', {
+          id: nowMs + 15,
+          type: 'FUEL_THEFT',
+          severity: 'error',
+          message: theftMsg,
+          timestamp: nowMs,
+          is_read: false
+        });
+
+        io.to(`user_${ownerId}`).emit('device-alert', {
+          vehicleId: deviceId,
+          type: 'FUEL_THEFT',
+          message: theftMsg,
+          timestamp: nowMs
+        });
+
+        mqttClient.publish(`/device/${deviceId}/alert`, JSON.stringify({
+          deviceId,
+          type: 'FUEL_THEFT',
+          message: theftMsg,
+          timestamp: nowMs
+        }));
+      }
+    }
+  }
+
+  // Update fuel tracker state if fuel level changed or last entry is older than 15s
+  if (!fuelRecord || Math.abs(fuelRecord.fuel - currentFuel) >= 1 || (nowMs - fuelRecord.timestamp) > 15000) {
+    global.fuelTracker.set(deviceId, {
+      fuel: currentFuel,
+      speed: speed || 0,
+      ignition: ignition || 0,
+      timestamp: nowMs
+    });
+  }
+}
+
 // Unified Security Alert Evaluator (For direct TCP and Traccar/MQTT)
 function evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresent, curfewLocked, isLocked, nowMs, ownerId) {
   if (!global.alertCooldowns) global.alertCooldowns = new Map();
@@ -1405,7 +1445,8 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
     try { db.prepare('INSERT INTO device_state (device_id, last_moving_time) VALUES (?, ?) ON CONFLICT(device_id) DO UPDATE SET last_moving_time = excluded.last_moving_time').run(deviceId, nowMs); } catch(e){}
   }
   const lastMoving = global.lastMovingTime.get(deviceId) || 0;
-  const wasMovingRecently = (nowMs - lastMoving) < 10 * 60 * 1000; // 10-minute window
+  // Moving grace (90s): ONLY valid when vehicle is actively moving (speed > 2 and ignition === 1)
+  const wasMovingRecently = (ignition === 1 && speed > 2 && (nowMs - lastMoving) < 90 * 1000);
 
   // Proximity check (driver presence)
   let driverPresent = false;
@@ -1432,17 +1473,17 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
       console.log(`[BLE TCP] ❌ No beacon matched configured ID "${normalizedBeaconId}" among ${bleBeacons.length} received.`);
     }
 
-    // GRACE PERIOD: 10-minute window after last beacon detection
+    // GRACE PERIOD: 90-second window after last beacon detection
     const lastSeen = global.lastBeaconSeen.get(deviceId) || 0;
-    const beaconSeenRecently = (nowMs - lastSeen) < 10 * 60 * 1000;
+    const beaconSeenRecently = (nowMs - lastSeen) < 90 * 1000;
     if (!driverPresent && beaconSeenRecently) {
-      console.log(`[BLE TCP] ⏱️  Beacon not in current packet but was seen ${Math.round((nowMs - lastSeen) / 1000)}s ago — grace period active, treating driver as present.`);
+      console.log(`[BLE TCP] ⏱️  Beacon not in current packet but was seen ${Math.round((nowMs - lastSeen) / 1000)}s ago — 90s grace active, treating driver as present.`);
       driverPresent = true;
     }
 
-    // MOVING GRACE: 10-minute window after last movement
+    // MOVING GRACE: 90-second window while actively moving
     if (!driverPresent && wasMovingRecently) {
-      console.log(`[BLE TCP] 🚗 Vehicle was moving ${Math.round((nowMs - lastMoving) / 1000)}s ago — moving grace period active, treating driver as present.`);
+      console.log(`[BLE TCP] 🚗 Vehicle was moving ${Math.round((nowMs - lastMoving) / 1000)}s ago — moving grace period active.`);
       driverPresent = true;
     }
   } else {
@@ -1520,6 +1561,9 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
 
   // Evaluate security alerts (Hotwire, Towing, and Unauthorized Movement)
   evaluateSecurityAlerts(deviceId, vehicle, ignition, speed, driverPresent, curfewLocked, isLocked, nowMs, ownerId);
+
+  // Evaluate Fuel Siphoning / Theft Alert
+  evaluateFuelTheftAlert(deviceId, vehicle, cleanFuel, speed, ignition, nowMs, ownerId);
 
 
   // Odometer calculation
