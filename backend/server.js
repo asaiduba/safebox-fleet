@@ -1410,18 +1410,23 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   let matchedRssi = null;
   if (vehicle.ble_beacon_id) {
     const normalizedBeaconId = vehicle.ble_beacon_id.replace(/:/g, '').toUpperCase();
+    console.log(`[BLE TCP] Trying to match ${bleBeacons.length} beacon(s) against configured ID: "${normalizedBeaconId}" (threshold: ${vehicle.ble_beacon_rssi_threshold} dBm)`);
     const matchedTag = bleBeacons.find(b => {
       const cleanMac = b.mac.replace(/:/g, '').toUpperCase().replace(/^0+/, '');
       const cleanDb = normalizedBeaconId.replace(/^0+/, '');
+      console.log(`[BLE TCP]   Comparing cleanMac=${cleanMac} vs cleanDb=${cleanDb}`);
       return cleanMac === cleanDb || cleanMac.endsWith(cleanDb) || cleanDb.endsWith(cleanMac);
     });
     if (matchedTag) {
       matchedRssi = matchedTag.rssi;
       const aboveThreshold = matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold;
+      console.log(`[BLE TCP] ✅ Matched beacon ${matchedTag.mac} RSSI=${matchedTag.rssi} threshold=${vehicle.ble_beacon_rssi_threshold} aboveThreshold=${aboveThreshold}`);
       if (aboveThreshold) {
         global.lastBeaconSeen.set(deviceId, nowMs);
         driverPresent = true;
       }
+    } else {
+      console.log(`[BLE TCP] ❌ No beacon matched configured ID "${normalizedBeaconId}" among ${bleBeacons.length} received.`);
     }
 
     // GRACE PERIOD: 3-minute window
