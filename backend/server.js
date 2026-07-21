@@ -1872,12 +1872,24 @@ const tcpServer = net.createServer((socket) => {
               broadcastDeviceData(authenticatedDeviceId, `/device/${authenticatedDeviceId}/status`, {
                 deviceId: authenticatedDeviceId,
                 locked: lockedState === 1,
-                          let lastLat = null;
+                timestamp: Date.now()
+              });
+            }
+
+            // Resolve pending command logging in DeviceManager
+            DeviceManager.resolvePendingCommand(authenticatedDeviceId, true, responseText);
+          } else {
+            const numRecords = packet[9];
+            console.log(`[Teltonika TCP] Parsing ${numRecords} records (Codec ${codecId})`);
+
+            let offset = 10;
+            let lastLat = null;
             let lastLng = null;
             let lastSpeed = null;
             let lastIgnition = 0;
             let lastDout1 = null;
             let lastAin1 = null;
+            let lastBattery = null;
             
             // BLE Beacon state
             let lastTag1Mac = null;
@@ -1935,6 +1947,8 @@ const tcpServer = net.createServer((socket) => {
                   lastIgnition = val;
                 } else if (propId === 179) { // DOUT1 (Relay output status)
                   lastDout1 = val;
+                } else if (propId === 113) { // Battery Level (%)
+                  lastBattery = val;
                 } else if (propId === 10828) { // Tag 1 RSSI
                   lastTag1Rssi = val > 127 ? val - 256 : val;
                 } else if (propId === 10831) { // Tag 2 RSSI
@@ -1957,6 +1971,11 @@ const tcpServer = net.createServer((socket) => {
 
                 if (propId === 9) {
                   lastAin1 = val; // AIN1 (mV)
+                } else if (propId === 67) { // Battery Voltage (mV)
+                  if (lastBattery === null) {
+                    const pct = Math.round(((val - 3600) / (4200 - 3600)) * 100);
+                    lastBattery = Math.min(100, Math.max(0, pct));
+                  }
                 }
               }
 
@@ -2026,8 +2045,10 @@ const tcpServer = net.createServer((socket) => {
                 rawBleList = rawBleParts.join(';');
               }
 
-              console.log(`[Teltonika TCP] Telemetry parsed: Lat=${lastLat}, Lng=${lastLng}, Speed=${lastSpeed}, DOUT1=${lastDout1}, AIN1=${lastAin1}mV, BLE="${rawBleList}"`);
-              handleIncomingTelemetry(authenticatedDeviceId, lastLat, lastLng, lastSpeed, 100, fuelPct, lastIgnition, rawBleList, lastDout1);
+              const batteryPct = (lastBattery !== null) ? lastBattery : 100;
+
+              console.log(`[Teltonika TCP] Telemetry parsed: Lat=${lastLat}, Lng=${lastLng}, Speed=${lastSpeed}, DOUT1=${lastDout1}, AIN1=${lastAin1}mV, BLE="${rawBleList}", Battery=${batteryPct}%`);
+              handleIncomingTelemetry(authenticatedDeviceId, lastLat, lastLng, lastSpeed, batteryPct, fuelPct, lastIgnition, rawBleList, lastDout1);
             }
 
             // ACK response: 4-byte UInt32BE count of records
