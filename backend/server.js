@@ -1444,12 +1444,8 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   // Track last time this vehicle was seen moving
   if (speed > 0) {
     global.lastMovingTime.set(deviceId, nowMs);
-    // Persist to SQLite so it survives server restarts
     try { db.prepare('INSERT INTO device_state (device_id, last_moving_time) VALUES (?, ?) ON CONFLICT(device_id) DO UPDATE SET last_moving_time = excluded.last_moving_time').run(deviceId, nowMs); } catch(e){}
   }
-  const lastMoving = global.lastMovingTime.get(deviceId) || 0;
-  // Moving grace (90s): ONLY valid when vehicle is actively moving (speed > 2 and ignition === 1)
-  const wasMovingRecently = (ignition === 1 && speed > 2 && (nowMs - lastMoving) < 90 * 1000);
 
   // Proximity check (driver presence)
   let driverPresent = false;
@@ -1468,27 +1464,13 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
       console.log(`[BLE TCP] ✅ Matched beacon ${matchedTag.mac} RSSI=${matchedTag.rssi} threshold=${vehicle.ble_beacon_rssi_threshold} aboveThreshold=${aboveThreshold}`);
       if (aboveThreshold) {
         global.lastBeaconSeen.set(deviceId, nowMs);
-        // Persist to SQLite so grace period survives server restarts
         try { db.prepare('INSERT INTO device_state (device_id, last_beacon_seen) VALUES (?, ?) ON CONFLICT(device_id) DO UPDATE SET last_beacon_seen = excluded.last_beacon_seen').run(deviceId, nowMs); } catch(e){}
         driverPresent = true;
       }
     } else {
       console.log(`[BLE TCP] ❌ No beacon matched configured ID "${normalizedBeaconId}" among ${bleBeacons.length} received.`);
     }
-
-    // GRACE PERIOD: 90-second window after last beacon detection
-    const lastSeen = global.lastBeaconSeen.get(deviceId) || 0;
-    const beaconSeenRecently = (nowMs - lastSeen) < 90 * 1000;
-    if (!driverPresent && beaconSeenRecently) {
-      console.log(`[BLE TCP] ⏱️  Beacon not in current packet but was seen ${Math.round((nowMs - lastSeen) / 1000)}s ago — 90s grace active, treating driver as present.`);
-      driverPresent = true;
-    }
-
-    // MOVING GRACE: 90-second window while actively moving
-    if (!driverPresent && wasMovingRecently) {
-      console.log(`[BLE TCP] 🚗 Vehicle was moving ${Math.round((nowMs - lastMoving) / 1000)}s ago — moving grace period active.`);
-      driverPresent = true;
-    }
+    // No grace period: real-time beacon detection only
   } else {
     driverPresent = true;
   }
@@ -1512,13 +1494,18 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   }
 
   // ── Web/Curfew = master switch for dashboard badge AND physical relay ──────
-  // ── BLE = startup-only guard, NEVER overwrites the web lock state in DB ───
   const isWebOrCurfewLocked = (vehicle.cloud_locked === 1 || curfewLocked);
-
-  // Dashboard badge / DB column: ONLY reflects cloud_locked + curfew.
-  // BLE missing must NOT set is_locked=1 in the DB — that was causing the
-  // "always ARMED on refresh" bug because telemetry kept overwriting it.
   let isLocked = isWebOrCurfewLocked ? 1 : 0;
+
+  // ── Ignition Debounce Check (5 seconds stable state required) ─────────────
+  if (!global.ignitionDebounce) global.ignitionDebounce = new Map();
+  const lastDebounce = global.ignitionDebounce.get(deviceId);
+  if (!lastDebounce || lastDebounce.state !== ignition) {
+    global.ignitionDebounce.set(deviceId, { state: ignition, since: nowMs });
+  }
+  const debounce = global.ignitionDebounce.get(deviceId);
+  const ignitionStableMs = nowMs - debounce.since;
+  const ignitionStable = ignitionStableMs >= 5000; // 5 seconds stable required
 
   // Physical relay desired state
   // 0 = de-energized / wire cut  → engine blocked
@@ -1527,38 +1514,41 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
 
   if (ignition === 1) {
     if (isWebOrCurfewLocked) {
-      // Web/curfew lock: always cut the wire regardless of BLE or speed
       desiredRelayState = 0;
     } else if (!driverPresent) {
-      // Web is UNLOCKED but BLE keyfob is missing
       if (speed <= 2) {
-        // Stationary: block startup — keyfob must be present to start
         desiredRelayState = 0;
       } else {
-        // Moving: keep relay energized — BLE signal can fluctuate, never cut engine
         desiredRelayState = 1;
       }
     } else {
-      // Web UNLOCKED + BLE present (or no BLE configured) → energize relay
       desiredRelayState = 1;
     }
   } else {
-    // ACC/Ignition OFF: de-energize relay to save vehicle battery
     desiredRelayState = 0;
   }
 
-  // Send command ONLY when physical state differs from desired state
+  // Send command ONLY when physical state differs from desired state AND ignition is stable AND 15s cooldown has passed
   const currentRelay = (dout1 !== null) ? dout1 : (vehicle.relay_state || 0);
-  if (currentRelay !== desiredRelayState) {
-    const cmdText = `setdigout ${desiredRelayState}`;
-    console.log(`[Relay Controller] Vehicle ${deviceId}: DOUT1 current=${currentRelay} desired=${desiredRelayState} ignition=${ignition} speed=${speed} webLocked=${isWebOrCurfewLocked} blePresent=${driverPresent} → ${cmdText}`);
-    
-    // Dynamically route the command depending on device connection type
-    const isDirectSocket = DeviceManager.getStatus(deviceId) === 'ONLINE';
-    if (isDirectSocket) {
-      DeviceManager.sendCommand(deviceId, cmdText);
+  if (currentRelay !== desiredRelayState && ignitionStable) {
+    const cooldownKey = `${deviceId}-relay-cooldown`;
+    if (!global.relayCmdCooldown) global.relayCmdCooldown = new Map();
+    const lastSent = global.relayCmdCooldown.get(cooldownKey) || 0;
+    const RELAY_COOLDOWN_MS = 15000; // 15s minimum cooldown between relay toggles
+
+    if (nowMs - lastSent >= RELAY_COOLDOWN_MS) {
+      global.relayCmdCooldown.set(cooldownKey, nowMs);
+      const cmdText = `setdigout ${desiredRelayState}`;
+      console.log(`[Relay Controller] Vehicle ${deviceId}: DOUT1 current=${currentRelay} desired=${desiredRelayState} ignition=${ignition} speed=${speed} webLocked=${isWebOrCurfewLocked} blePresent=${driverPresent} → ${cmdText}`);
+      
+      const isDirectSocket = DeviceManager.getStatus(deviceId) === 'ONLINE';
+      if (isDirectSocket) {
+        DeviceManager.sendCommand(deviceId, cmdText);
+      } else {
+        sendTraccarCommand(deviceId, cmdText);
+      }
     } else {
-      sendTraccarCommand(deviceId, cmdText);
+      console.log(`[Relay Controller] ⏳ Vehicle ${deviceId}: Relay command throttled (${Math.round((nowMs - lastSent)/1000)}s since last toggle).`);
     }
   }
 

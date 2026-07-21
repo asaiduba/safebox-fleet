@@ -120,24 +120,13 @@ class RelayManager {
         this._saveState(deviceId, 'last_beacon_seen', nowMs);
         driverPresent = true;
       }
-
-      // Proximity Grace Period (90s)
-      const lastSeen = global.lastBeaconSeen.get(deviceId) || 0;
-      const beaconSeenRecently = (nowMs - lastSeen) < 90 * 1000;
-      if (!driverPresent && beaconSeenRecently) {
-        driverPresent = true;
-      }
-
-      // Moving Grace Period (90s, active movement only)
-      if (!driverPresent && wasMovingRecently) {
-        driverPresent = true;
-      }
+      // No grace period: real-time detection only
     }
 
-    // 3. Ignition Debounce Check (3 seconds stable state required)
+    // 3. Ignition Debounce Check (5 seconds stable state required)
     if (!global.ignitionDebounce.has(deviceId)) {
       // Seed initial state
-      const seedTime = nowMs - 5000;
+      const seedTime = nowMs - 6000;
       global.ignitionDebounce.set(deviceId, { state: ignitionOn, since: seedTime });
       this._saveState(deviceId, 'last_ignition_state', ignitionOn ? 1 : 0);
       this._saveState(deviceId, 'last_ignition_time', seedTime);
@@ -152,7 +141,7 @@ class RelayManager {
 
     const debounce = global.ignitionDebounce.get(deviceId);
     const ignitionStableMs = nowMs - debounce.since;
-    const ignitionStable = ignitionStableMs >= 3000; // 3 seconds stable
+    const ignitionStable = ignitionStableMs >= 5000; // 5 seconds stable state required
 
     // 4. Calculate Desired Physical Relay State
     let desiredRelay = 0;
