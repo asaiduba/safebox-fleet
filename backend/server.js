@@ -1424,6 +1424,9 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
     return null;
   }
 
+  const cleanBattery = (battery !== null && battery !== undefined) ? battery : (vehicle.battery_level !== undefined && vehicle.battery_level !== null ? vehicle.battery_level : 100);
+  const cleanFuel = (fuel !== null && fuel !== undefined) ? fuel : (vehicle.fuel_level !== undefined && vehicle.fuel_level !== null ? vehicle.fuel_level : 100);
+
   // Parse BLE Beacons if provided
   const bleBeacons = [];
   if (rawBleList) {
@@ -1578,9 +1581,6 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
 
   // Update database
   try {
-    const cleanBattery = (battery !== null && battery !== undefined) ? battery : (vehicle.battery_level !== undefined && vehicle.battery_level !== null ? vehicle.battery_level : 100);
-    const cleanFuel = (fuel !== null && fuel !== undefined) ? fuel : (vehicle.fuel_level !== undefined && vehicle.fuel_level !== null ? vehicle.fuel_level : 100);
-
     if (dout1 !== null) {
       db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ?, relay_state = ?, relay_updated_at = ?, ignition = ? WHERE id = ?')
         .run(nowMs, cleanBattery, cleanFuel, isLocked, lat || 0, lng || 0, newOdometer, dout1, nowMs, ignition, deviceId);
