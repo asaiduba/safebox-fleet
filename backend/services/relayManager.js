@@ -159,11 +159,11 @@ class RelayManager {
 
     const currentRelay = (vehicle.relay_state !== null && vehicle.relay_state !== undefined) ? vehicle.relay_state : 0;
 
-    // 5. Cooldown & Command Dispatch
-    if (currentRelay !== desiredRelay && ignitionStable) {
+    // 5. Cooldown & Command Dispatch (Instant response on ACC ON, 2s anti-chatter filter)
+    if (currentRelay !== desiredRelay) {
       const cooldownKey = `${deviceId}-relay`;
       const lastSent = global.relayCmdCooldown.get(cooldownKey) || 0;
-      const RELAY_COOLDOWN_MS = 15000;
+      const RELAY_COOLDOWN_MS = 2000; // 2s anti-chatter window
 
       if (nowMs - lastSent > RELAY_COOLDOWN_MS) {
         const cmdText = `setdigout ${desiredRelay}`;

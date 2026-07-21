@@ -1528,13 +1528,13 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
     desiredRelayState = 0;
   }
 
-  // Send command ONLY when physical state differs from desired state AND ignition is stable AND 15s cooldown has passed
+  // Send command ONLY when physical state differs from desired state (Instant response on ACC ON, 2s anti-chatter filter)
   const currentRelay = (dout1 !== null) ? dout1 : (vehicle.relay_state || 0);
-  if (currentRelay !== desiredRelayState && ignitionStable) {
+  if (currentRelay !== desiredRelayState) {
     const cooldownKey = `${deviceId}-relay-cooldown`;
     if (!global.relayCmdCooldown) global.relayCmdCooldown = new Map();
     const lastSent = global.relayCmdCooldown.get(cooldownKey) || 0;
-    const RELAY_COOLDOWN_MS = 15000; // 15s minimum cooldown between relay toggles
+    const RELAY_COOLDOWN_MS = 2000; // 2s anti-chatter window to filter duplicate packet bursts
 
     if (nowMs - lastSent >= RELAY_COOLDOWN_MS) {
       global.relayCmdCooldown.set(cooldownKey, nowMs);
@@ -1547,8 +1547,6 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
       } else {
         sendTraccarCommand(deviceId, cmdText);
       }
-    } else {
-      console.log(`[Relay Controller] ⏳ Vehicle ${deviceId}: Relay command throttled (${Math.round((nowMs - lastSent)/1000)}s since last toggle).`);
     }
   }
 
