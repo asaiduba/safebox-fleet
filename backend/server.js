@@ -1872,23 +1872,22 @@ const tcpServer = net.createServer((socket) => {
               broadcastDeviceData(authenticatedDeviceId, `/device/${authenticatedDeviceId}/status`, {
                 deviceId: authenticatedDeviceId,
                 locked: lockedState === 1,
-                timestamp: Date.now()
-              });
-            }
-
-            // Resolve pending command logging in DeviceManager
-            DeviceManager.resolvePendingCommand(authenticatedDeviceId, true, responseText);
-          } else {
-            const numRecords = packet[9];
-            console.log(`[Teltonika TCP] Parsing ${numRecords} records (Codec ${codecId})`);
-
-            let offset = 10;
-            let lastLat = null;
+                          let lastLat = null;
             let lastLng = null;
             let lastSpeed = null;
             let lastIgnition = 0;
             let lastDout1 = null;
             let lastAin1 = null;
+            
+            // BLE Beacon state
+            let lastTag1Mac = null;
+            let lastTag1Rssi = null;
+            let lastTag2Mac = null;
+            let lastTag2Rssi = null;
+            let lastTag3Mac = null;
+            let lastTag3Rssi = null;
+            let lastTag4Mac = null;
+            let lastTag4Rssi = null;
 
             for (let r = 0; r < numRecords; r++) {
               if (offset + 15 > packet.length) break;
@@ -1936,6 +1935,14 @@ const tcpServer = net.createServer((socket) => {
                   lastIgnition = val;
                 } else if (propId === 179) { // DOUT1 (Relay output status)
                   lastDout1 = val;
+                } else if (propId === 10828) { // Tag 1 RSSI
+                  lastTag1Rssi = val > 127 ? val - 256 : val;
+                } else if (propId === 10831) { // Tag 2 RSSI
+                  lastTag2Rssi = val > 127 ? val - 256 : val;
+                } else if (propId === 10834) { // Tag 3 RSSI
+                  lastTag3Rssi = val > 127 ? val - 256 : val;
+                } else if (propId === 10837) { // Tag 4 RSSI
+                  lastTag4Rssi = val > 127 ? val - 256 : val;
                 }
               }
 
@@ -1968,7 +1975,31 @@ const tcpServer = net.createServer((socket) => {
               for (let i = 0; i < io8Count; i++) {
                 const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
                 offset += isExtended ? 2 : 1;
+                const valBuf = packet.subarray(offset, offset + 8);
                 offset += 8;
+
+                if (propId === 10827) { // Tag 1 MAC
+                  lastTag1Mac = valBuf.toString('hex').replace(/^0+/, '').toLowerCase();
+                } else if (propId === 10830) { // Tag 2 MAC
+                  lastTag2Mac = valBuf.toString('hex').replace(/^0+/, '').toLowerCase();
+                } else if (propId === 10833) { // Tag 3 MAC
+                  lastTag3Mac = valBuf.toString('hex').replace(/^0+/, '').toLowerCase();
+                } else if (propId === 10836) { // Tag 4 MAC
+                  lastTag4Mac = valBuf.toString('hex').replace(/^0+/, '').toLowerCase();
+                }
+              }
+
+              // X-byte (variable length) properties (Codec 8E / 0x8E only)
+              if (isExtended && offset < packet.length) {
+                const ioXCount = packet.readUInt16BE(offset);
+                offset += 2;
+                for (let i = 0; i < ioXCount; i++) {
+                  const propId = packet.readUInt16BE(offset);
+                  offset += 2;
+                  const length = packet.readUInt16BE(offset);
+                  offset += 2;
+                  offset += length;
+                }
               }
             }
 
@@ -1984,8 +2015,19 @@ const tcpServer = net.createServer((socket) => {
                   console.log(`[Fuel Cal TCP] Vehicle ${authenticatedDeviceId}: raw AIN1=${lastAin1}mV Empty=${minV}mV Full=${maxV}mV → Calibrated=${fuelPct}%`);
                 }
               }
-              console.log(`[Teltonika TCP] Telemetry parsed: Lat=${lastLat}, Lng=${lastLng}, Speed=${lastSpeed}, DOUT1=${lastDout1}, AIN1=${lastAin1}mV`);
-              handleIncomingTelemetry(authenticatedDeviceId, lastLat, lastLng, lastSpeed, 100, fuelPct, lastIgnition, '', lastDout1);
+              
+              let rawBleList = '';
+              let rawBleParts = [];
+              if (lastTag1Mac && lastTag1Rssi !== null) rawBleParts.push(`${lastTag1Mac}:${lastTag1Rssi}`);
+              if (lastTag2Mac && lastTag2Rssi !== null) rawBleParts.push(`${lastTag2Mac}:${lastTag2Rssi}`);
+              if (lastTag3Mac && lastTag3Rssi !== null) rawBleParts.push(`${lastTag3Mac}:${lastTag3Rssi}`);
+              if (lastTag4Mac && lastTag4Rssi !== null) rawBleParts.push(`${lastTag4Mac}:${lastTag4Rssi}`);
+              if (rawBleParts.length > 0) {
+                rawBleList = rawBleParts.join(';');
+              }
+
+              console.log(`[Teltonika TCP] Telemetry parsed: Lat=${lastLat}, Lng=${lastLng}, Speed=${lastSpeed}, DOUT1=${lastDout1}, AIN1=${lastAin1}mV, BLE="${rawBleList}"`);
+              handleIncomingTelemetry(authenticatedDeviceId, lastLat, lastLng, lastSpeed, 100, fuelPct, lastIgnition, rawBleList, lastDout1);
             }
 
             // ACK response: 4-byte UInt32BE count of records
