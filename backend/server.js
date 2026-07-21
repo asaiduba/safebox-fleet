@@ -526,13 +526,6 @@ mqttClient.on('message', (topic, message) => {
       if (!global.lastBeaconSeen) global.lastBeaconSeen   = new Map();
       if (!global.lastMovingTime) global.lastMovingTime   = new Map();
 
-      // Track last time this vehicle was seen moving
-      if (payload.speed > 0) {
-        global.lastMovingTime.set(payload.deviceId, Date.now());
-      }
-      const lastMoving = global.lastMovingTime.get(payload.deviceId) || 0;
-      const wasMovingRecently = (Date.now() - lastMoving) < 5 * 60 * 1000; // 5-minute window
-
       const bleBeacons = [];
       if (payload.rawBleList) {
         payload.rawBleList.split(';').forEach(pair => {
@@ -543,53 +536,23 @@ mqttClient.on('message', (topic, message) => {
         });
       }
 
-      // --- BLE DIAGNOSTIC: log what was received and what we try to match ---
-      if (bleBeacons.length > 0 || payload.rawBleList) {
-        console.log(`[BLE MQTT] Device ${payload.deviceId} → rawBleList: "${payload.rawBleList}", parsed beacons: ${JSON.stringify(bleBeacons)}`);
-      }
-
       let driverPresent = false;
       let matchedRssi = null;
       if (vehicle.ble_beacon_id) {
         const normalizedBeaconId = vehicle.ble_beacon_id.replace(/:/g, '').toUpperCase();
-        console.log(`[BLE MQTT] Trying to match beacons against configured ID: "${normalizedBeaconId}" (threshold: ${vehicle.ble_beacon_rssi_threshold} dBm)`);
         const matchedTag = bleBeacons.find(b => {
           const cleanMac = b.mac.replace(/:/g, '').toUpperCase().replace(/^0+/, '');
           const cleanDb = normalizedBeaconId.replace(/^0+/, '');
-          const isMatch = cleanMac === cleanDb || cleanMac.endsWith(cleanDb) || cleanDb.endsWith(cleanMac);
-          if (process.env.BLE_DEBUG) {
-            console.log(`[BLE MQTT]   comparing cleanMac="${cleanMac}" vs cleanDb="${cleanDb}" → ${isMatch ? '✅ MATCH' : '❌ no match'}`);
-          }
-          return isMatch;
+          return cleanMac === cleanDb || cleanMac.endsWith(cleanDb) || cleanDb.endsWith(cleanMac);
         });
         if (matchedTag) {
           matchedRssi = matchedTag.rssi;
-          const aboveThreshold = matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold;
-          console.log(`[BLE MQTT] ✅ Beacon matched! RSSI=${matchedRssi} dBm, threshold=${vehicle.ble_beacon_rssi_threshold}, driverPresent=${aboveThreshold}`);
-          if (aboveThreshold) {
-            // Beacon visible and above threshold → update last-seen timestamp
+          if (matchedTag.rssi >= vehicle.ble_beacon_rssi_threshold) {
             global.lastBeaconSeen.set(payload.deviceId, Date.now());
             driverPresent = true;
           }
-        } else {
-          console.log(`[BLE MQTT] ❌ No beacon matched configured ID "${vehicle.ble_beacon_id}" among ${bleBeacons.length} received beacon(s).`);
         }
-
-        // GRACE PERIOD: if beacon was visible within the last 3 minutes, still
-        // treat the driver as present (covers RSSI fluctuation and missed scans).
-        const lastSeen = global.lastBeaconSeen.get(payload.deviceId) || 0;
-        const beaconSeenRecently = (Date.now() - lastSeen) < 3 * 60 * 1000; // 3-minute window
-        if (!driverPresent && beaconSeenRecently) {
-          console.log(`[BLE MQTT] ⏱️  Beacon not in current packet but was seen ${Math.round((Date.now()-lastSeen)/1000)}s ago — grace period active, treating driver as present.`);
-          driverPresent = true;
-        }
-
-        // MOVING GRACE: if the vehicle moved in the last 5 minutes, driver is present
-        // regardless of beacon state — never risk cutting the engine mid-ride.
-        if (!driverPresent && wasMovingRecently) {
-          console.log(`[BLE MQTT] 🚗 Vehicle was moving ${Math.round((Date.now()-lastMoving)/1000)}s ago — moving grace period active, treating driver as present.`);
-          driverPresent = true;
-        }
+        // No grace period: real-time beacon detection only
       } else {
         driverPresent = true;
       }
@@ -665,7 +628,12 @@ mqttClient.on('message', (topic, message) => {
       }
 
       // ─── Automatic Relay State Machine (Unified via RelayManager) ────────────
-      RelayManager.evaluateAutomaticRelay(payload.deviceId, payload.ignition ? 1 : 0, payload.speed || 0, payload.rawBleList || '', vehicle);
+      // ONLY run RelayManager for devices NOT connected via direct TCP.
+      // TCP-connected devices are controlled exclusively by handleIncomingTelemetry()
+      // to prevent competing relay commands from causing chatter.
+      if (DeviceManager.getStatus(payload.deviceId) !== 'ONLINE') {
+        RelayManager.evaluateAutomaticRelay(payload.deviceId, payload.ignition ? 1 : 0, payload.speed || 0, payload.rawBleList || '', vehicle);
+      }
       // ─────────────────────────────────────────────────────────────────────────
 
       // Warn if running outside allowed hours and moving
@@ -2407,7 +2375,11 @@ app.post('/api/telematics-webhook', (req, res) => {
       };
 
       // ─── Fast-path Relay State Machine (Unified via RelayManager) ──────────
-      RelayManager.evaluateAutomaticRelay(deviceId, ignitionOn ? 1 : 0, normalizedPayload.speed || 0, rawBleList || '', vehicle);
+      // ONLY run RelayManager for devices NOT connected via direct TCP.
+      // TCP-connected devices are controlled exclusively by handleIncomingTelemetry().
+      if (DeviceManager.getStatus(deviceId) !== 'ONLINE') {
+        RelayManager.evaluateAutomaticRelay(deviceId, ignitionOn ? 1 : 0, normalizedPayload.speed || 0, rawBleList || '', vehicle);
+      }
       // ────────────────────────────────────────────────────────────────────────
 
       // Publish to MQTT broker (HiveMQ / EMQX) — for Socket.io UI updates
