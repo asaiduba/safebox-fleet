@@ -1401,9 +1401,11 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
   // Track last time this vehicle was seen moving
   if (speed > 0) {
     global.lastMovingTime.set(deviceId, nowMs);
+    // Persist to SQLite so it survives server restarts
+    try { db.prepare('INSERT INTO device_state (device_id, last_moving_time) VALUES (?, ?) ON CONFLICT(device_id) DO UPDATE SET last_moving_time = excluded.last_moving_time').run(deviceId, nowMs); } catch(e){}
   }
   const lastMoving = global.lastMovingTime.get(deviceId) || 0;
-  const wasMovingRecently = (nowMs - lastMoving) < 5 * 60 * 1000; // 5-minute window
+  const wasMovingRecently = (nowMs - lastMoving) < 10 * 60 * 1000; // 10-minute window
 
   // Proximity check (driver presence)
   let driverPresent = false;
@@ -1414,7 +1416,6 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
     const matchedTag = bleBeacons.find(b => {
       const cleanMac = b.mac.replace(/:/g, '').toUpperCase().replace(/^0+/, '');
       const cleanDb = normalizedBeaconId.replace(/^0+/, '');
-      console.log(`[BLE TCP]   Comparing cleanMac=${cleanMac} vs cleanDb=${cleanDb}`);
       return cleanMac === cleanDb || cleanMac.endsWith(cleanDb) || cleanDb.endsWith(cleanMac);
     });
     if (matchedTag) {
@@ -1423,21 +1424,25 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
       console.log(`[BLE TCP] ✅ Matched beacon ${matchedTag.mac} RSSI=${matchedTag.rssi} threshold=${vehicle.ble_beacon_rssi_threshold} aboveThreshold=${aboveThreshold}`);
       if (aboveThreshold) {
         global.lastBeaconSeen.set(deviceId, nowMs);
+        // Persist to SQLite so grace period survives server restarts
+        try { db.prepare('INSERT INTO device_state (device_id, last_beacon_seen) VALUES (?, ?) ON CONFLICT(device_id) DO UPDATE SET last_beacon_seen = excluded.last_beacon_seen').run(deviceId, nowMs); } catch(e){}
         driverPresent = true;
       }
     } else {
       console.log(`[BLE TCP] ❌ No beacon matched configured ID "${normalizedBeaconId}" among ${bleBeacons.length} received.`);
     }
 
-    // GRACE PERIOD: 3-minute window
+    // GRACE PERIOD: 10-minute window after last beacon detection
     const lastSeen = global.lastBeaconSeen.get(deviceId) || 0;
-    const beaconSeenRecently = (nowMs - lastSeen) < 3 * 60 * 1000;
+    const beaconSeenRecently = (nowMs - lastSeen) < 10 * 60 * 1000;
     if (!driverPresent && beaconSeenRecently) {
+      console.log(`[BLE TCP] ⏱️  Beacon not in current packet but was seen ${Math.round((nowMs - lastSeen) / 1000)}s ago — grace period active, treating driver as present.`);
       driverPresent = true;
     }
 
-    // MOVING GRACE: 5-minute window
+    // MOVING GRACE: 10-minute window after last movement
     if (!driverPresent && wasMovingRecently) {
+      console.log(`[BLE TCP] 🚗 Vehicle was moving ${Math.round((nowMs - lastMoving) / 1000)}s ago — moving grace period active, treating driver as present.`);
       driverPresent = true;
     }
   } else {

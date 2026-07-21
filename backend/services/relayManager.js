@@ -104,7 +104,7 @@ class RelayManager {
       this._saveState(deviceId, 'last_moving_time', nowMs);
     }
     const lastMoving = global.lastMovingTime.get(deviceId) || 0;
-    const wasMovingRecently = (nowMs - lastMoving) < 5 * 60 * 1000;
+    const wasMovingRecently = (nowMs - lastMoving) < 10 * 60 * 1000; // 10-minute window
 
     let driverPresent = !vehicle.ble_beacon_id;
     if (vehicle.ble_beacon_id) {
@@ -121,14 +121,14 @@ class RelayManager {
         driverPresent = true;
       }
 
-      // Proximity Grace Period (3 mins)
+      // Proximity Grace Period (10 mins)
       const lastSeen = global.lastBeaconSeen.get(deviceId) || 0;
-      const beaconSeenRecently = (nowMs - lastSeen) < 3 * 60 * 1000;
+      const beaconSeenRecently = (nowMs - lastSeen) < 10 * 60 * 1000;
       if (!driverPresent && beaconSeenRecently) {
         driverPresent = true;
       }
 
-      // Moving Grace Period (5 mins)
+      // Moving Grace Period (10 mins)
       if (!driverPresent && wasMovingRecently) {
         driverPresent = true;
       }
