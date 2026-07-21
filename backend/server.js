@@ -2872,6 +2872,80 @@ function checkDeviceCommandTimeouts() {
 // Run command timeout check every 1 minute
 setInterval(checkDeviceCommandTimeouts, 60 * 1000);
 
+// Background Job: Periodic Curfew State Evaluator (runs every 1 minute)
+function checkCurfewSchedules() {
+  try {
+    const vehicles = db.prepare('SELECT * FROM vehicles WHERE curfew_enabled = 1').all();
+    const now = new Date();
+    const nowMs = Date.now();
+
+    for (const vehicle of vehicles) {
+      const isAllowed = isWithinAllowedHours(now, vehicle.curfew_start, vehicle.curfew_end, vehicle.curfew_days, vehicle.curfew_holiday_mode);
+      let curfewLocked = false;
+      if (!isAllowed) {
+        let hasOverride = false;
+        if (vehicle.override_status === 'APPROVED_MIDNIGHT' || vehicle.override_status === 'APPROVED_ONCE') {
+          if (nowMs < vehicle.override_expires) {
+            hasOverride = true;
+          }
+        }
+        if (!hasOverride) {
+          curfewLocked = true;
+        }
+      }
+
+      const isWebOrCurfewLocked = (vehicle.cloud_locked === 1 || curfewLocked);
+      const desiredRelayState = isWebOrCurfewLocked ? 0 : 1;
+      const currentRelay = (vehicle.relay_state !== null && vehicle.relay_state !== undefined) ? vehicle.relay_state : 0;
+
+      if (currentRelay !== desiredRelayState) {
+        const cooldownKey = `${vehicle.id}-relay-cooldown`;
+        if (!global.relayCmdCooldown) global.relayCmdCooldown = new Map();
+        const lastSent = global.relayCmdCooldown.get(cooldownKey) || 0;
+        const RELAY_COOLDOWN_MS = 2000;
+
+        if (nowMs - lastSent >= RELAY_COOLDOWN_MS) {
+          global.relayCmdCooldown.set(cooldownKey, nowMs);
+          const cmdText = `setdigout ${desiredRelayState}`;
+          console.log(`[Curfew Monitor] Vehicle ${vehicle.id}: Curfew transition detected (curfewLocked=${curfewLocked}). DOUT1 current=${currentRelay} → desired=${desiredRelayState} (${cmdText})`);
+
+          // Update DB state
+          db.prepare('UPDATE vehicles SET is_locked = ?, relay_state = ?, relay_updated_at = ? WHERE id = ?')
+            .run(isWebOrCurfewLocked ? 1 : 0, desiredRelayState, nowMs, vehicle.id);
+          if (global.invalidateMetadataCache) global.invalidateMetadataCache(vehicle.id);
+
+          // Dispatch relay command
+          const isDirectSocket = DeviceManager.getStatus(vehicle.id) === 'ONLINE';
+          if (isDirectSocket) {
+            DeviceManager.sendCommand(vehicle.id, cmdText);
+          } else {
+            sendTraccarCommand(vehicle.id, cmdText);
+          }
+
+          // Push Notification to owner
+          if (curfewLocked && vehicle.owner_id) {
+            const alertMsg = `Security: Vehicle ${vehicle.name || vehicle.id} de-energized / locked because operating hours have finished (${vehicle.curfew_start} - ${vehicle.curfew_end}).`;
+            io.to(`user_${vehicle.owner_id}`).emit('notification', {
+              id: Date.now(),
+              type: 'CURFEW_LOCK',
+              severity: 'warning',
+              message: alertMsg,
+              timestamp: Date.now()
+            });
+
+            db.prepare('INSERT INTO vehicle_alerts (vehicle_id, alert_type, message, timestamp) VALUES (?, ?, ?, ?)')
+              .run(vehicle.id, 'CURFEW_LOCK', alertMsg, Date.now());
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Curfew Monitor] Scan failed:', err.message);
+  }
+}
+setTimeout(checkCurfewSchedules, 5000);
+setInterval(checkCurfewSchedules, 60 * 1000);
+
 
 // ─── GRACEFUL SHUTDOWN HANDLERS (P1) ────────────────────────────────────
 function handleGracefulShutdown(signal) {

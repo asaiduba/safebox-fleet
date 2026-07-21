@@ -29,10 +29,29 @@ function isPointInPolygon(point, polygon) {
   return inside;
 }
 
-function isWithinAllowedHours(now, startStr, endStr, daysJson, holidayMode) {
+function isWithinAllowedHours(now, startStr, endStr, daysJson, holidayMode, timezone) {
+  // Default timezone to Africa/Kigali (CAT, UTC+2) — where all current vehicles operate
+  const tz = timezone || 'Africa/Kigali';
+
+  // Get the current time components in the vehicle's local timezone
+  const localParts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz,
+    hour: '2-digit', minute: '2-digit', hour12: false,
+    weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(now);
+
+  const get = (type) => localParts.find(p => p.type === type)?.value || '';
+  const localHH = get('hour');
+  const localMM = get('minute');
+  const localDay = get('weekday');   // "Mon", "Tue", etc.
+  const localYear = get('year');
+  const localMonth = get('month');
+  const localDayNum = get('day');
+  const nowStr = `${localHH}:${localMM}`;            // "HH:MM" in local tz
+  const todayStr = `${localYear}-${localMonth}-${localDayNum}`; // "YYYY-MM-DD" in local tz
+
   // 1. Check Holiday Mode
   if (holidayMode) {
-    const todayStr = now.toISOString().split('T')[0]; // "YYYY-MM-DD"
     const PUBLIC_HOLIDAYS = ['2026-01-01', '2026-06-04', '2026-12-25'];
     if (PUBLIC_HOLIDAYS.includes(todayStr)) {
       return false; // Public holiday is restricted
@@ -40,9 +59,6 @@ function isWithinAllowedHours(now, startStr, endStr, daysJson, holidayMode) {
   }
 
   // 2. Check Day of Week
-  const daysMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const currentDay = daysMap[now.getDay()];
-  
   let allowedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   if (daysJson) {
     try {
@@ -55,13 +71,12 @@ function isWithinAllowedHours(now, startStr, endStr, daysJson, holidayMode) {
     }
   }
 
-  if (!allowedDays.includes(currentDay)) {
+  if (!allowedDays.includes(localDay)) {
     return false; // Day is restricted
   }
 
   // 3. Check Hours
   if (!startStr || !endStr) return true;
-  const nowStr = now.toTimeString().substring(0, 5); // "HH:MM"
   if (startStr <= endStr) {
     return nowStr >= startStr && nowStr < endStr;
   } else {
