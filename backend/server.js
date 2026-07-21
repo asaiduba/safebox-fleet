@@ -1903,6 +1903,7 @@ const tcpServer = net.createServer((socket) => {
             let lastTag3Rssi = null;
             let lastTag4Mac = null;
             let lastTag4Rssi = null;
+            let beaconList = [];
 
             for (let r = 0; r < numRecords; r++) {
               if (offset + 15 > packet.length) break;
@@ -2032,6 +2033,47 @@ const tcpServer = net.createServer((socket) => {
                   const valBuf = packet.subarray(offset, offset + length);
                   offset += length;
                   console.log(`[Teltonika TCP Debug] X-byte property: propId=${propId}, length=${length}, hex=${valBuf.toString('hex')}`);
+
+                  if (propId === 10828 || propId === 10829 || propId === 10831) {
+                    try {
+                      if (valBuf.length >= 2) {
+                        const numBeacons = valBuf[0];
+                        let bOffset = 1;
+                        for (let b = 0; b < numBeacons; b++) {
+                          if (bOffset >= valBuf.length) break;
+                          const entryLen = valBuf[bOffset];
+                          bOffset += 1;
+                          if (bOffset + entryLen > valBuf.length) break;
+                          const entryEnd = bOffset + entryLen;
+                          
+                          let mac = null;
+                          let rssi = null;
+                          
+                          while (bOffset < entryEnd) {
+                            if (bOffset + 2 > entryEnd) break;
+                            const paramId = valBuf[bOffset];
+                            const paramLen = valBuf[bOffset + 1];
+                            bOffset += 2;
+                            if (bOffset + paramLen > entryEnd) break;
+                            const paramValBuf = valBuf.subarray(bOffset, bOffset + paramLen);
+                            bOffset += paramLen;
+                            
+                            if (paramId === 0x00 && paramLen === 1) {
+                              const rawRssi = paramValBuf[0];
+                              rssi = rawRssi > 127 ? rawRssi - 256 : rawRssi;
+                            } else if (paramId === 0x0f && paramLen === 6) {
+                              mac = paramValBuf.toString('hex').toLowerCase();
+                            }
+                          }
+                          if (mac) {
+                            beaconList.push({ mac, rssi: rssi !== null ? rssi : -128 });
+                          }
+                        }
+                      }
+                    } catch (bleErr) {
+                      console.error('[Teltonika TCP] Error parsing X-byte BLE Beacons:', bleErr.message);
+                    }
+                  }
                 }
               }
             }
@@ -2055,6 +2097,11 @@ const tcpServer = net.createServer((socket) => {
               if (lastTag2Mac && lastTag2Rssi !== null) rawBleParts.push(`${lastTag2Mac}:${lastTag2Rssi}`);
               if (lastTag3Mac && lastTag3Rssi !== null) rawBleParts.push(`${lastTag3Mac}:${lastTag3Rssi}`);
               if (lastTag4Mac && lastTag4Rssi !== null) rawBleParts.push(`${lastTag4Mac}:${lastTag4Rssi}`);
+              
+              for (const b of beaconList) {
+                rawBleParts.push(`${b.mac}:${b.rssi}`);
+              }
+              
               if (rawBleParts.length > 0) {
                 rawBleList = rawBleParts.join(';');
               }
