@@ -2066,6 +2066,7 @@ const tcpServer = net.createServer((socket) => {
                             }
                           }
                           if (mac) {
+                            console.log(`[Teltonika TCP BLE Debug] Parsed Beacon: mac=${mac}, rssi=${rssi}`);
                             beaconList.push({ mac, rssi: rssi !== null ? rssi : -128 });
                           }
                         }
@@ -2098,6 +2099,7 @@ const tcpServer = net.createServer((socket) => {
               if (lastTag3Mac && lastTag3Rssi !== null) rawBleParts.push(`${lastTag3Mac}:${lastTag3Rssi}`);
               if (lastTag4Mac && lastTag4Rssi !== null) rawBleParts.push(`${lastTag4Mac}:${lastTag4Rssi}`);
               
+              console.log(`[Teltonika TCP BLE Debug] final beaconList items count: ${beaconList.length}`);
               for (const b of beaconList) {
                 rawBleParts.push(`${b.mac}:${b.rssi}`);
               }
