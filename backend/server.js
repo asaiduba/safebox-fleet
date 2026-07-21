@@ -1524,9 +1524,12 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
 
   // Update database
   try {
+    const cleanBattery = (battery !== null && battery !== undefined) ? battery : 100;
+    const cleanFuel = (fuel !== null && fuel !== undefined) ? fuel : 100;
+
     if (dout1 !== null) {
       db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ?, relay_state = ?, relay_updated_at = ?, ignition = ? WHERE id = ?')
-        .run(nowMs, battery || 100, fuel || 100, isLocked, lat || 0, lng || 0, newOdometer, dout1, nowMs, ignition, deviceId);
+        .run(nowMs, cleanBattery, cleanFuel, isLocked, lat || 0, lng || 0, newOdometer, dout1, nowMs, ignition, deviceId);
 
       // Perform command lifecycle confirmation if state matches expectation
       const pendingCmd = db.prepare(`
@@ -1551,7 +1554,7 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
       }
     } else {
       db.prepare('UPDATE vehicles SET last_seen = ?, battery_level = ?, fuel_level = ?, is_locked = ?, lat = ?, lng = ?, odometer_km = ?, ignition = ? WHERE id = ?')
-        .run(nowMs, battery || 100, fuel || 100, isLocked, lat || 0, lng || 0, newOdometer, ignition, deviceId);
+        .run(nowMs, cleanBattery, cleanFuel, isLocked, lat || 0, lng || 0, newOdometer, ignition, deviceId);
     }
 
     // Batch write history
@@ -1559,8 +1562,8 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
       vehicleId: deviceId,
       timestamp: nowMs,
       speed: speed || 0,
-      battery: battery || 100,
-      fuel: fuel || 100,
+      battery: cleanBattery,
+      fuel: cleanFuel,
       lat: lat || 0,
       lng: lng || 0
     });
@@ -1943,6 +1946,8 @@ const tcpServer = net.createServer((socket) => {
                 const val = packet[offset];
                 offset += 1;
 
+                console.log(`[Teltonika TCP Debug] 1-byte property: propId=${propId}, val=${val}`);
+
                 if (propId === 239 || propId === 1) { // ACC/Ignition
                   lastIgnition = val;
                 } else if (propId === 179) { // DOUT1 (Relay output status)
@@ -1977,6 +1982,7 @@ const tcpServer = net.createServer((socket) => {
                   if (lastBattery === null) {
                     const pct = Math.round(((val - 3600) / (4200 - 3600)) * 100);
                     lastBattery = Math.min(100, Math.max(0, pct));
+                    console.log(`[Teltonika TCP Debug] Set lastBattery to ${lastBattery} from val ${val}`);
                   }
                 }
               }
@@ -1987,7 +1993,9 @@ const tcpServer = net.createServer((socket) => {
               for (let i = 0; i < io4Count; i++) {
                 const propId = isExtended ? packet.readUInt16BE(offset) : packet[offset];
                 offset += isExtended ? 2 : 1;
+                const val = packet.readUInt32BE(offset);
                 offset += 4;
+                console.log(`[Teltonika TCP Debug] 4-byte property: propId=${propId}, val=${val}`);
               }
 
               // 8-byte properties
@@ -1998,6 +2006,8 @@ const tcpServer = net.createServer((socket) => {
                 offset += isExtended ? 2 : 1;
                 const valBuf = packet.subarray(offset, offset + 8);
                 offset += 8;
+
+                console.log(`[Teltonika TCP Debug] 8-byte property: propId=${propId}, hex=${valBuf.toString('hex')}`);
 
                 if (propId === 10827) { // Tag 1 MAC
                   lastTag1Mac = valBuf.toString('hex').replace(/^0+/, '').toLowerCase();
@@ -2019,7 +2029,9 @@ const tcpServer = net.createServer((socket) => {
                   offset += 2;
                   const length = packet.readUInt16BE(offset);
                   offset += 2;
+                  const valBuf = packet.subarray(offset, offset + length);
                   offset += length;
+                  console.log(`[Teltonika TCP Debug] X-byte property: propId=${propId}, length=${length}, hex=${valBuf.toString('hex')}`);
                 }
               }
             }
@@ -2048,6 +2060,7 @@ const tcpServer = net.createServer((socket) => {
               }
 
               const batteryPct = (lastBattery !== null) ? lastBattery : 100;
+              console.log(`[Teltonika TCP Debug] lastBattery state: ${lastBattery}, using batteryPct: ${batteryPct}`);
 
               console.log(`[Teltonika TCP] Telemetry parsed: Lat=${lastLat}, Lng=${lastLng}, Speed=${lastSpeed}, DOUT1=${lastDout1}, AIN1=${lastAin1}mV, BLE="${rawBleList}", Battery=${batteryPct}%`);
               handleIncomingTelemetry(authenticatedDeviceId, lastLat, lastLng, lastSpeed, batteryPct, fuelPct, lastIgnition, rawBleList, lastDout1);

@@ -87,9 +87,11 @@ class DeviceManager {
       imei = device.imei;
       tracker_type = device.tracker_type;
     } else {
-      if (_activeTcpSockets && _activeTcpSockets.has(vehicleId)) {
-        imei = vehicleId;
-        tracker_type = 'custom';
+      const vIdStr = vehicleId ? vehicleId.toString() : '';
+      if (_activeTcpSockets && _activeTcpSockets.has(vIdStr)) {
+        imei = vIdStr;
+        const socket = _activeTcpSockets.get(imei);
+        tracker_type = socket.deviceType || 'teltonika';
       }
     }
 
@@ -211,9 +213,15 @@ class DeviceManager {
 
   static getStatus(vehicleId) {
     const device = DeviceManager.getDeviceByVehicleId(vehicleId);
-    if (!device) return 'UNLINKED';
-    if (_activeTcpSockets && _activeTcpSockets.has(device.imei)) return 'ONLINE';
-    return 'OFFLINE';
+    if (device && _activeTcpSockets && _activeTcpSockets.has(device.imei)) {
+      return 'ONLINE';
+    }
+    // Fallback: Check if the vehicleId itself is the IMEI and is in the active sockets Map
+    const vIdStr = vehicleId ? vehicleId.toString() : '';
+    if (_activeTcpSockets && _activeTcpSockets.has(vIdStr)) {
+      return 'ONLINE';
+    }
+    return device ? 'OFFLINE' : 'UNLINKED';
   }
 }
 
