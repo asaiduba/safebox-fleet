@@ -1590,7 +1590,10 @@ function handleIncomingTelemetry(deviceId, lat, lng, speed, battery, fuel, ignit
     battery,
     fuel,
     locked: isLocked === 1,
+    cloudLocked: vehicle.cloud_locked === 1,
     ignition: ignition === 1 ? 1 : 0,
+    beaconRssi: matchedRssi,
+    driverPresent: driverPresent,
     timestamp: nowMs
   });
 
