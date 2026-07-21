@@ -1969,6 +1969,8 @@ const tcpServer = net.createServer((socket) => {
                 const val = packet.readUInt16BE(offset);
                 offset += 2;
 
+                console.log(`[Teltonika TCP Debug] 2-byte property: propId=${propId}, val=${val}`);
+
                 if (propId === 9) {
                   lastAin1 = val; // AIN1 (mV)
                 } else if (propId === 67) { // Battery Voltage (mV)
